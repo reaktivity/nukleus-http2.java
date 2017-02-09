@@ -15,25 +15,9 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import static java.lang.Integer.parseInt;
-import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
-import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
-import static org.reaktivity.nukleus.http2.internal.util.BufferUtil.limitOfBytes;
-
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.LongFunction;
-import java.util.function.LongSupplier;
-import java.util.function.Predicate;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
-
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
@@ -45,9 +29,25 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
+
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.LongFunction;
+import java.util.function.LongSupplier;
+import java.util.function.Predicate;
+
+import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
+import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
 
 public final class SourceInputStreamFactory
 {
@@ -62,23 +62,30 @@ public final class SourceInputStreamFactory
     private final WindowFW windowRO = new WindowFW();
     private final ResetFW resetRO = new ResetFW();
 
+    private final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
+    private final Http2FrameFW http2RO = new Http2FrameFW();
+    private final Http2SettingsFW settingsRO = new Http2SettingsFW();
+    private final Http2DataFW http2DataRO = new Http2DataFW();
+
+    private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
+
     private final Source source;
     private final LongFunction<List<Route>> supplyRoutes;
     private final LongSupplier supplyStreamId;
-    private final Target rejectTarget;
+    private final Target replyTarget;
     private final LongObjectBiConsumer<Correlation> correlateNew;
 
     public SourceInputStreamFactory(
         Source source,
         LongFunction<List<Route>> supplyRoutes,
         LongSupplier supplyStreamId,
-        Target rejectTarget,
+        Target replyTarget,
         LongObjectBiConsumer<Correlation> correlateNew)
     {
         this.source = source;
         this.supplyRoutes = supplyRoutes;
         this.supplyStreamId = supplyStreamId;
-        this.rejectTarget = rejectTarget;
+        this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
     }
 
@@ -102,6 +109,7 @@ public final class SourceInputStreamFactory
         private int window;
         private int contentRemaining;
         private int sourceUpdateDeferred;
+        private final long newReplyId;
 
         @Override
         public String toString()
@@ -114,6 +122,7 @@ public final class SourceInputStreamFactory
         {
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
+            newReplyId = supplyStreamId.getAsLong();
         }
 
         private void handleStream(
@@ -180,7 +189,6 @@ public final class SourceInputStreamFactory
             {
                 dataRO.wrap(buffer, index, index + length);
                 final long streamId = dataRO.streamId();
-
                 source.doWindow(streamId, length);
             }
             else if (msgTypeId == EndFW.TYPE_ID)
@@ -217,19 +225,19 @@ public final class SourceInputStreamFactory
             int requestBytes,
             String payloadChars)
         {
-            final Target target = rejectTarget;
-            final long newTargetId = supplyStreamId.getAsLong();
+            final Target target = replyTarget;
+            //final long newTargetId = supplyStreamId.getAsLong();
 
             // TODO: replace with connection pool (start)
-            target.doBegin(newTargetId, 0L, correlationId);
-            target.addThrottle(newTargetId, this::handleThrottle);
+            target.doBegin(newReplyId, 0L, correlationId);
+            target.addThrottle(newReplyId, this::handleThrottle);
             // TODO: replace with connection pool (end)
 
             // TODO: acquire slab for response if targetWindow requires partial write
             DirectBuffer payload = new UnsafeBuffer(payloadChars.getBytes(StandardCharsets.UTF_8));
-            target.doData(newTargetId, payload, 0, payload.capacity());
+            target.doData(newReplyId, payload, 0, payload.capacity());
 
-            this.decoderState = this::decodeHttpBegin;
+            this.decoderState = this::decodePreface;
             this.streamState = this::streamAfterReplyOrReset;
             this.throttleState = this::throttleSkipNextWindow;
             this.sourceUpdateDeferred = requestBytes - payload.capacity();
@@ -247,7 +255,7 @@ public final class SourceInputStreamFactory
             this.correlationId = beginRO.correlationId();
 
             this.streamState = this::streamAfterBeginOrData;
-            this.decoderState = this::decodeHttpBegin;
+            this.decoderState = this::decodePreface;
 
             // TODO: acquire slab for request decode of up to initial bytes
             final int initial = 512;
@@ -295,78 +303,50 @@ public final class SourceInputStreamFactory
             target.removeThrottle(targetId);
         }
 
-        private int decodeHttpBegin(
-            final DirectBuffer payload,
-            final int offset,
-            final int limit)
-        {
-            final int endOfHeadersAt = limitOfBytes(payload, offset, limit, CRLFCRLF_BYTES);
-            if (endOfHeadersAt == -1)
-            {
-                throw new IllegalStateException("incomplete http headers");
-            }
 
-            // TODO: replace with lightweight approach (start)
-            String[] lines = payload.getStringWithoutLengthUtf8(offset, endOfHeadersAt - offset).split("\r\n");
-            String[] start = lines[0].split("\\s+");
+        private int decodePreface(final DirectBuffer buffer, final int offset, final int limit) {
+            prefaceRO.wrap(buffer, offset, limit);
+            this.decoderState = this::decodeHttp2Frames;
+            source.doWindow(sourceId, limit - offset);
 
-            Pattern versionPattern = Pattern.compile("HTTP/1\\.(\\d)");
-            Matcher versionMatcher = versionPattern.matcher(start[2]);
-            if (!versionMatcher.matches())
-            {
-                processInvalidRequest(endOfHeadersAt - offset, "HTTP/1.1 505 HTTP Version Not Supported\r\n\r\n");
-            }
-            else
-            {
-                URI requestURI = URI.create(start[1]);
+            // TODO: replace with connection pool (start)
+            replyTarget.doBegin(newReplyId, 0L, correlationId);
+            replyTarget.addThrottle(newReplyId, this::handleThrottle);
+            // TODO: replace with connection pool (end)
 
-                Map<String, String> headers = new LinkedHashMap<>();
-                headers.put(":scheme", "http");
-                headers.put(":method", start[0]);
-                headers.put(":path", requestURI.getPath());
+            AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
+            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).maxConcurrentStreams(100).build();
 
-                String host = null;
-                String upgrade = null;
-                Pattern headerPattern = Pattern.compile("([^\\s:]+)\\s*:\\s*(.*)");
-                for (int i = 1; i < lines.length; i++)
-                {
-                    Matcher headerMatcher = headerPattern.matcher(lines[i]);
-                    if (!headerMatcher.matches())
-                    {
-                        throw new IllegalStateException("illegal http header syntax");
-                    }
+            replyTarget.doData(newReplyId, settings.buffer(), settings.offset(), settings.limit());
 
-                    String name = headerMatcher.group(1).toLowerCase();
-                    String value = headerMatcher.group(2);
 
-                    if ("host".equals(name))
-                    {
-                        host = value;
-                    }
-                    else if ("upgrade".equals(name))
-                    {
-                        upgrade = value;
-                    }
+            return prefaceRO.limit();
+        }
 
-                    headers.put(name, value);
-                }
-                // TODO: replace with lightweight approach (end)
+        private int decodeHttp2Frames(final DirectBuffer buffer, final int offset, final int limit) {
+            int nextOffset = offset;
 
-                if (host == null || requestURI.getUserInfo() != null)
-                {
-                    processInvalidRequest(endOfHeadersAt - offset, "HTTP/1.1 400 Bad Request\r\n\r\n");
-                }
-                else
-                {
-                    final Optional<Route> optional = resolveTarget(sourceRef, headers);
-                    if (optional.isPresent())
-                    {
+            for (; nextOffset < limit; nextOffset = http2RO.limit()) {
+                http2RO.wrap(buffer, nextOffset, limit);
+System.out.println(http2RO);
+                switch (http2RO.type()) {
+                    case DATA:
+                        //target.doData(targetId, payload, offset, limit - offset);
+                        break;
+                    case HEADERS: {
+                        Map<String, String> headers = new LinkedHashMap<>();
+                        headers.put(":scheme", "http");
+                        headers.put(":method", "GET");
+                        headers.put(":path", "/");
+                        headers.put("host", "localhost:8080");
+
                         final long newTargetId = supplyStreamId.getAsLong();
                         final long targetCorrelationId = newTargetId;
                         final Correlation correlation = new Correlation(correlationId, source.routableName(), OUTPUT_ESTABLISHED);
 
                         correlateNew.accept(targetCorrelationId, correlation);
 
+                        final Optional<Route> optional = resolveTarget(sourceRef, headers);
                         final Route route = optional.get();
                         final Target newTarget = route.target();
                         final long targetRef = route.targetRef();
@@ -375,90 +355,36 @@ public final class SourceInputStreamFactory
                                 hs -> headers.forEach((k, v) -> hs.item(i -> i.name(k).value(v))));
                         newTarget.addThrottle(newTargetId, this::handleThrottle);
 
-                        // TODO: wait for 101 first
-                        if (upgrade != null)
-                        {
-                            this.decoderState = this::decodeHttpDataAfterUpgrade;
-                        }
-                        else
-                        {
-                            this.contentRemaining = parseInt(headers.getOrDefault("content-length", "0"));
-                            this.decoderState = this::decodeHttpData;
-                        }
-
-
-                        if (upgrade != null || contentRemaining != 0)
-                        {
-                            // content stream
-                            this.target = newTarget;
-                            this.targetId = newTargetId;
-                            this.throttleState = this::throttleNextWindow;
-                            this.sourceUpdateDeferred = endOfHeadersAt - offset;
-                        }
-                        else
-                        {
-                            // no content
-                            newTarget.doHttpEnd(newTargetId);
-                            source.doWindow(sourceId, limit - offset);
-                            this.throttleState = this::throttleSkipNextWindow;
-                        }
+                        // no content
+                        newTarget.doHttpEnd(newTargetId);
+                        source.doWindow(sourceId, limit - offset);
+                        this.throttleState = this::throttleSkipNextWindow;
                     }
-                    else
-                    {
-                        processInvalidRequest(endOfHeadersAt - offset, "HTTP/1.1 404 Not Found\r\n\r\n");
-                    }
+                        break;
+                    case PRIORITY:
+                        break;
+                    case RST_STREAM:
+                        break;
+                    case SETTINGS:
+                        AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
+                        Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).ack().build();
+                        //long newTargetId = dataRO.streamId();
+                        replyTarget.doData(newReplyId, settings.buffer(), settings.offset(), settings.limit());
+                        break;
+                    case PUSH_PROMISE:
+                        break;
+                    case PING:
+                        break;
+                    case GO_AWAY:
+                        break;
+                    case WINDOW_UPDATE:
+                        break;
+                    case CONTINUATION:
+                        break;
                 }
             }
 
-            return endOfHeadersAt;
-        }
-
-        private int decodeHttpData(
-            DirectBuffer payload,
-            int offset,
-            int limit)
-        {
-            final int length = Math.min(limit - offset, contentRemaining);
-
-            // TODO: consider chunks
-            target.doHttpData(targetId, payload, offset, length);
-
-            contentRemaining -= length;
-
-            if (contentRemaining == 0)
-            {
-                target.doHttpEnd(targetId);
-
-                if (sourceUpdateDeferred != 0)
-                {
-                    source.doWindow(sourceId, sourceUpdateDeferred);
-                    sourceUpdateDeferred = 0;
-                }
-
-                this.throttleState = this::throttleSkipNextWindow;
-            }
-
-            return offset + length;
-        }
-
-        private int decodeHttpDataAfterUpgrade(
-            DirectBuffer payload,
-            int offset,
-            int limit)
-        {
-            target.doData(targetId, payload, offset, limit - offset);
-            return limit;
-        }
-
-        @SuppressWarnings("unused")
-        private int decodeHttpEnd(
-            DirectBuffer payload,
-            int offset,
-            int limit)
-        {
-            // TODO: consider chunks, trailers
-            target.doHttpEnd(targetId);
-            return limit;
+            return nextOffset;
         }
 
         private Optional<Route> resolveTarget(

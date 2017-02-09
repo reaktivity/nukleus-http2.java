@@ -15,69 +15,42 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import static java.lang.Integer.highestOneBit;
-
-import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
+
 public final class Http2FrameFW extends Flyweight
 {
-    public static final short STATUS_NORMAL_CLOSURE = (short) 1000;
-    public static final short STATUS_GOING_AWAY = (short) 1001;
-    public static final short STATUS_PROTOCOL_ERROR = (short) 1002;
-    public static final short STATUS_UNSUPPORTED_DATA = (short) 1003;
-    public static final short STATUS_INVALID_UTF8 = (short) 1007;
-    public static final short STATUS_POLICY_VIOLATION = (short) 1008;
-    public static final short STATUS_MESSAGE_TOO_LARGE = (short) 1009;
-    public static final short STATUS_EXTENSIONS_MISSING = (short) 1010;
-    public static final short STATUS_UNEXPECTED_CONDITION = (short) 1011;
 
-    private static final int FIELD_OFFSET_FLAGS_AND_OPCODE = 0;
-    private static final int FIELD_SIZE_FLAGS_AND_OPCODE = BitUtil.SIZE_OF_BYTE;
-
-    private static final int FIELD_OFFSET_MASK_AND_LENGTH = FIELD_OFFSET_FLAGS_AND_OPCODE + FIELD_SIZE_FLAGS_AND_OPCODE;
-
-    private static final int FIELD_SIZE_MASKING_KEY = BitUtil.SIZE_OF_INT;
+    private static final int LENGTH_OFFSET = 0;
+    private static final int TYPE_OFFSET = 3;
+    private static final int FLAGS_OFFSET = 4;
+    private static final int STREAM_ID_OFFSET = 5;
+    private static final int PAYLOAD_OFFSET = 9;
 
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
-    public boolean fin()
-    {
-        return (buffer().getByte(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE) & 0x80) != 0x00;
+    public int payloadLength() {
+        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
+        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
+        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
+        return length;
     }
 
-    public boolean rsv1()
-    {
-        return (buffer().getByte(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE) & 0x40) != 0x00;
+    public Http2FrameType type() {
+        return Http2FrameType.from(buffer().getByte(offset() + TYPE_OFFSET));
     }
 
-    public boolean rsv2()
-    {
-        return (buffer().getByte(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE) & 0x20) != 0x00;
+    public byte flags() {
+        return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    public boolean rsv3()
-    {
-        return (buffer().getByte(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE) & 0x10) != 0x00;
-    }
-
-    public int opcode()
-    {
-        return buffer().getByte(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE) & 0x0f;
-    }
-
-    public boolean mask()
-    {
-        return (buffer().getByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH) & 0x80) != 0;
-    }
-
-    public int maskingKey()
-    {
-        return buffer().getInt(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE + FIELD_SIZE_FLAGS_AND_OPCODE + lengthSize());
+    public int streamId() {
+        // Most significant bit is reserved and is ignored when receiving
+        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public DirectBuffer payload()
@@ -88,7 +61,7 @@ public final class Http2FrameFW extends Flyweight
     @Override
     public int limit()
     {
-        return payloadOffset() + lengthValue();
+        return offset() + PAYLOAD_OFFSET + payloadLength();
     }
 
     @Override
@@ -96,7 +69,7 @@ public final class Http2FrameFW extends Flyweight
     {
         super.wrap(buffer, offset, maxLimit);
 
-        payloadRO.wrap(buffer, payloadOffset(), lengthValue());
+        payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength());
 
         checkLimit(limit(), maxLimit);
 
@@ -106,136 +79,8 @@ public final class Http2FrameFW extends Flyweight
     @Override
     public String toString()
     {
-        return String.format("[fin=%s, opcode=%d, payload.length=%d]", fin(), opcode(), lengthValue());
+        return String.format("%s frame <length=%s, flags=%s, id=%s>",
+                type(), length(), flags(), streamId());
     }
 
-    private int payloadOffset()
-    {
-        int payloadOffset = offset() + FIELD_SIZE_FLAGS_AND_OPCODE + lengthSize();
-
-        if (mask())
-        {
-            payloadOffset += FIELD_SIZE_MASKING_KEY;
-        }
-
-        return payloadOffset;
-    }
-
-    private int lengthSize()
-    {
-        switch (buffer().getByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH) & 0x7f)
-        {
-        case 0x7e:
-            return 3;
-
-        case 0x7f:
-            return 9;
-
-        default:
-            return 1;
-        }
-    }
-
-    private int lengthValue()
-    {
-        int length = buffer().getByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH) & 0x7f;
-
-        switch (length)
-        {
-        case 0x7e:
-            return buffer().getShort(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1) & 0xffff;
-
-        case 0x7f:
-            long length8bytes = buffer().getLong(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1);
-            validateLength(length8bytes);
-            return (int) length8bytes & 0xffffffff;
-
-        default:
-            return length;
-        }
-    }
-
-    private void validateLength(
-        long length8bytes)
-    {
-        if (length8bytes >> 17L != 0L)
-        {
-            throw new IllegalStateException("frame payload too long");
-        }
-    }
-
-    public static final class Builder extends Flyweight.Builder<Http2FrameFW>
-    {
-        public Builder()
-        {
-            super(new Http2FrameFW());
-        }
-
-        @Override
-        public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
-        {
-            super.wrap(buffer, offset, maxLimit);
-            return this;
-        }
-
-        public Builder flagsAndOpcode(int flagsAndOpcode)
-        {
-            buffer().putByte(offset() + FIELD_OFFSET_FLAGS_AND_OPCODE, (byte) flagsAndOpcode);
-            return this;
-        }
-
-        public Builder payload(DirectBuffer buffer)
-        {
-            return payload(buffer, 0, buffer.capacity());
-        }
-
-        public Builder payload(DirectBuffer buffer, int offset, int length)
-        {
-            switch (highestOneBit(length))
-            {
-            case 0:
-            case 1:
-            case 2:
-            case 4:
-            case 8:
-            case 16:
-            case 32:
-                buffer().putByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH, (byte) length);
-                buffer().putBytes(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1, buffer, offset, length);
-                super.limit(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1 + length);
-                break;
-            case 64:
-                switch (length)
-                {
-                case 126:
-                case 127:
-                    buffer().putByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH, (byte) 126);
-                    buffer().putShort(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1, (short) length);
-                    buffer().putBytes(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 3, buffer, offset, length);
-                    super.limit(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 3 + length);
-                    break;
-                default:
-                    buffer().putByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH, (byte) length);
-                    buffer().putBytes(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1, buffer, offset, length);
-                    super.limit(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1 + length);
-                    break;
-                }
-                break;
-            case 128:
-                buffer().putByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH, (byte) 126);
-                buffer().putShort(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1, (short) length);
-                buffer().putBytes(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 3, buffer, offset, length);
-                super.limit(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 3 + length);
-                break;
-            default:
-                buffer().putByte(offset() + FIELD_OFFSET_MASK_AND_LENGTH, (byte) 127);
-                buffer().putLong(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 1, length);
-                buffer().putBytes(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 9, buffer, offset, length);
-                super.limit(offset() + FIELD_OFFSET_MASK_AND_LENGTH + 9 + length);
-                break;
-            }
-
-            return this;
-        }
-    }
 }
