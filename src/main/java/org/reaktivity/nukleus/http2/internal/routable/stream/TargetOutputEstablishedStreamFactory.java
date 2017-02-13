@@ -18,6 +18,8 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import static java.lang.Character.toUpperCase;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -39,6 +41,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
@@ -92,6 +95,7 @@ public final class TargetOutputEstablishedStreamFactory
 
         private Target target;
         private long targetId;
+        private int http2StreamId;
 
         private int window;
 
@@ -232,23 +236,28 @@ public final class TargetOutputEstablishedStreamFactory
                 this.sourceId = newSourceId;
                 this.target = newTarget;
                 this.targetId = newTargetId;
+                this.http2StreamId = correlation.http2StreamId();
 
                 // TODO: replace with connection pool (start)
                 target.doBegin(newTargetId, 0L, sourceCorrelationId);
                 newTarget.addThrottle(newTargetId, this::handleThrottle);
                 // TODO: replace with connection pool (end)
 
-                byte[] headersPayload = new byte[] {
-                        0x00, 0x00, 0x45, 0x01, 0x04, 0x00, 0x00, 0x00, 0x01, (byte)0x8d, 0x76, (byte)0x90, (byte)0xaa, 0x69, (byte)0xd2, (byte)0x9a,
-                        (byte)0xe4, 0x52, (byte)0xa9, (byte)0xa7, 0x4a, 0x6b, 0x13, 0x01, 0x5c, 0x2f, (byte)0xae, 0x0f, 0x61, (byte)0x96, (byte)0xe4, 0x59,
-                        0x3e, (byte)0x94, 0x00, 0x54, (byte)0xc2, 0x58, (byte)0xd4, 0x10, 0x02, (byte)0xea, (byte)0x81, 0x7e, (byte)0xe0, 0x45, 0x71, (byte)0xa7,
-                        0x14, (byte)0xc5, (byte)0xa3, 0x7f, 0x5f, (byte)0x92, 0x49, 0x7c, (byte)0xa5, (byte)0x89, (byte)0xd3, 0x4d, 0x1f, 0x6a, 0x12, 0x71,
-                        (byte)0xd8, (byte)0x82, (byte)0xa6, 0x0e, 0x1b, (byte)0xf0, (byte)0xac, (byte)0xf7, 0x0f, 0x0d, 0x03, 0x31, 0x34, 0x37
-                };
+                Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
+                final MutableDirectBuffer buf = new UnsafeBuffer(new byte[4096]);
+                Http2HeadersFW http2HeadersRO = http2HeadersRW.wrap(buf, 0, 4096).streamId(1).endHeaders().headers(headers).build();
 
-                final DirectBuffer payload = new UnsafeBuffer(headersPayload);
+//                byte[] headersPayload = new byte[] {
+//                        0x00, 0x00, 0x45, 0x01, 0x04, 0x00, 0x00, 0x00, 0x01, (byte)0x8d, 0x76, (byte)0x90, (byte)0xaa, 0x69, (byte)0xd2, (byte)0x9a,
+//                        (byte)0xe4, 0x52, (byte)0xa9, (byte)0xa7, 0x4a, 0x6b, 0x13, 0x01, 0x5c, 0x2f, (byte)0xae, 0x0f, 0x61, (byte)0x96, (byte)0xe4, 0x59,
+//                        0x3e, (byte)0x94, 0x00, 0x54, (byte)0xc2, 0x58, (byte)0xd4, 0x10, 0x02, (byte)0xea, (byte)0x81, 0x7e, (byte)0xe0, 0x45, 0x71, (byte)0xa7,
+//                        0x14, (byte)0xc5, (byte)0xa3, 0x7f, 0x5f, (byte)0x92, 0x49, 0x7c, (byte)0xa5, (byte)0x89, (byte)0xd3, 0x4d, 0x1f, 0x6a, 0x12, 0x71,
+//                        (byte)0xd8, (byte)0x82, (byte)0xa6, 0x0e, 0x1b, (byte)0xf0, (byte)0xac, (byte)0xf7, 0x0f, 0x0d, 0x03, 0x31, 0x34, 0x37
+//                };
+//
+//                final DirectBuffer payload = new UnsafeBuffer(headersPayload);
 
-                target.doData(targetId, payload, 0, payload.capacity());
+                target.doData(targetId, http2HeadersRO.buffer(), http2HeadersRO.offset(), http2HeadersRO.limit());
 
                 this.streamState = this::afterBeginOrData;
                 this.throttleState = this::throttleNextThenSkipWindow;
@@ -277,7 +286,7 @@ public final class TargetOutputEstablishedStreamFactory
             else
             {
                 AtomicBuffer body = new UnsafeBuffer(new byte[2048]);
-                Http2DataFW http2Data = dataRW.wrap(body, 0, 2048).streamId(1).endStream().payload(payload.buffer(), payload.offset()+1, payload.length()-1).build();
+                Http2DataFW http2Data = dataRW.wrap(body, 0, 2048).streamId(http2StreamId).endStream().payload(payload.buffer(), payload.offset()+1, payload.length()-1).build();
                 target.doData(targetId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
 
                 //target.doData(targetId, payload);

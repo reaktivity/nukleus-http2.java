@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.nio.ByteOrder;
 
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
 public class Http2SettingsFW extends Flyweight {
@@ -164,7 +165,7 @@ public class Http2SettingsFW extends Flyweight {
         }
 
         public Builder ack() {
-            buffer().putByte(offset() + FLAGS_OFFSET, (byte) 1);
+            buffer().putByte(offset() + FLAGS_OFFSET, ACK);
             return this;
         }
 

@@ -25,14 +25,17 @@ public class Correlation
 {
     private final String source;
     private final long id;
+    private final int http2StreamId;
     private final RouteKind established;
 
     public Correlation(
         long id,
+        int http2StreamId,
         String source,
         RouteKind established)
     {
         this.id = id;
+        this.http2StreamId = http2StreamId;
         this.source = requireNonNull(source, "source");
         this.established = requireNonNull(established, "established");
     }
@@ -47,6 +50,11 @@ public class Correlation
         return id;
     }
 
+    public int http2StreamId()
+    {
+        return http2StreamId;
+    }
+
     public RouteKind established()
     {
         return established;
@@ -55,11 +63,7 @@ public class Correlation
     @Override
     public int hashCode()
     {
-        int result = Long.hashCode(id);
-        result = 31 * result + source.hashCode();
-        result = 31 * result + established.hashCode();
-
-        return result;
+        return Objects.hash(id, http2StreamId, source, established);
     }
 
     @Override
@@ -73,6 +77,7 @@ public class Correlation
 
         Correlation that = (Correlation) obj;
         return this.id == that.id &&
+                this.http2StreamId == that.http2StreamId &&
                 this.established == that.established &&
                 Objects.equals(this.source, that.source);
     }
@@ -80,6 +85,6 @@ public class Correlation
     @Override
     public String toString()
     {
-        return String.format("[id=%s, source=\"%s\", established=%s]", id, source, established);
+        return String.format("[id=%s, http2StreamId = %s source=\"%s\", established=%s]", id, http2StreamId, source, established);
     }
 }

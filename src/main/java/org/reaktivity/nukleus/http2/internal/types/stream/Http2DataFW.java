@@ -56,7 +56,7 @@ public class Http2DataFW extends Flyweight {
     }
 
     private boolean padding() {
-        return Http2Flags.padding(flags());
+        return Http2Flags.padded(flags());
     }
 
     private boolean endStream() {

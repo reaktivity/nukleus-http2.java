@@ -31,6 +31,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
@@ -103,7 +104,7 @@ public final class SourceInputStreamFactory
         private long sourceId;
 
         private Target target;
-        private long targetId;
+        private long targetId;      // TODO multiple targetId since multiplexing
         private long sourceRef;
         private long correlationId;
         private int window;
@@ -327,6 +328,9 @@ public final class SourceInputStreamFactory
             int nextOffset = offset;
 
             for (; nextOffset < limit; nextOffset = http2RO.limit()) {
+
+                assert limit - nextOffset >= 3;
+
                 http2RO.wrap(buffer, nextOffset, limit);
 System.out.println(http2RO);
                 switch (http2RO.type()) {
@@ -334,6 +338,10 @@ System.out.println(http2RO);
                         //target.doData(targetId, payload, offset, limit - offset);
                         break;
                     case HEADERS: {
+                        Http2HeadersFW headersFW = new Http2HeadersFW();
+                        headersFW.wrap(buffer, nextOffset, limit);
+                        /* Map<String, String> headers = */headersFW.headers();
+
                         Map<String, String> headers = new LinkedHashMap<>();
                         headers.put(":scheme", "http");
                         headers.put(":method", "GET");
@@ -342,7 +350,7 @@ System.out.println(http2RO);
 
                         final long newTargetId = supplyStreamId.getAsLong();
                         final long targetCorrelationId = newTargetId;
-                        final Correlation correlation = new Correlation(correlationId, source.routableName(), OUTPUT_ESTABLISHED);
+                        final Correlation correlation = new Correlation(correlationId, http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
 
                         correlateNew.accept(targetCorrelationId, correlation);
 
