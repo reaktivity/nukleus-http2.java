@@ -120,23 +120,23 @@ public class Http2HeadersFW extends Flyweight {
 
     public Map<String, String> headers() {
         Map<String, String> headers = new LinkedHashMap<>();
-        HpackDecoder decoder = new HpackDecoder();
-        ByteBuffer bb = ByteBuffer.wrap(new byte[4096]);
-        buffer().getBytes(dataOffset(), bb, 0, dataLength());
-        bb.limit(dataLength());
-        decoder.setHeaderEmitter(new HpackDecoder.HeaderEmitter() {
-
-            @Override
-            public void emitHeader(HttpString name, String value, boolean neverIndex) throws HpackException {
-                headers.put(name.toString(), value);
-                System.out.printf("Decoded Header = %s %s\n", name, value);
-            }
-        });
-        try {
-            decoder.decode(bb, false);
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+//        HpackDecoder decoder = new HpackDecoder();
+//        ByteBuffer bb = ByteBuffer.wrap(new byte[4096]);
+//        buffer().getBytes(dataOffset(), bb, 0, dataLength());
+//        bb.limit(dataLength());
+//        decoder.setHeaderEmitter(new HpackDecoder.HeaderEmitter() {
+//
+//            @Override
+//            public void emitHeader(HttpString name, String value, boolean neverIndex) throws HpackException {
+//                headers.put(name.toString(), value);
+//                System.out.printf("Decoded Header = %s %s\n", name, value);
+//            }
+//        });
+//        try {
+//            decoder.decode(bb, false);
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//        }
 
         return headers;
     }
@@ -216,28 +216,28 @@ public class Http2HeadersFW extends Flyweight {
         }
 
         public Builder headers(Map<String, String> headers) {
-            HpackEncoder encoder = new HpackEncoder(4096);
-            HeaderMap map = new HeaderMap();
-            headers.forEach((k,v) -> {
-                k = k.substring(1);
-                HttpString hs = new HttpString(k);
-                map.add(hs, v);
-            });
-
-            ByteBuffer bb = ByteBuffer.wrap(new byte[4096]);
-            //bb.flip();
-            encoder.encode(map, bb);
-            bb.flip();
-
-            // TODO padded and priority flag
-            buffer().putBytes(offset() + LENGTH_OFFSET, bb, bb.position(), bb.limit());
-
-            limit(offset() + 9 + bb.limit());
-
-            int length = bb.limit()-bb.position();
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
+//            HpackEncoder encoder = new HpackEncoder(4096);
+//            HeaderMap map = new HeaderMap();
+//            headers.forEach((k,v) -> {
+//                k = k.substring(1);
+//                HttpString hs = new HttpString(k);
+//                map.add(hs, v);
+//            });
+//
+//            ByteBuffer bb = ByteBuffer.wrap(new byte[4096]);
+//            //bb.flip();
+//            encoder.encode(map, bb);
+//            bb.flip();
+//
+//            // TODO padded and priority flag
+//            buffer().putBytes(offset() + LENGTH_OFFSET, bb, bb.position(), bb.limit());
+//
+//            limit(offset() + 9 + bb.limit());
+//
+//            int length = bb.limit()-bb.position();
+//            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
+//            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
+//            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
             return this;
         }
 
