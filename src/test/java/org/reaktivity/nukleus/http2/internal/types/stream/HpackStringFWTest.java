@@ -20,8 +20,6 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
-import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 import java.util.stream.IntStream;
 
 import static java.nio.charset.StandardCharsets.US_ASCII;
@@ -33,6 +31,8 @@ public class HpackStringFWTest {
     @Test
     public void encode() {
         String value = "custom-key";
+        byte[] valueBytes = value.getBytes(US_ASCII);
+        DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
         byte[] bytes = new byte[100];
 
         MutableDirectBuffer buffer = new UnsafeBuffer(bytes);
@@ -44,7 +44,7 @@ public class HpackStringFWTest {
         assertEquals((byte) 0x0a, bytes[1]);
 
         assertFalse(fw.huffman());
-        assertEquals(value, fw.string());
+        assertEquals(valueBuf, fw.payload());
         assertEquals(value.length() + 2, fw.limit());
     }
 
@@ -52,17 +52,16 @@ public class HpackStringFWTest {
     public void decode() {
         String value = "custom-key";
         byte[] valueBytes = value.getBytes(US_ASCII);
+        DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
         byte[] bytes = new byte[100];
         bytes[1] = (byte) valueBytes.length;
         System.arraycopy(valueBytes, 0, bytes, 2, value.length());
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackStringFW fw = new HpackStringFW();
-        String got = fw
-                .wrap(buffer, 1, buffer.capacity())
-                .string();
+        HpackStringFW fw = new HpackStringFW()
+                .wrap(buffer, 1, buffer.capacity());
 
-        assertEquals(value, got);
+        assertEquals(valueBuf, fw.payload());
         assertEquals(value.length() + 2, fw.limit());
     }
 
@@ -71,6 +70,8 @@ public class HpackStringFWTest {
         StringBuilder sb = new StringBuilder();
         IntStream.range(0, 1337).forEach(x -> sb.append("a"));
         String value = sb.toString();
+        byte[] valueBytes = value.getBytes(US_ASCII);
+        DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
         byte[] bytes = new byte[2048];
 
         MutableDirectBuffer buffer = new UnsafeBuffer(bytes);
@@ -84,7 +85,7 @@ public class HpackStringFWTest {
         assertEquals((byte) 0x09, bytes[3]);
 
         assertFalse(fw.huffman());
-        assertEquals(value, fw.string());
+        assertEquals(valueBuf, fw.payload());
         assertEquals(value.length() + 4, fw.limit());
     }
 
@@ -94,6 +95,7 @@ public class HpackStringFWTest {
         IntStream.range(0, 1337).forEach(x -> sb.append("a"));
         String value = sb.toString();
         byte[] valueBytes = value.getBytes(US_ASCII);
+        DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
         byte[] bytes = new byte[2048];
         bytes[1] = (byte) 0x7f;
         bytes[2] = (byte) 0xba;
@@ -101,12 +103,10 @@ public class HpackStringFWTest {
         System.arraycopy(valueBytes, 0, bytes, 4, value.length());
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackStringFW fw = new HpackStringFW();
-        String got = fw
-                .wrap(buffer, 1, buffer.capacity())
-                .string();
+        HpackStringFW fw = new HpackStringFW()
+                .wrap(buffer, 1, buffer.capacity());
 
-        assertEquals(value, got);
+        assertEquals(valueBuf, fw.payload());
         assertEquals(value.length() + 4, fw.limit());
     }
 

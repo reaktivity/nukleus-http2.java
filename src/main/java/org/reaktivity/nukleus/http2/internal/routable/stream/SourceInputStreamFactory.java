@@ -29,6 +29,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
@@ -340,7 +341,8 @@ System.out.println(http2RO);
                     case HEADERS: {
                         Http2HeadersFW headersFW = new Http2HeadersFW();
                         headersFW.wrap(buffer, nextOffset, limit);
-                        /* Map<String, String> headers = */headersFW.headers();
+                        //Map<String, String> hdrs = headersFW.headers();
+//System.out.println("headers = " + hdrs);
 
                         Map<String, String> headers = new LinkedHashMap<>();
                         headers.put(":scheme", "http");

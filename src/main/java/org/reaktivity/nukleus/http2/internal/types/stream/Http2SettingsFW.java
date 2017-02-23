@@ -23,9 +23,30 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.nio.ByteOrder;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
+/*
+    Flyweight for HTTP2 SETTINGS frame
+
+    +-----------------------------------------------+
+    |                 Length (24)                   |
+    +---------------+---------------+---------------+
+    |   Type (8)    |   Flags (8)   |
+    +-+-------------+---------------+-------------------------------+
+    |R|                 Stream Identifier (31)                      |
+    +=+=============================+===============================+
+    |       Identifier (16)         |
+    +-------------------------------+-------------------------------+
+    |                        Value (32)                             |
+    +---------------------------------------------------------------+
+    |       ...                     |
+    +-------------------------------+-------------------------------+
+    |                        ...                                    |
+    +---------------------------------------------------------------+
+
+ */
 public class Http2SettingsFW extends Flyweight {
     private static final int HEADER_TABLE_SIZE = 1;
     public static final int ENABLE_PUSH = 2;
@@ -96,9 +117,9 @@ public class Http2SettingsFW extends Flyweight {
         int noSettings = payloadLength/6;
         if (noSettings > 0) {
             for (int i = 0; i < noSettings; i++) {
-                int got = buffer().getShort(offset() + PAYLOAD_OFFSET + 6 * i);
+                int got = buffer().getShort(offset() + PAYLOAD_OFFSET + 6 * i, BIG_ENDIAN);
                 if (key == got) {
-                    return buffer().getInt(offset() + PAYLOAD_OFFSET + 6 * i + 2);
+                    return buffer().getInt(offset() + PAYLOAD_OFFSET + 6 * i + 2, BIG_ENDIAN);
                 }
             }
         }
@@ -214,8 +235,8 @@ public class Http2SettingsFW extends Flyweight {
             buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
             buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
 
-            buffer().putShort(curLimit, (short) key, ByteOrder.BIG_ENDIAN);
-            buffer().putInt(curLimit + 2, (int) value, ByteOrder.BIG_ENDIAN);
+            buffer().putShort(curLimit, (short) key, BIG_ENDIAN);
+            buffer().putInt(curLimit + 2, (int) value, BIG_ENDIAN);
         }
 
     }

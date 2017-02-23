@@ -22,6 +22,19 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 
+/*
+    Flyweight for for all HTTP2 frames
+
+    +-----------------------------------------------+
+    |                 Length (24)                   |
+    +---------------+---------------+---------------+
+    |   Type (8)    |   Flags (8)   |
+    +-+-------------+---------------+-------------------------------+
+    |R|                 Stream Identifier (31)                      |
+    +=+=============================================================+
+    |                   Frame Payload (0...)                      ...
+    +---------------------------------------------------------------+
+ */
 public final class Http2FrameFW extends Flyweight
 {
 

@@ -17,77 +17,72 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
+
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /*
- * Flyweight for HPACK String Literal Representation
- *
- *   0   1   2   3   4   5   6   7
- * +---+---+---+---+---+---+---+---+
- * | H |    String Length (7+)     |
- * +---+---------------------------+
- * |  String Data (Length octets)  |
- * +-------------------------------+
- *
+    Flyweight for HPACK Header Block
+
+    +-------------------------------+-------------------------------+
+    |                        HeaderField 1                          |
+    +---------------------------------------------------------------+
+    |                        HeaderField 2                          |
+    +---------------------------------------------------------------+
+    |                            ...                                |
+    +---------------------------------------------------------------+
+
  */
-public class HpackStringFW extends Flyweight {
+public class HpackHeaderBlockFW extends Flyweight {
 
-    private final HpackIntegerFW integerRO = new HpackIntegerFW(7);
-    private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
-
-    public boolean huffman()
-    {
-        return (buffer().getByte(offset()) & 0x80) != 0;
-    }
-
-    public DirectBuffer payload()
-    {
-        return payloadRO;
-    }
+    private final ListFW<HpackHeaderFieldFW> listFW = new ListFW<>(new HpackHeaderFieldFW());
 
     @Override
-    public int limit()
-    {
-        return integerRO.limit() + integerRO.integer();
+    public int limit() {
+        return listFW.limit();
     }
 
-    @Override
-    public HpackStringFW wrap(DirectBuffer buffer, int offset, int maxLimit)
-    {
-        super.wrap(buffer, offset, maxLimit);
-
-        integerRO.wrap(buffer, offset, maxLimit);
-        payloadRO.wrap(buffer, integerRO.limit(), integerRO.integer());
-
-        checkLimit(limit(), maxLimit);
+    public HpackHeaderBlockFW forEach(Consumer<HpackHeaderFieldFW> headerField) {
+        listFW.forEach(x -> headerField.accept(x));
         return this;
     }
 
-    public static final class Builder extends Flyweight.Builder<HpackStringFW>
+    @Override
+    public HpackHeaderBlockFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    {
+        super.wrap(buffer, offset, maxLimit);
+        listFW.wrap(buffer, offset, maxLimit);
+        return this;
+    }
+
+    public static final class Builder extends Flyweight.Builder<HpackHeaderBlockFW>
     {
         private final HpackIntegerFW.Builder integerRW = new HpackIntegerFW.Builder(7);
 
         public Builder()
         {
-            super(new HpackStringFW());
+            super(new HpackHeaderBlockFW());
         }
 
         @Override
-        public HpackStringFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        public HpackHeaderBlockFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
             return this;
         }
 
-        public HpackStringFW.Builder string(String str, boolean huffman) {
-            if (huffman) {
-                throw new UnsupportedOperationException("TODO Not yet implemented");
-            }
+        public HpackHeaderBlockFW.Builder string(String str, boolean huffman) {
             if (huffman) {
                 buffer().putByte(offset(), (byte) 0x80);
             }
+
+            return string(str);
+        }
+
+        public HpackHeaderBlockFW.Builder string(String str) {
+
             integerRW.wrap(buffer(), offset(), maxLimit()).integer(str.length()).build();
             int offset = integerRW.limit();
             for(int i=0; i < str.length(); i++) {

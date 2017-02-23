@@ -17,21 +17,11 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
-import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.CharBuffer;
-import java.nio.DoubleBuffer;
-import java.nio.FloatBuffer;
-import java.nio.IntBuffer;
-import java.nio.LongBuffer;
-import java.nio.ShortBuffer;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
@@ -40,6 +30,29 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PRIO
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
 
+/*
+
+    Flyweight for HTTP2 HEADERS frame
+
+    +-----------------------------------------------+
+    |                 Length (24)                   |
+    +---------------+---------------+---------------+
+    |   Type (8)    |   Flags (8)   |
+    +-+-------------+---------------+-------------------------------+
+    |R|                 Stream Identifier (31)                      |
+    +=+=============+===============================================+
+    |Pad Length? (8)|
+    +-+-------------+-----------------------------------------------+
+    |E|                 Stream Dependency? (31)                     |
+    +-+-------------+-----------------------------------------------+
+    |  Weight? (8)  |
+    +-+-------------+-----------------------------------------------+
+    |                   Header Block Fragment (*)                 ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+ */
 public class Http2HeadersFW extends Flyweight {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -47,7 +60,7 @@ public class Http2HeadersFW extends Flyweight {
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
+    private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
 
     public int payloadLength() {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
@@ -72,19 +85,19 @@ public class Http2HeadersFW extends Flyweight {
         return streamId;
     }
 
-    private boolean padded() {
+    public boolean padded() {
         return Http2Flags.padded(flags());
     }
 
-    private boolean endStream() {
+    public boolean endStream() {
         return Http2Flags.endStream(flags());
     }
 
-    private boolean endHeaders() {
+    public boolean endHeaders() {
         return Http2Flags.endHeaders(flags());
     }
 
-    private boolean priority() {
+    public boolean priority() {
         return Http2Flags.priority(flags());
     }
 
@@ -113,32 +126,8 @@ public class Http2HeadersFW extends Flyweight {
         return dataLength;
     }
 
-    public DirectBuffer data()
-    {
-        return dataRO;
-    }
-
-    public Map<String, String> headers() {
-        Map<String, String> headers = new LinkedHashMap<>();
-//        HpackDecoder decoder = new HpackDecoder();
-//        ByteBuffer bb = ByteBuffer.wrap(new byte[4096]);
-//        buffer().getBytes(dataOffset(), bb, 0, dataLength());
-//        bb.limit(dataLength());
-//        decoder.setHeaderEmitter(new HpackDecoder.HeaderEmitter() {
-//
-//            @Override
-//            public void emitHeader(HttpString name, String value, boolean neverIndex) throws HpackException {
-//                headers.put(name.toString(), value);
-//                System.out.printf("Decoded Header = %s %s\n", name, value);
-//            }
-//        });
-//        try {
-//            decoder.decode(bb, false);
-//        } catch (Exception e) {
-//            e.printStackTrace();
-//        }
-
-        return headers;
+    public void headers(Consumer<HpackHeaderFieldFW> headerField) {
+        headerBlockRO.forEach(headerField);
     }
 
     @Override
@@ -151,11 +140,9 @@ public class Http2HeadersFW extends Flyweight {
     public Http2HeadersFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
-
-        dataRO.wrap(buffer, dataOffset(), dataLength());
+        headerBlockRO.wrap(buffer(), dataOffset(), dataOffset() + dataLength());
 
         checkLimit(limit(), maxLimit);
-
         return this;
     }
 

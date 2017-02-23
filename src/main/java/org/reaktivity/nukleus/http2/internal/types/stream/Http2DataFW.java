@@ -25,6 +25,24 @@ import java.nio.ByteOrder;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 
+/*
+    Flyweight for HTTP2 DATA frame
+
+    +-----------------------------------------------+
+    |                 Length (24)                   |
+    +---------------+---------------+---------------+
+    |   Type (8)    |   Flags (8)   |
+    +-+-------------+---------------+-------------------------------+
+    |R|                 Stream Identifier (31)                      |
+    +=+=============+===============================================+
+    |Pad Length? (8)|
+    +---------------+-----------------------------------------------+
+    |                            Data (*)                         ...
+    +---------------------------------------------------------------+
+    |                           Padding (*)                       ...
+    +---------------------------------------------------------------+
+
+ */
 public class Http2DataFW extends Flyweight {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
