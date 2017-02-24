@@ -24,12 +24,18 @@ import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Route;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
@@ -44,6 +50,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -68,6 +75,7 @@ public final class SourceInputStreamFactory
     private final Http2FrameFW http2RO = new Http2FrameFW();
     private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
+    private final Http2HeadersFW headersFW = new Http2HeadersFW();
 
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
 
@@ -339,10 +347,8 @@ System.out.println(http2RO);
                         //target.doData(targetId, payload, offset, limit - offset);
                         break;
                     case HEADERS: {
-                        Http2HeadersFW headersFW = new Http2HeadersFW();
+
                         headersFW.wrap(buffer, nextOffset, limit);
-                        //Map<String, String> hdrs = headersFW.headers();
-//System.out.println("headers = " + hdrs);
 
                         Map<String, String> headers = new LinkedHashMap<>();
                         headers.put(":scheme", "http");
@@ -362,7 +368,7 @@ System.out.println(http2RO);
                         final long targetRef = route.targetRef();
 
                         newTarget.doHttpBegin(newTargetId, targetRef, targetCorrelationId,
-                                hs -> headers.forEach((k, v) -> hs.item(i -> i.name(k).value(v))));
+                                hs -> headersFW.headers(new Foo(hs)));
                         newTarget.addThrottle(newTargetId, this::handleThrottle);
 
                         // no content
@@ -508,5 +514,52 @@ System.out.println(http2RO);
     private interface DecoderState
     {
         int decode(DirectBuffer buffer, int offset, int length);
+    }
+
+    private static class Foo implements Consumer<HpackHeaderFieldFW> {
+
+        private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder;
+
+        Foo(ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder) {
+            this.builder = builder;
+        }
+
+        // TODO instead of converting to String pass the payload() as it is
+        public void accept(HpackHeaderFieldFW x) {
+            HpackHeaderFieldFW.HeaderFieldType headerFieldType = x.type();
+            switch (headerFieldType) {
+                case INDEXED:
+                    int index = x.index();
+                    String name = HpackContext.STATIC_TABLE[index][0];
+                    String value = HpackContext.STATIC_TABLE[index][1];
+                    builder.item(i -> i.name(name).value(value));
+                    break;
+                case LITERAL:
+                    HpackLiteralHeaderFieldFW literalRO = x.literal();
+                    switch (literalRO.nameType()) {
+                        case INDEXED:
+                            index = literalRO.nameIndex();
+                            name = HpackContext.STATIC_TABLE[index][0];
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.length());
+                            System.out.println("Adding name=" + name +" value="+value);
+
+                            builder.item(i -> i.name(name).value(value));
+                            break;
+                        case NEW:
+                            HpackStringFW nameRO = literalRO.nameLiteral();
+                            name = nameRO.huffman() ? null : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.length());
+                            valueRO = literalRO.valueLiteral();
+                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.length());
+                            System.out.println("Adding name=" + name +" value="+value);
+
+                            builder.item(i -> i.name(name).value(value));
+                            break;
+                    }
+                case UPDATE:
+                    break;
+            }
+        }
+
     }
 }
