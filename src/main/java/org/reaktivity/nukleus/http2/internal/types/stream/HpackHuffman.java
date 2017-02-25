@@ -442,6 +442,7 @@ public class HpackHuffman {
      *
      * https://pdfs.semanticscholar.org/3697/8e4715a7bf21426877132f5b2e9c3d280287.pdf
      */
+    // TODO EOS handling
     public static String decode(DirectBuffer buf) {
         StringBuilder sb = new StringBuilder();
         int curState = 0;

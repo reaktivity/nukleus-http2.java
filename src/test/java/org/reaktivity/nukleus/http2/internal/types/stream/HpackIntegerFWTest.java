@@ -41,7 +41,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, fw.integer());
         assertEquals(2, fw.limit());
-        assertEquals(1, fw.length());
+        assertEquals(1, fw.sizeof());
     }
 
     @Test
@@ -59,7 +59,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, got);
         assertEquals(2, fw.limit());
-        assertEquals(1, fw.length());
+        assertEquals(1, fw.sizeof());
     }
 
     @Test
@@ -81,7 +81,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, fw.integer());
         assertEquals(4, fw.limit());
-        assertEquals(3, fw.length());
+        assertEquals(3, fw.sizeof());
     }
 
     @Test
@@ -101,7 +101,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, got);
         assertEquals(4, fw.limit());
-        assertEquals(3, fw.length());
+        assertEquals(3, fw.sizeof());
     }
 
     @Test
@@ -123,7 +123,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, fw.integer());
         assertEquals(4, fw.limit());
-        assertEquals(3, fw.length());
+        assertEquals(3, fw.sizeof());
     }
 
     @Test
@@ -143,7 +143,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, got);
         assertEquals(4, fw.limit());
-        assertEquals(3, fw.length());
+        assertEquals(3, fw.sizeof());
     }
 
     @Test
@@ -162,7 +162,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, fw.integer());
         assertEquals(3, fw.limit());
-        assertEquals(1, fw.length());
+        assertEquals(1, fw.sizeof());
     }
 
     @Test
@@ -180,7 +180,7 @@ public class HpackIntegerFWTest {
 
         assertEquals(value, got);
         assertEquals(3, fw.limit());
-        assertEquals(1, fw.length());
+        assertEquals(1, fw.sizeof());
     }
 
 }

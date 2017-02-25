@@ -126,7 +126,7 @@ public class Http2ServerBM
         final Http2Controller controller = reaktor.controller(Http2Controller.class);
 
         this.targetInputRef = random.nextLong();
-        this.sourceInputRef = controller.route(INPUT, NEW, "source", 0L, "target", targetInputRef, emptyMap()).get();
+        this.sourceInputRef = controller.routeInputNew("source", 0L, "target", targetInputRef, emptyMap()).get();
 
         this.sourceInputStreams = controller.streams("source");
         this.sourceOutputEstStreams = controller.streams("http", "target");
@@ -143,7 +143,7 @@ public class Http2ServerBM
                 .extension(e -> e.reset())
                 .build();
 
-        this.sourceInputStreams.writeStreams(begin.typeId(), begin.buffer(), begin.offset(), begin.length());
+        this.sourceInputStreams.writeStreams(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
 
         String payload =
                 "POST / HTTP/1.1\r\n" +
@@ -167,7 +167,7 @@ public class Http2ServerBM
     {
         Http2Controller controller = reaktor.controller(Http2Controller.class);
 
-        controller.unroute(INPUT, NEW, "source", sourceInputRef, "target", targetInputRef, null).get();
+        controller.unrouteInputNew("source", sourceInputRef, "target", targetInputRef, null).get();
 
         this.sourceInputStreams.close();
         this.sourceInputStreams = null;
@@ -238,7 +238,7 @@ public class Http2ServerBM
         final long streamId = dataRO.streamId();
         final OctetsFW payload = dataRO.payload();
 
-        final int update = payload.length();
+        final int update = payload.sizeof();
         doWindow(streamId, update);
     }
 
@@ -251,7 +251,7 @@ public class Http2ServerBM
                 .update(update)
                 .build();
 
-        sourceOutputEstStreams.writeThrottle(window.typeId(), window.buffer(), window.offset(), window.length());
+        sourceOutputEstStreams.writeThrottle(window.typeId(), window.buffer(), window.offset(), window.sizeof());
     }
 
     public static void main(String[] args) throws RunnerException

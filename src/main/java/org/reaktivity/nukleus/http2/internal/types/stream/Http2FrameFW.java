@@ -93,7 +93,7 @@ public final class Http2FrameFW extends Flyweight
     public String toString()
     {
         return String.format("%s frame <length=%s, flags=%s, id=%s>",
-                type(), length(), flags(), streamId());
+                type(), payloadLength(), flags(), streamId());
     }
 
 }

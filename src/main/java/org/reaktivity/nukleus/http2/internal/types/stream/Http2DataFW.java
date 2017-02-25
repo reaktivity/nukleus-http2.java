@@ -122,7 +122,7 @@ public class Http2DataFW extends Flyweight {
     public String toString()
     {
         return String.format("%s frame <length=%s, type=%s, flags=%s, id=%s>",
-                type(), length(), type(), flags(), streamId());
+                type(), payloadLength(), type(), flags(), streamId());
     }
 
     public static final class Builder extends Flyweight.Builder<Http2DataFW>

@@ -280,9 +280,7 @@ public final class SourceInputStreamFactory
         {
             dataRO.wrap(buffer, index, index + length);
 
-            final OctetsFW payload = dataRO.payload();
-            int offset = payload.offset() + 1;
-            window -= payload.length() - 1;
+            window -= dataRO.length();
 
             if (window < 0)
             {
@@ -290,8 +288,10 @@ public final class SourceInputStreamFactory
             }
             else
             {
+                final OctetsFW payload = dataRO.payload();
                 final int limit = payload.limit();
 
+                int offset = payload.offset();
                 while (offset < limit)
                 {
                     offset = decoderState.decode(buffer, offset, limit);
@@ -354,7 +354,7 @@ System.out.println(http2RO);
                         headers.put(":scheme", "http");
                         headers.put(":method", "GET");
                         headers.put(":path", "/");
-                        headers.put("host", "localhost:8080");
+                        headers.put(":authority", "localhost:8080");
 
                         final long newTargetId = supplyStreamId.getAsLong();
                         final long targetCorrelationId = newTargetId;
@@ -368,7 +368,8 @@ System.out.println(http2RO);
                         final long targetRef = route.targetRef();
 
                         newTarget.doHttpBegin(newTargetId, targetRef, targetCorrelationId,
-                                hs -> headersFW.headers(new Foo(hs)));
+                                //hs -> headersFW.headers(new Foo(hs)));
+                                hs -> headers.forEach((k, v) -> hs.item(i -> i.representation((byte)0).name(k).value(v))));
                         newTarget.addThrottle(newTargetId, this::handleThrottle);
 
                         // no content
@@ -541,16 +542,16 @@ System.out.println(http2RO);
                             index = literalRO.nameIndex();
                             name = HpackContext.STATIC_TABLE[index][0];
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.length());
+                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
                             System.out.println("Adding name=" + name +" value="+value);
 
                             builder.item(i -> i.name(name).value(value));
                             break;
                         case NEW:
                             HpackStringFW nameRO = literalRO.nameLiteral();
-                            name = nameRO.huffman() ? null : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.length());
+                            name = nameRO.huffman() ? null : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.sizeof());
                             valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.length());
+                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
                             System.out.println("Adding name=" + name +" value="+value);
 
                             builder.item(i -> i.name(name).value(value));

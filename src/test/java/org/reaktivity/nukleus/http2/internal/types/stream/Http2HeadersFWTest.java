@@ -66,14 +66,14 @@ public class Http2HeadersFWTest {
                             index = literalRO.nameIndex();
                             name = HpackContext.STATIC_TABLE[index][0];
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? HpackHuffman.decode(valueRO.payload()) : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.length());
+                            value = valueRO.huffman() ? HpackHuffman.decode(valueRO.payload()) : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
                             headers.put(name, value);
                             break;
                         case NEW:
                             HpackStringFW nameRO = literalRO.nameLiteral();
-                            name = nameRO.huffman() ? HpackHuffman.decode(nameRO.payload()) : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.length());
+                            name = nameRO.huffman() ? HpackHuffman.decode(nameRO.payload()) : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.sizeof());
                             valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? HpackHuffman.decode(valueRO.payload()) : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.length());
+                            value = valueRO.huffman() ? HpackHuffman.decode(valueRO.payload()) : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
                             headers.put(name, value);
                             break;
                     }

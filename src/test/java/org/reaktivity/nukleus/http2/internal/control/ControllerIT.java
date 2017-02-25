@@ -61,12 +61,12 @@ public class ControllerIT
     {
         long targetRef = new Random().nextLong();
         Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("host", "localhost:8080");
+        headers.put(":authority", "localhost:8080");
 
         k3po.start();
 
         controller.controller(Http2Controller.class)
-                  .route(INPUT, NEW, "source", 0L, "target", targetRef, headers)
+                  .routeInputNew("source", 0L, "target", targetRef, headers)
                   .get();
 
         k3po.finish();
@@ -80,12 +80,12 @@ public class ControllerIT
     {
         long targetRef = new Random().nextLong();
         Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("host", "localhost:8080");
+        headers.put(":authority", "localhost:8080");
 
         k3po.start();
 
         controller.controller(Http2Controller.class)
-                  .route(OUTPUT, NEW, "source", 0L, "target", targetRef, headers)
+                  .routeOutputNew("source", 0L, "target", targetRef, headers)
                   .get();
 
         k3po.finish();
@@ -100,7 +100,7 @@ public class ControllerIT
         k3po.start();
 
         controller.controller(Http2Controller.class)
-                  .route(OUTPUT, ESTABLISHED, "target", 0L, "source", 0L, null)
+                  .routeOutputEstablished("target", 0L, "source", 0L, null)
                   .get();
 
         k3po.finish();
@@ -115,7 +115,7 @@ public class ControllerIT
         k3po.start();
 
         controller.controller(Http2Controller.class)
-                  .route(INPUT, ESTABLISHED, "target", 0L, "source", 0L, null)
+                  .routeInputEstablished("target", 0L, "source", 0L, null)
                   .get();
 
         k3po.finish();
@@ -130,18 +130,18 @@ public class ControllerIT
     {
         long targetRef = new Random().nextLong();
         Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("host", "localhost:8080");
+        headers.put(":authority", "localhost:8080");
 
         k3po.start();
 
         long sourceRef = controller.controller(Http2Controller.class)
-                  .route(INPUT, NEW, "source", 0L, "target", targetRef, headers)
+                  .routeInputNew("source", 0L, "target", targetRef, headers)
                   .get();
 
         k3po.notifyBarrier("ROUTED_INPUT");
 
         controller.controller(Http2Controller.class)
-                  .unroute(INPUT, NEW, "source", sourceRef, "target", targetRef, headers)
+                  .unrouteInputNew("source", sourceRef, "target", targetRef, headers)
                   .get();
 
         k3po.finish();
@@ -156,18 +156,18 @@ public class ControllerIT
     {
         long targetRef = new Random().nextLong();
         Map<String, String> headers = new LinkedHashMap<>();
-        headers.put("host", "localhost:8080");
+        headers.put(":authority", "localhost:8080");
 
         k3po.start();
 
         long sourceRef = controller.controller(Http2Controller.class)
-                  .route(OUTPUT, NEW, "source", 0L, "target", targetRef, headers)
+                  .routeOutputNew("source", 0L, "target", targetRef, headers)
                   .get();
 
         k3po.notifyBarrier("ROUTED_OUTPUT");
 
         controller.controller(Http2Controller.class)
-                  .unroute(OUTPUT, NEW, "source", sourceRef, "target", targetRef, null)
+                  .unrouteOutputNew("source", sourceRef, "target", targetRef, headers)
                   .get();
 
         k3po.finish();
@@ -183,13 +183,13 @@ public class ControllerIT
         k3po.start();
 
         long targetRef = controller.controller(Http2Controller.class)
-                  .route(OUTPUT, ESTABLISHED, "target", 0L, "source", 0L, null)
+                  .routeOutputEstablished("target", 0L, "source", 0L, null)
                   .get();
 
         k3po.notifyBarrier("ROUTED_OUTPUT");
 
         controller.controller(Http2Controller.class)
-                  .unroute(OUTPUT, ESTABLISHED, "target", targetRef, "source", 0L, null)
+                  .unrouteOutputEstablished("target", targetRef, "source", 0L, null)
                   .get();
 
         k3po.finish();
@@ -205,13 +205,13 @@ public class ControllerIT
         k3po.start();
 
         long targetRef  = controller.controller(Http2Controller.class)
-                  .route(INPUT, ESTABLISHED, "target", 0L, "source", 0L, null)
+                  .routeInputEstablished("target", 0L, "source", 0L, null)
                   .get();
 
         k3po.notifyBarrier("ROUTED_INPUT");
 
         controller.controller(Http2Controller.class)
-                  .unroute(INPUT, ESTABLISHED, "target", targetRef, "source", 0L, null)
+                  .unrouteInputEstablished("target", targetRef, "source", 0L, null)
                   .get();
 
         k3po.finish();
