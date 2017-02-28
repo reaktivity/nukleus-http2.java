@@ -1,6 +1,12 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class HpackContext {
+
+    // TODO use a ring buffer to avoid moving entries
+    final List<HeaderField> table = new ArrayList<>();
 
     public static final String[][] STATIC_TABLE =
     {
@@ -67,5 +73,33 @@ public class HpackContext {
         /* 60 */ { "via", null },
         /* 61 */ { "www-authenticate", null },
     };
+
+    private static final class HeaderField {
+        final String name;
+        final String value;
+
+        HeaderField(String name, String value) {
+            this.name = name;
+            this.value = value;
+        }
+    }
+
+    HpackContext() {
+        for(String[] field : STATIC_TABLE) {
+            table.add(new HeaderField(field[0], field[1]));
+        }
+    }
+
+    void add(String name, String value) {
+        table.add(STATIC_TABLE.length, new HeaderField(name, value));
+    }
+
+    String name(int index) {
+        return table.get(index).name;
+    }
+
+    String value(int index) {
+        return table.get(index).value;
+    }
 
 }

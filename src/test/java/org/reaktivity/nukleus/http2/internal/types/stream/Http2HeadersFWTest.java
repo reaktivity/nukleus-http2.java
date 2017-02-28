@@ -20,12 +20,19 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
 
+import javax.xml.bind.DatatypeConverter;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.INDEXED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.NEW;
 
 public class Http2HeadersFWTest {
 
@@ -50,7 +57,17 @@ public class Http2HeadersFWTest {
         assertFalse(fw.padded());
 
         Map<String, String> headers = new LinkedHashMap<>();
-        fw.headers(x -> {
+        fw.headers(getHeaders(headers));
+
+        assertEquals(4, headers.size());
+        assertEquals("GET", headers.get(":method"));
+        assertEquals("http", headers.get(":scheme"));
+        assertEquals("/", headers.get(":path"));
+        assertEquals("127.0.0.1:8080", headers.get(":authority"));
+    }
+
+    private Consumer<HpackHeaderFieldFW> getHeaders(Map<String, String> headers) {
+        return x -> {
             HeaderFieldType headerFieldType = x.type();
             switch (headerFieldType) {
                 case INDEXED :
@@ -80,13 +97,7 @@ public class Http2HeadersFWTest {
                 case UPDATE:
                     break;
             }
-        });
-
-        assertEquals(4, headers.size());
-        assertEquals("GET", headers.get(":method"));
-        assertEquals("http", headers.get(":scheme"));
-        assertEquals("/", headers.get(":path"));
-        assertEquals("127.0.0.1:8080", headers.get(":authority"));
+        };
     }
 
 }

@@ -91,7 +91,7 @@ public class HpackLiteralHeaderFieldFW extends Flyweight {
     public HpackStringFW nameLiteral() {
         assert nameType() == NameType.NEW;
 
-        return valueRO;
+        return nameRO;
     }
 
     public HpackStringFW valueLiteral() {
