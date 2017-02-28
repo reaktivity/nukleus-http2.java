@@ -126,7 +126,7 @@ public class Http2HeadersFW extends Flyweight {
         return dataLength;
     }
 
-    public void headers(Consumer<HpackHeaderFieldFW> headerField) {
+    public void forEach(Consumer<HpackHeaderFieldFW> headerField) {
         headerBlockRO.forEach(headerField);
     }
 

@@ -27,13 +27,14 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
@@ -46,7 +47,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,12 +56,13 @@ import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
 public final class SourceInputStreamFactory
 {
-    private static final byte[] CRLFCRLF_BYTES = "\r\n\r\n".getBytes(StandardCharsets.US_ASCII);
 
     private final FrameFW frameRO = new FrameFW();
 
@@ -75,9 +77,12 @@ public final class SourceInputStreamFactory
     private final Http2FrameFW http2RO = new Http2FrameFW();
     private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
-    private final Http2HeadersFW headersFW = new Http2HeadersFW();
+    private final Http2HeadersFW headersRO = new Http2HeadersFW();
 
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
+
+    private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> headersRW =
+            new ListFW.Builder<>(new HttpHeaderFW.Builder(), new HttpHeaderFW());
 
     private final Source source;
     private final LongFunction<List<Route>> supplyRoutes;
@@ -120,6 +125,7 @@ public final class SourceInputStreamFactory
         private int contentRemaining;
         private int sourceUpdateDeferred;
         private final long newReplyId;
+        private final HpackContext hpackContext;
 
         @Override
         public String toString()
@@ -133,6 +139,7 @@ public final class SourceInputStreamFactory
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
             newReplyId = supplyStreamId.getAsLong();
+            hpackContext = new HpackContext();
         }
 
         private void handleStream(
@@ -244,7 +251,7 @@ public final class SourceInputStreamFactory
             // TODO: replace with connection pool (end)
 
             // TODO: acquire slab for response if targetWindow requires partial write
-            DirectBuffer payload = new UnsafeBuffer(payloadChars.getBytes(StandardCharsets.UTF_8));
+            DirectBuffer payload = new UnsafeBuffer(payloadChars.getBytes(UTF_8));
             target.doData(newReplyId, payload, 0, payload.capacity());
 
             this.decoderState = this::decodePreface;
@@ -348,28 +355,23 @@ System.out.println(http2RO);
                         break;
                     case HEADERS: {
 
-                        headersFW.wrap(buffer, nextOffset, limit);
-
-                        Map<String, String> headers = new LinkedHashMap<>();
-                        headers.put(":scheme", "http");
-                        headers.put(":method", "GET");
-                        headers.put(":path", "/");
-                        headers.put(":authority", "localhost:8080");
+                        headersRO.wrap(buffer, nextOffset, limit);
 
                         final long newTargetId = supplyStreamId.getAsLong();
                         final long targetCorrelationId = newTargetId;
                         final Correlation correlation = new Correlation(correlationId, http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
 
                         correlateNew.accept(targetCorrelationId, correlation);
-
-                        final Optional<Route> optional = resolveTarget(sourceRef, headers);
+// TODO
+Map<String, String> hos = new HashMap<>();
+hos.put(":authority", "localhost:8080");
+final Optional<Route> optional = resolveTarget(sourceRef, hos);
                         final Route route = optional.get();
                         final Target newTarget = route.target();
                         final long targetRef = route.targetRef();
 
                         newTarget.doHttpBegin(newTargetId, targetRef, targetCorrelationId,
-                                //hs -> headersFW.headers(new Foo(hs)));
-                                hs -> headers.forEach((k, v) -> hs.item(i -> i.representation((byte)0).name(k).value(v))));
+                                hs -> headersRO.forEach(handleHeaderField(hpackContext, hs)));
                         newTarget.addThrottle(newTargetId, this::handleThrottle);
 
                         // no content
@@ -517,50 +519,76 @@ System.out.println(http2RO);
         int decode(DirectBuffer buffer, int offset, int length);
     }
 
-    private static class Foo implements Consumer<HpackHeaderFieldFW> {
-
-        private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder;
-
-        Foo(ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder) {
-            this.builder = builder;
-        }
-
-        // TODO instead of converting to String pass the payload() as it is
-        public void accept(HpackHeaderFieldFW x) {
+    private Consumer<HpackHeaderFieldFW> handleHeaderField(
+            HpackContext context,
+            ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder)
+    {
+        return x -> {
             HpackHeaderFieldFW.HeaderFieldType headerFieldType = x.type();
             switch (headerFieldType) {
-                case INDEXED:
+                case INDEXED : {
                     int index = x.index();
-                    String name = HpackContext.STATIC_TABLE[index][0];
-                    String value = HpackContext.STATIC_TABLE[index][1];
-                    builder.item(i -> i.name(name).value(value));
-                    break;
-                case LITERAL:
+                    DirectBuffer nameBuffer = context.nameBuffer(index);
+                    DirectBuffer valueBuffer = context.valueBuffer(index);
+                    builder.item(i -> i.representation((byte) 0).name(nameBuffer).value(valueBuffer));
+                }
+                break;
+
+                case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = x.literal();
                     switch (literalRO.nameType()) {
-                        case INDEXED:
-                            index = literalRO.nameIndex();
-                            name = HpackContext.STATIC_TABLE[index][0];
+                        case INDEXED: {
+                            int index = literalRO.nameIndex();
+                            DirectBuffer nameBuffer = context.nameBuffer(index);
+
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
-                            System.out.println("Adding name=" + name +" value="+value);
-
-                            builder.item(i -> i.name(name).value(value));
-                            break;
-                        case NEW:
+                            DirectBuffer valuePayload = valueRO.payload();
+                            if (valueRO.huffman()) {
+                                String value = HpackHuffman.decode(valuePayload);
+                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                            }
+                            DirectBuffer valueBuffer = valuePayload;
+                            builder.item(i -> i.representation((byte) 0).name(nameBuffer).value(valueBuffer));
+                        }
+                        break;
+                        case NEW: {
                             HpackStringFW nameRO = literalRO.nameLiteral();
-                            name = nameRO.huffman() ? null : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.sizeof());
-                            valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? null : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
-                            System.out.println("Adding name=" + name +" value="+value);
+                            DirectBuffer namePayload = nameRO.payload();
+                            if (nameRO.huffman()) {
+                                String name = HpackHuffman.decode(namePayload);
+                                namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
+                            }
+                            DirectBuffer nameBuffer = namePayload;
 
-                            builder.item(i -> i.name(name).value(value));
-                            break;
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            if (valueRO.huffman()) {
+                                String value = HpackHuffman.decode(valuePayload);
+                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                            }
+                            DirectBuffer valueBuffer = valuePayload;
+                            builder.item(i -> i.representation((byte) 0).name(nameBuffer).value(valueBuffer));
+
+                            if (literalRO.literalType() == INCREMENTAL_INDEXING) {
+                                context.add(nameBuffer, valueBuffer);
+                            }
+                        }
+                        break;
                     }
+                    break;
+
                 case UPDATE:
                     break;
             }
+        };
+    }
+
+    void printBuf(DirectBuffer buf) {
+        for(int i=0; i < buf.capacity(); i++) {
+            System.out.printf("%02x ", buf.getByte(i));
         }
+        System.out.println();
 
     }
+
 }

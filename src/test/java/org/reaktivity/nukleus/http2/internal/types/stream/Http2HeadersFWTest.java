@@ -57,47 +57,14 @@ public class Http2HeadersFWTest {
         assertFalse(fw.padded());
 
         Map<String, String> headers = new LinkedHashMap<>();
-        fw.headers(getHeaders(headers));
+        HpackContext hpackContext = new HpackContext();
+        fw.forEach(HpackHeaderBlockFWTest.getHeaders(hpackContext, headers));
 
         assertEquals(4, headers.size());
         assertEquals("GET", headers.get(":method"));
         assertEquals("http", headers.get(":scheme"));
         assertEquals("/", headers.get(":path"));
         assertEquals("127.0.0.1:8080", headers.get(":authority"));
-    }
-
-    private Consumer<HpackHeaderFieldFW> getHeaders(Map<String, String> headers) {
-        return x -> {
-            HeaderFieldType headerFieldType = x.type();
-            switch (headerFieldType) {
-                case INDEXED :
-                    int index = x.index();
-                    String name = HpackContext.STATIC_TABLE[index][0];
-                    String value = HpackContext.STATIC_TABLE[index][1];
-                    headers.put(name, value);
-                    break;
-                case LITERAL :
-                    HpackLiteralHeaderFieldFW literalRO = x.literal();
-                    switch (literalRO.nameType()) {
-                        case INDEXED:
-                            index = literalRO.nameIndex();
-                            name = HpackContext.STATIC_TABLE[index][0];
-                            HpackStringFW valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? HpackHuffman.decode(valueRO.payload()) : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
-                            headers.put(name, value);
-                            break;
-                        case NEW:
-                            HpackStringFW nameRO = literalRO.nameLiteral();
-                            name = nameRO.huffman() ? HpackHuffman.decode(nameRO.payload()) : nameRO.payload().getStringWithoutLengthUtf8(nameRO.offset(), nameRO.sizeof());
-                            valueRO = literalRO.valueLiteral();
-                            value = valueRO.huffman() ? HpackHuffman.decode(valueRO.payload()) : valueRO.payload().getStringWithoutLengthUtf8(valueRO.offset(), valueRO.sizeof());
-                            headers.put(name, value);
-                            break;
-                    }
-                case UPDATE:
-                    break;
-            }
-        };
     }
 
 }

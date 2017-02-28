@@ -1,14 +1,16 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+
 import java.util.ArrayList;
 import java.util.List;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 public class HpackContext {
 
-    // TODO use a ring buffer to avoid moving entries
-    final List<HeaderField> table = new ArrayList<>();
-
-    public static final String[][] STATIC_TABLE =
+    private static final String[][] STATIC_TABLE =
     {
         /* 0  */ { null, null },
         /* 1  */ { ":authority", null },
@@ -74,32 +76,82 @@ public class HpackContext {
         /* 61 */ { "www-authenticate", null },
     };
 
+    // TODO use a ring buffer to avoid moving entries
+    // TODO eviction of entries
+    private final List<HeaderField> table = new ArrayList<>();
+
     private static final class HeaderField {
-        final String name;
-        final String value;
+        private String name;
+        private DirectBuffer nameBuffer;
+        private String value;
+        private DirectBuffer valueBuffer;
 
         HeaderField(String name, String value) {
             this.name = name;
             this.value = value;
         }
+
+        HeaderField(DirectBuffer nameBuffer, DirectBuffer valueBuffer) {
+            this.nameBuffer = nameBuffer;
+            this.valueBuffer = valueBuffer;
+        }
+
+        private String name() {
+            if (name == null && nameBuffer != null) {
+                name = nameBuffer.getStringWithoutLengthUtf8(0, nameBuffer.capacity());
+            }
+            return name;
+        }
+
+        private DirectBuffer nameBuffer() {
+            if (nameBuffer == null && name != null) {
+                nameBuffer = new UnsafeBuffer(name.getBytes(UTF_8));
+            }
+            return nameBuffer;
+        }
+
+
+        private String value() {
+            if (value == null && valueBuffer != null) {
+                value = valueBuffer.getStringWithoutLengthUtf8(0, valueBuffer.capacity());
+            }
+            return value;        }
+
+        private DirectBuffer valueBuffer() {
+            if (valueBuffer == null && value != null) {
+                valueBuffer = new UnsafeBuffer(value.getBytes(UTF_8));
+            }
+            return valueBuffer;        }
     }
 
-    HpackContext() {
+    public HpackContext() {
         for(String[] field : STATIC_TABLE) {
             table.add(new HeaderField(field[0], field[1]));
         }
     }
 
-    void add(String name, String value) {
+    public void add(String name, String value) {
         table.add(STATIC_TABLE.length, new HeaderField(name, value));
     }
 
-    String name(int index) {
-        return table.get(index).name;
+    public void add(DirectBuffer nameBuffer, DirectBuffer valueBuffer) {
+        table.add(STATIC_TABLE.length, new HeaderField(nameBuffer, valueBuffer));
     }
 
-    String value(int index) {
-        return table.get(index).value;
+    public String name(int index) {
+        return table.get(index).name();
+    }
+
+    public DirectBuffer nameBuffer(int index) {
+        return table.get(index).nameBuffer();
+    }
+
+    public String value(int index) {
+        return table.get(index).value();
+    }
+
+    public DirectBuffer valueBuffer(int index) {
+        return table.get(index).valueBuffer();
     }
 
 }

@@ -80,7 +80,7 @@ public class HpackHeaderFieldFWTest {
         assertEquals(INDEXED, literalRO.nameType());
 
         int index = literalRO.nameIndex();
-        assertEquals(":path", HpackContext.STATIC_TABLE[index][0]);
+        assertEquals(":path", new HpackContext().name(index));
 
         HpackStringFW valueRO = literalRO.valueLiteral();
         DirectBuffer value = valueRO.payload();
@@ -130,8 +130,9 @@ public class HpackHeaderFieldFWTest {
 
         assertEquals(HeaderFieldType.INDEXED, fw.type());
         int index = fw.index();
-        assertEquals(":method", HpackContext.STATIC_TABLE[index][0]);
-        assertEquals("GET", HpackContext.STATIC_TABLE[index][1]);
+        HpackContext context = new HpackContext();
+        assertEquals(":method", context.name(index));
+        assertEquals("GET", context.value(index));
     }
 
 }
