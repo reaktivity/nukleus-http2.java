@@ -16,7 +16,12 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+
+import java.util.function.Consumer;
+
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 /*
  * Flyweight for HPACK Header Field
@@ -95,10 +100,10 @@ public class HpackHeaderFieldFW extends Flyweight {
         return this;
     }
 
-/*
     public static final class Builder extends Flyweight.Builder<HpackHeaderFieldFW>
     {
-        private final HpackIntegerFW.Builder integerRW = new HpackIntegerFW.Builder(7);
+        private final HpackIntegerFW.Builder indexedRW = new HpackIntegerFW.Builder(7);
+        private final HpackLiteralHeaderFieldFW.Builder literalRW = new HpackLiteralHeaderFieldFW.Builder();
 
         public Builder()
         {
@@ -112,23 +117,25 @@ public class HpackHeaderFieldFW extends Flyweight {
             return this;
         }
 
-        public HpackHeaderFieldFW.Builder string(String str, boolean huffman) {
-            if (huffman) {
-                throw new UnsupportedOperationException("TODO Not yet implemented");
-            }
-            if (huffman) {
-                buffer().putByte(offset(), (byte) 0x80);
-            }
-            integerRW.wrap(buffer(), offset(), maxLimit()).integer(str.length(), 7).build();
-            int offset = integerRW.limit();
-            for(int i=0; i < str.length(); i++) {
-                buffer().putByte(offset + i, (byte) str.charAt(i));
-            }
-            limit(offset + str.length());
-
+        public HpackHeaderFieldFW.Builder indexed(int index) {
+            buffer().putByte(offset(), (byte) 0x80);
+            indexedRW.wrap(buffer(), offset(), maxLimit());
+            indexedRW.integer(index).build();
+            limit(indexedRW.limit());
             return this;
         }
 
-    } */
+        public HpackHeaderFieldFW.Builder literal(Consumer<HpackLiteralHeaderFieldFW.Builder> mutator) {
+            literalRW.wrap(buffer(), offset(), maxLimit());
+            mutator.accept(literalRW);
+            limit(literalRW.build().limit());
+            return this;
+        }
+
+        public HpackHeaderFieldFW.Builder literal(String name, String value) {
+            return literal(x -> x.type(WITHOUT_INDEXING).name(name).value(value));
+        }
+
+    }
 
 }

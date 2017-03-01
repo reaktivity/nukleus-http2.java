@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
@@ -32,6 +33,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 public class HpackHeaderFieldFWTest {
 
+    // Decoding "C.2.1.  Literal Header Field with Indexing"
     @Test
     public void decodeC_2_1() {
         byte[] bytes = DatatypeConverter.parseHexBinary(
@@ -60,6 +62,36 @@ public class HpackHeaderFieldFWTest {
         assertEquals("custom-header", value.getStringWithoutLengthUtf8(0, value.capacity()));
     }
 
+    // Encoding "C.2.1.  Literal Header Field with Indexing"
+    @Test
+    public void encodeC_2_1() {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderFieldFW fw = new HpackHeaderFieldFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .literal(x -> x.type(INCREMENTAL_INDEXING).name("custom-key").value("custom-header"))
+                .build();
+
+        assertEquals(27, fw.limit());
+
+        assertEquals(LITERAL, fw.type());
+        HpackLiteralHeaderFieldFW literalRO = fw.literal();
+
+        assertEquals(INCREMENTAL_INDEXING, literalRO.literalType());
+        assertEquals(NEW, literalRO.nameType());
+
+        HpackStringFW nameRO = literalRO.nameLiteral();
+        DirectBuffer name = nameRO.payload();
+        assertEquals("custom-key", name.getStringWithoutLengthUtf8(0, name.capacity()));
+
+        HpackStringFW valueRO = literalRO.valueLiteral();
+        DirectBuffer value = valueRO.payload();
+        assertEquals("custom-header", value.getStringWithoutLengthUtf8(0, value.capacity()));
+    }
+
+
+    // Decoding "C.2.2.  Literal Header Field without Indexing"
     @Test
     public void decodeC_2_2() {
         byte[] bytes = DatatypeConverter.parseHexBinary(
@@ -87,6 +119,34 @@ public class HpackHeaderFieldFWTest {
         assertEquals("/sample/path", value.getStringWithoutLengthUtf8(0, value.capacity()));
     }
 
+    // Encoding "C.2.2.  Literal Header Field without Indexing"
+    @Test
+    public void encodeC_2_2() {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderFieldFW fw = new HpackHeaderFieldFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .literal(x -> x.type(WITHOUT_INDEXING).name(4).value("/sample/path"))
+                .build();
+
+        assertEquals(15, fw.limit());
+
+        assertEquals(LITERAL, fw.type());
+        HpackLiteralHeaderFieldFW literalRO = fw.literal();
+
+        assertEquals(WITHOUT_INDEXING, literalRO.literalType());
+        assertEquals(INDEXED, literalRO.nameType());
+
+        int index = literalRO.nameIndex();
+        assertEquals(":path", new HpackContext().name(index));
+
+        HpackStringFW valueRO = literalRO.valueLiteral();
+        DirectBuffer value = valueRO.payload();
+        assertEquals("/sample/path", value.getStringWithoutLengthUtf8(0, value.capacity()));
+    }
+
+    // Decoding "C.2.3.  Literal Header Field Never Indexed"
     @Test
     public void decodeC_2_3() {
         byte[] bytes = DatatypeConverter.parseHexBinary(
@@ -115,6 +175,35 @@ public class HpackHeaderFieldFWTest {
         assertEquals("secret", value.getStringWithoutLengthUtf8(0, value.capacity()));
     }
 
+    // Decoding "C.2.3.  Literal Header Field Never Indexed"
+    @Test
+    public void encodeC_2_3() {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderFieldFW fw = new HpackHeaderFieldFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .literal(x -> x.type(NEVER_INDEXED).name("password").value("secret"))
+                .build();
+
+        assertEquals(18, fw.limit());
+
+        assertEquals(LITERAL, fw.type());
+        HpackLiteralHeaderFieldFW literalRO = fw.literal();
+
+        assertEquals(NEVER_INDEXED, literalRO.literalType());
+        assertEquals(NEW, literalRO.nameType());
+
+        HpackStringFW nameRO = literalRO.nameLiteral();
+        DirectBuffer name = nameRO.payload();
+        assertEquals("password", name.getStringWithoutLengthUtf8(0, name.capacity()));
+
+        HpackStringFW valueRO = literalRO.valueLiteral();
+        DirectBuffer value = valueRO.payload();
+        assertEquals("secret", value.getStringWithoutLengthUtf8(0, value.capacity()));
+    }
+
+    // Decoding "C.2.4.  Indexed Header Field"
     @Test
     public void decodeC_2_4() {
         byte[] bytes = DatatypeConverter.parseHexBinary(
@@ -130,6 +219,26 @@ public class HpackHeaderFieldFWTest {
 
         assertEquals(HeaderFieldType.INDEXED, fw.type());
         int index = fw.index();
+        HpackContext context = new HpackContext();
+        assertEquals(":method", context.name(index));
+        assertEquals("GET", context.value(index));
+    }
+
+    // Encoding "C.2.4.  Indexed Header Field"
+    @Test
+    public void encodeC_2_4() {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderFieldFW fw = new HpackHeaderFieldFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .indexed(2)
+                .build();
+
+        assertEquals(2, fw.limit());
+        assertEquals(HeaderFieldType.INDEXED, fw.type());
+        int index = fw.index();
+        assertEquals(2, index);
         HpackContext context = new HpackContext();
         assertEquals(":method", context.name(index));
         assertEquals("GET", context.value(index));

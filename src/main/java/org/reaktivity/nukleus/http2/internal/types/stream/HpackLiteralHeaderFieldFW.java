@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 /*
@@ -128,40 +129,105 @@ public class HpackLiteralHeaderFieldFW extends Flyweight {
         }
         valueRO.wrap(buffer(), offset, maxLimit());
     }
-/*
-    public static final class Builder extends Flyweight.Builder<HpackHeaderFieldFW>
+
+    public static final class Builder extends Flyweight.Builder<HpackLiteralHeaderFieldFW>
     {
-        private final HpackIntegerFW.Builder integerRW = new HpackIntegerFW.Builder(7);
+        private final HpackIntegerFW.Builder integer6RW = new HpackIntegerFW.Builder(6);
+        private final HpackIntegerFW.Builder integer4RW = new HpackIntegerFW.Builder(4);
+
+        private final HpackStringFW.Builder nameRW = new HpackStringFW.Builder();
+        private final HpackStringFW.Builder valueRW = new HpackStringFW.Builder();
 
         public Builder()
         {
-            super(new HpackHeaderFieldFW());
+            super(new HpackLiteralHeaderFieldFW());
         }
 
         @Override
-        public HpackHeaderFieldFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        public HpackLiteralHeaderFieldFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
             return this;
         }
 
-        public HpackHeaderFieldFW.Builder string(String str, boolean huffman) {
-            if (huffman) {
-                throw new UnsupportedOperationException("TODO Not yet implemented");
+        public HpackLiteralHeaderFieldFW.Builder type(LiteralType type) {
+            switch (type) {
+                case INCREMENTAL_INDEXING:
+                    buffer().putByte(offset(), (byte) 0b0100_0000);
+                    break;
+                case WITHOUT_INDEXING:
+                    buffer().putByte(offset(), (byte) 0b0000_0000);
+                    break;
+                case NEVER_INDEXED:
+                    buffer().putByte(offset(), (byte) 0b0001_0000);
+                    break;
             }
-            if (huffman) {
-                buffer().putByte(offset(), (byte) 0x80);
-            }
-            integerRW.wrap(buffer(), offset(), maxLimit()).integer(str.length(), 7).build();
-            int offset = integerRW.limit();
-            for(int i=0; i < str.length(); i++) {
-                buffer().putByte(offset + i, (byte) str.charAt(i));
-            }
-            limit(offset + str.length());
 
             return this;
         }
 
-    } */
+        private LiteralType literalType() {
+            byte b = buffer().getByte(offset());
+
+            if ((b & 0b1100_0000) == 0b0100_0000) {
+                return LiteralType.INCREMENTAL_INDEXING;
+            } else if ((b & 0b1111_0000) == 0) {
+                return LiteralType.WITHOUT_INDEXING;
+            } else if ((b & 0b1111_0000) == 0b0001_0000) {
+                return LiteralType.NEVER_INDEXED;
+            }
+
+            return null;
+        }
+
+        public HpackLiteralHeaderFieldFW.Builder name(int indexedName) {
+            switch (literalType()) {
+                case INCREMENTAL_INDEXING:
+                    integer6RW.wrap(buffer(), offset(), maxLimit());
+                    integer6RW.integer(indexedName);
+                    valueRW.wrap(buffer(), integer6RW.limit(), maxLimit());
+                    break;
+                case WITHOUT_INDEXING:
+                case NEVER_INDEXED:
+                    integer4RW.wrap(buffer(), offset(), maxLimit());
+                    integer4RW.integer(indexedName);
+                    valueRW.wrap(buffer(), integer4RW.limit(), maxLimit());
+                    break;
+            }
+
+            return this;
+        }
+
+
+        public HpackLiteralHeaderFieldFW.Builder name(String name /* , boolean huffman */) {
+            nameRW.wrap(buffer(), offset() + 1, maxLimit());
+            nameRW.string(name, false);
+            valueRW.wrap(buffer(), nameRW.limit(), maxLimit());
+            return this;
+        }
+
+        public HpackLiteralHeaderFieldFW.Builder name(DirectBuffer nameBuffer /* , boolean huffman */) {
+            // TODO
+            limit(nameRW.limit());
+
+            return this;
+        }
+
+
+        public HpackLiteralHeaderFieldFW.Builder value(String value /* , boolean huffman */) {
+            valueRW.string(value, false);
+            limit(valueRW.limit());
+            return this;
+        }
+
+        public HpackLiteralHeaderFieldFW.Builder value(DirectBuffer valueBuffer /* , boolean huffman */) {
+            // TODO
+            limit(valueRW.limit());
+
+
+            return this;
+        }
+
+    }
 
 }

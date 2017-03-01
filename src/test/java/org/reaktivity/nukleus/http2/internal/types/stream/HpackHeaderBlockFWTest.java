@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
@@ -30,7 +31,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 public class HpackHeaderBlockFWTest {
 
-    // Test for "C.3.  Request Examples without Huffman Coding"
+    // Test for decoding "C.3.  Request Examples without Huffman Coding"
     @Test
     public void decodeC_3() {
         HpackContext context = new HpackContext();
@@ -45,6 +46,7 @@ public class HpackHeaderBlockFWTest {
         decodeC_3_3(context);
     }
 
+    // Decoding "C.3.1.  First Request"
     private void decodeC_3_1(HpackContext context) {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
@@ -66,6 +68,7 @@ public class HpackHeaderBlockFWTest {
         assertEquals("www.example.com", headers.get(":authority"));
     }
 
+    // Decoding "C.3.2.  Second Request"
     private void decodeC_3_2(HpackContext context) {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
@@ -88,6 +91,7 @@ public class HpackHeaderBlockFWTest {
         assertEquals("no-cache", headers.get("cache-control"));
     }
 
+    // Decoding "C.3.3.  Third Request"
     private void decodeC_3_3(HpackContext context) {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
@@ -110,7 +114,99 @@ public class HpackHeaderBlockFWTest {
         assertEquals("custom-value", headers.get("custom-key"));
     }
 
-    // Test for "C.4.  Request Examples with Huffman Coding"
+    // Test for encoding "C.3.  Request Examples without Huffman Coding"
+    @Test
+    public void encodeC_3() {
+        HpackContext context = new HpackContext();
+
+        // First request
+        encodeC_3_1(context);
+
+        // Second request
+        encodeC_3_2(context);
+
+        // Third request
+        encodeC_3_3(context);
+    }
+
+    // Encoding "C.3.1.  First Request"
+    private void encodeC_3_1(HpackContext context) {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .headers(x -> x.item(y -> y.indexed(2))     // :method: GET
+                        .item(y -> y.indexed(6))            // :scheme: http
+                        .item(y -> y.indexed(4))            // :path: /
+                        .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name(1).value("www.example.com"))))
+                .build();
+
+        assertEquals(21, fw.limit());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(context, headers));
+
+        assertEquals(4, headers.size());
+        assertEquals("GET", headers.get(":method"));
+        assertEquals("http", headers.get(":scheme"));
+        assertEquals("/", headers.get(":path"));
+        assertEquals("www.example.com", headers.get(":authority"));
+    }
+
+    // Encoding "C.3.2.  Second Request"
+    private void encodeC_3_2(HpackContext context) {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .headers(x -> x.item(y -> y.indexed(2))     // :method: GET
+                        .item(y -> y.indexed(6))            // :scheme: http
+                        .item(y -> y.indexed(4))            // :path: /
+                        .item(y -> y.indexed(62))           // :authority: www.example.com
+                        .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name(24).value("no-cache"))))
+                .build();
+        assertEquals(15, fw.limit());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(context, headers));
+
+        assertEquals(5, headers.size());
+        assertEquals("GET", headers.get(":method"));
+        assertEquals("http", headers.get(":scheme"));
+        assertEquals("/", headers.get(":path"));
+        assertEquals("www.example.com", headers.get(":authority"));
+        assertEquals("no-cache", headers.get("cache-control"));
+    }
+
+    // Encoding "C.3.3.  Third Request"
+    private void encodeC_3_3(HpackContext context) {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW.Builder()
+                .wrap(buf, 1, buf.capacity())
+                .headers(x -> x.item(y -> y.indexed(2))    // :method: GET
+                               .item(y -> y.indexed(7))    // :scheme: https
+                               .item(y -> y.indexed(5))    // :path: /index.html
+                               .item(y -> y.indexed(63))   // :authority: www.example.com
+                               .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name("custom-key").value("custom-value"))))
+                .build();
+        assertEquals(30, fw.limit());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(context, headers));
+
+        assertEquals(5, headers.size());
+        assertEquals("GET", headers.get(":method"));
+        assertEquals("https", headers.get(":scheme"));
+        assertEquals("/index.html", headers.get(":path"));
+        assertEquals("www.example.com", headers.get(":authority"));
+        assertEquals("custom-value", headers.get("custom-key"));
+    }
+
+    // Test for decoding "C.4.  Request Examples with Huffman Coding"
     @Test
     public void decodeC_4() {
         HpackContext context = new HpackContext();
@@ -125,6 +221,7 @@ public class HpackHeaderBlockFWTest {
         decodeC_4_3(context);
     }
 
+    // Decoding "C.4.1.  First Request"
     private void decodeC_4_1(HpackContext context) {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
@@ -146,6 +243,7 @@ public class HpackHeaderBlockFWTest {
         assertEquals("www.example.com", headers.get(":authority"));
     }
 
+    // Decoding "C.4.2.  Second Request"
     private void decodeC_4_2(HpackContext context) {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
@@ -168,6 +266,7 @@ public class HpackHeaderBlockFWTest {
         assertEquals("no-cache", headers.get("cache-control"));
     }
 
+    // Decoding "C.4.3.  Third Request"
     private void decodeC_4_3(HpackContext context) {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
@@ -191,7 +290,7 @@ public class HpackHeaderBlockFWTest {
     }
 
 
-    static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers) {
+    private static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers) {
         return x -> {
             HeaderFieldType headerFieldType = x.type();
             String name = null;

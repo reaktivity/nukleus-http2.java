@@ -59,37 +59,26 @@ public class HpackHeaderBlockFW extends Flyweight {
 
     public static final class Builder extends Flyweight.Builder<HpackHeaderBlockFW>
     {
-        private final HpackIntegerFW.Builder integerRW = new HpackIntegerFW.Builder(7);
+        private final ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> headersRW =
+                new ListFW.Builder<>(new HpackHeaderFieldFW.Builder(), new HpackHeaderFieldFW());
 
-        public Builder()
-        {
+        public Builder() {
             super(new HpackHeaderBlockFW());
         }
 
-        @Override
-        public HpackHeaderBlockFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
-        {
-            super.wrap(buffer, offset, maxLimit);
+        private ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> headers(int offset) {
+            return headersRW.wrap(buffer(), offset, maxLimit());
+        }
+
+        public Builder headers(Consumer<ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW>> mutator) {
+            mutator.accept(headersRW);
+            super.limit(headersRW.limit());
             return this;
         }
 
-        public HpackHeaderBlockFW.Builder string(String str, boolean huffman) {
-            if (huffman) {
-                buffer().putByte(offset(), (byte) 0x80);
-            }
-
-            return string(str);
-        }
-
-        public HpackHeaderBlockFW.Builder string(String str) {
-
-            integerRW.wrap(buffer(), offset(), maxLimit()).integer(str.length()).build();
-            int offset = integerRW.limit();
-            for(int i=0; i < str.length(); i++) {
-                buffer().putByte(offset + i, (byte) str.charAt(i));
-            }
-            limit(offset + str.length());
-
+        public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit) {
+            super.wrap(buffer, offset, maxLimit);
+            headersRW.wrap(buffer, offset, maxLimit);
             return this;
         }
 
