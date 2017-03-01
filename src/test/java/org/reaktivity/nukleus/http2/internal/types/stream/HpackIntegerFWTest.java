@@ -24,9 +24,9 @@ import static org.junit.Assert.assertEquals;
 
 public class HpackIntegerFWTest {
 
+    // C.1.1. Encoding 10 Using a 5-Bit Prefix
     @Test
     public void encode() {
-        // Encoding 10 Using a 5-Bit Prefix
         int value = 10;
         int n = 5;
         byte[] bytes = new byte[100];
@@ -44,6 +44,7 @@ public class HpackIntegerFWTest {
         assertEquals(1, fw.sizeof());
     }
 
+    // C.1.1. Decoding 10 Using a 5-Bit Prefix
     @Test
     public void decode() {
         // Decoding 10 Using a 5-Bit Prefix
@@ -62,9 +63,9 @@ public class HpackIntegerFWTest {
         assertEquals(1, fw.sizeof());
     }
 
+    // C.1.2. Encoding 1337 Using a 5-Bit Prefix
     @Test
     public void encode1() {
-        // Encoding 1337 Using a 5-Bit Prefix
         int value = 1337;
         int n = 5;
         byte[]bytes = new byte[100];
@@ -84,9 +85,9 @@ public class HpackIntegerFWTest {
         assertEquals(3, fw.sizeof());
     }
 
+    // C.1.2. Decoding 1337 Using a 5-Bit Prefix
     @Test
     public void decode1() {
-        // Decoding 1337 Using a 5-Bit Prefix
         int value = 1337;
         int n = 5;
         byte[]bytes = new byte[100];
@@ -146,6 +147,7 @@ public class HpackIntegerFWTest {
         assertEquals(3, fw.sizeof());
     }
 
+    // C.1.3.  Encoding 42 Starting at an Octet Boundary
     @Test
     public void encode3() {
         // Encoding 42 Starting at an Octet Boundary (n = 8)
@@ -165,6 +167,7 @@ public class HpackIntegerFWTest {
         assertEquals(1, fw.sizeof());
     }
 
+    // C.1.3. Decoding 42 Starting at an Octet Boundary
     @Test
     public void decode3() {
         // Decoding 42 Starting at an Octet Boundary (n = 8)

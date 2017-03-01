@@ -39,7 +39,7 @@ public class HpackStringFWTest {
         HpackStringFW.Builder builder = new HpackStringFW.Builder();
         HpackStringFW fw = builder
                 .wrap(buffer, 1, buffer.capacity())
-                .string(value, false)
+                .string(value)
                 .build();
         assertEquals((byte) 0x0a, bytes[1]);
 
@@ -78,7 +78,7 @@ public class HpackStringFWTest {
         HpackStringFW.Builder builder = new HpackStringFW.Builder();
         HpackStringFW fw = builder
                 .wrap(buffer, 1, buffer.capacity())
-                .string(value, false)
+                .string(value)
                 .build();
         assertEquals((byte) 0x7f, bytes[1]);
         assertEquals((byte) 0xba, bytes[2]);
@@ -106,6 +106,32 @@ public class HpackStringFWTest {
         HpackStringFW fw = new HpackStringFW()
                 .wrap(buffer, 1, buffer.capacity());
 
+        assertEquals(valueBuf, fw.payload());
+        assertEquals(value.length() + 4, fw.limit());
+    }
+
+    // Encodes string (passed as DirectBuffer)
+    @Test
+    public void encode2() {
+        StringBuilder sb = new StringBuilder();
+        IntStream.range(0, 1337).forEach(x -> sb.append("a"));
+        String value = sb.toString();
+
+        byte[] valueBytes = value.getBytes(US_ASCII);
+        DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
+        byte[] bytes = new byte[2048];
+
+        MutableDirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackStringFW.Builder builder = new HpackStringFW.Builder();
+        HpackStringFW fw = builder
+                .wrap(buffer, 1, buffer.capacity())
+                .string(valueBuf, 0, valueBuf.capacity())
+                .build();
+        assertEquals((byte) 0x7f, bytes[1]);
+        assertEquals((byte) 0xba, bytes[2]);
+        assertEquals((byte) 0x09, bytes[3]);
+
+        assertFalse(fw.huffman());
         assertEquals(valueBuf, fw.payload());
         assertEquals(value.length() + 4, fw.limit());
     }

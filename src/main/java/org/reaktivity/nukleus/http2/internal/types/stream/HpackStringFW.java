@@ -21,6 +21,8 @@ import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 /*
  * Flyweight for HPACK String Literal Representation
  *
@@ -78,22 +80,30 @@ public class HpackStringFW extends Flyweight {
         public HpackStringFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
+            buffer().putByte(offset(), (byte) 0x00);
+            integerRW.wrap(buffer(), offset(), maxLimit());
             return this;
         }
 
-        public HpackStringFW.Builder string(String str, boolean huffman) {
-            if (huffman) {
-                throw new UnsupportedOperationException("TODO Not yet implemented");
-            }
-            if (huffman) {
-                buffer().putByte(offset(), (byte) 0x80);
-            }
-            integerRW.wrap(buffer(), offset(), maxLimit()).integer(str.length()).build();
-            int offset = integerRW.limit();
-            for(int i=0; i < str.length(); i++) {
-                buffer().putByte(offset + i, (byte) str.charAt(i));
-            }
-            limit(offset + str.length());
+        public HpackStringFW.Builder huffman() {
+            throw new UnsupportedOperationException("TODO");
+//            buffer().putByte(offset(), (byte) 0x80);
+//            return this;
+        }
+
+        public HpackStringFW.Builder string(DirectBuffer value, int offset, int length) {
+            integerRW.integer(length);
+            buffer().putBytes(integerRW.limit(), value, offset, length);
+            limit(integerRW.limit() + length);
+
+            return this;
+        }
+
+        public HpackStringFW.Builder string(String str) {
+            byte[] bytes = str.getBytes(UTF_8);
+            integerRW.integer(bytes.length);
+            buffer().putBytes(integerRW.limit(), bytes);
+            limit(integerRW.limit() + bytes.length);
 
             return this;
         }

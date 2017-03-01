@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.Hea
 
 import javax.xml.bind.DatatypeConverter;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.LITERAL;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
@@ -178,12 +179,17 @@ public class HpackHeaderFieldFWTest {
     // Decoding "C.2.3.  Literal Header Field Never Indexed"
     @Test
     public void encodeC_2_3() {
+        DirectBuffer password = new UnsafeBuffer("password".getBytes(UTF_8));
+        DirectBuffer secret = new UnsafeBuffer("secret".getBytes(UTF_8));
+
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
         HpackHeaderFieldFW fw = new HpackHeaderFieldFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .literal(x -> x.type(NEVER_INDEXED).name("password").value("secret"))
+                .literal(x -> x.type(NEVER_INDEXED)
+                               .name(password, 0, password.capacity())
+                               .value(secret, 0, secret.capacity()))
                 .build();
 
         assertEquals(18, fw.limit());

@@ -62,7 +62,6 @@ public class HpackLiteralHeaderFieldFW extends Flyweight {
         return null;
     }
 
-
     public int nameIndex() {
         assert nameType() == NameType.INDEXED;
 
@@ -198,33 +197,30 @@ public class HpackLiteralHeaderFieldFW extends Flyweight {
             return this;
         }
 
-
-        public HpackLiteralHeaderFieldFW.Builder name(String name /* , boolean huffman */) {
+        public HpackLiteralHeaderFieldFW.Builder name(String name) {
             nameRW.wrap(buffer(), offset() + 1, maxLimit());
-            nameRW.string(name, false);
+            nameRW.string(name);
             valueRW.wrap(buffer(), nameRW.limit(), maxLimit());
             return this;
         }
 
-        public HpackLiteralHeaderFieldFW.Builder name(DirectBuffer nameBuffer /* , boolean huffman */) {
-            // TODO
-            limit(nameRW.limit());
-
+        public HpackLiteralHeaderFieldFW.Builder name(DirectBuffer nameBuffer, int offset, int length) {
+            nameRW.wrap(buffer(), offset() + 1, maxLimit());
+            nameRW.string(nameBuffer, offset, length);
+            valueRW.wrap(buffer(), nameRW.limit(), maxLimit());
             return this;
         }
 
 
-        public HpackLiteralHeaderFieldFW.Builder value(String value /* , boolean huffman */) {
-            valueRW.string(value, false);
+        public HpackLiteralHeaderFieldFW.Builder value(String value) {
+            valueRW.string(value);
             limit(valueRW.limit());
             return this;
         }
 
-        public HpackLiteralHeaderFieldFW.Builder value(DirectBuffer valueBuffer /* , boolean huffman */) {
-            // TODO
+        public HpackLiteralHeaderFieldFW.Builder value(DirectBuffer valueBuffer, int offset, int length) {
+            valueRW.string(valueBuffer, offset, length);
             limit(valueRW.limit());
-
-
             return this;
         }
 
