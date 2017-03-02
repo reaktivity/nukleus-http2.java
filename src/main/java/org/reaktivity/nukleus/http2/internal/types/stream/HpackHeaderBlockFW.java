@@ -66,12 +66,8 @@ public class HpackHeaderBlockFW extends Flyweight {
             super(new HpackHeaderBlockFW());
         }
 
-        private ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> headers(int offset) {
-            return headersRW.wrap(buffer(), offset, maxLimit());
-        }
-
-        public Builder headers(Consumer<ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW>> mutator) {
-            mutator.accept(headersRW);
+        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator) {
+            headersRW.item(mutator);
             super.limit(headersRW.limit());
             return this;
         }

@@ -434,11 +434,11 @@ public class HpackHuffman {
     */
 
     /*
-     * Based on "Fast Prefix Code Processing (by Renato Pajarola)" paper. Instead of
-     * traversing huffman tree by single bits, it uses multiple bits(in this impl,
-     * 8bits/byte). It precomputes all 256 possible bit sequences or node transitions
-     * at every node. This allows it to jump efficiently from any node to another in
-     * the code tree by processing multiple bits simultaneously instead of single bits.
+     * Based on "Fast Prefix Code Processing (by Renato Pajarola)" paper. It
+     * precomputes all 256 possible bit sequences or node transitions at
+     * every node. This allows it to jump efficiently from any node to another
+     * in the code tree by processing bytes simultaneously instead of single
+     * bits.
      *
      * https://pdfs.semanticscholar.org/3697/8e4715a7bf21426877132f5b2e9c3d280287.pdf
      */

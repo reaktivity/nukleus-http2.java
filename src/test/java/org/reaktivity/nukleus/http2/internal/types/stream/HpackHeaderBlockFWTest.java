@@ -136,10 +136,10 @@ public class HpackHeaderBlockFWTest {
 
         HpackHeaderBlockFW fw = new HpackHeaderBlockFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .headers(x -> x.item(y -> y.indexed(2))     // :method: GET
-                        .item(y -> y.indexed(6))            // :scheme: http
-                        .item(y -> y.indexed(4))            // :path: /
-                        .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name(1).value("www.example.com"))))
+                .header(hf -> hf.indexed(2))      // :method: GET
+                .header(hf -> hf.indexed(6))      // :scheme: http
+                .header(hf -> hf.indexed(4))      // :path: /
+                .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(1).value("www.example.com")))
                 .build();
 
         assertEquals(21, fw.limit());
@@ -161,11 +161,11 @@ public class HpackHeaderBlockFWTest {
 
         HpackHeaderBlockFW fw = new HpackHeaderBlockFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .headers(x -> x.item(y -> y.indexed(2))     // :method: GET
-                        .item(y -> y.indexed(6))            // :scheme: http
-                        .item(y -> y.indexed(4))            // :path: /
-                        .item(y -> y.indexed(62))           // :authority: www.example.com
-                        .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name(24).value("no-cache"))))
+                .header(hf -> hf.indexed(2))        // :method: GET
+                .header(hf -> hf.indexed(6))        // :scheme: http
+                .header(hf -> hf.indexed(4))        // :path: /
+                .header(hf -> hf.indexed(62))       // :authority: www.example.com
+                .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(24).value("no-cache")))
                 .build();
         assertEquals(15, fw.limit());
 
@@ -187,11 +187,11 @@ public class HpackHeaderBlockFWTest {
 
         HpackHeaderBlockFW fw = new HpackHeaderBlockFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .headers(x -> x.item(y -> y.indexed(2))    // :method: GET
-                               .item(y -> y.indexed(7))    // :scheme: https
-                               .item(y -> y.indexed(5))    // :path: /index.html
-                               .item(y -> y.indexed(63))   // :authority: www.example.com
-                               .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name("custom-key").value("custom-value"))))
+                .header(y -> y.indexed(2))    // :method: GET
+                .header(y -> y.indexed(7))    // :scheme: https
+                .header(y -> y.indexed(5))    // :path: /index.html
+                .header(y -> y.indexed(63))   // :authority: www.example.com
+                .header(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name("custom-key").value("custom-value")))
                 .build();
         assertEquals(30, fw.limit());
 

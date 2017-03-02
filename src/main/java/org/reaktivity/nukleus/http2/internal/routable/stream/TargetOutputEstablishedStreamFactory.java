@@ -16,15 +16,11 @@
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import static java.lang.Character.toUpperCase;
-import static java.nio.charset.StandardCharsets.US_ASCII;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
@@ -37,14 +33,15 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -228,13 +225,7 @@ public final class TargetOutputEstablishedStreamFactory
                 final long sourceCorrelationId = correlation.id();
 
                 Map<String, String> headers = EMPTY_HEADERS;
-                if (extension.sizeof() > 0)
-                {
-                    final HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    Map<String, String> headers0 = new LinkedHashMap<>();
-                    beginEx.headers().forEach(h -> headers0.put(h.name().asString(), h.value().asString()));
-                    headers = headers0;
-                }
+
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
@@ -246,31 +237,22 @@ public final class TargetOutputEstablishedStreamFactory
                 newTarget.addThrottle(newTargetId, this::handleThrottle);
                 // TODO: replace with connection pool (end)
 
+                // TODO buffer as field and what about size ??
                 final MutableDirectBuffer buf = new UnsafeBuffer(new byte[4096]);
-                /*
-                # HEADERS frame <length=69, flags=0x04, stream_id=1>
-#          ; END_HEADERS
-#          (padlen=0)
-#          ; First response header
-#          :status: 404
-#          server: nghttpd nghttp2/1.19.0
-#          date: Wed, 01 Feb 2017 19:12:46 GMT
-#          content-type: text/html; charset=UTF-8
-#          content-length: 147
-                    */
-                Http2HeadersFW http2HeadersRO = http2HeadersRW
+                http2HeadersRW
                         .wrap(buf, 0, buf.capacity())
                         .streamId(http2StreamId)
-                        .endHeaders()
-                        .headers(x -> x.item(y -> y.indexed(13))     // :status: 404
-                                        .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name(54).value("nghttpd nghttp2/1.19.0")))
-                                        .item(y -> y.literal(z -> z.type(WITHOUT_INDEXING).name(33).value("Wed, 01 Feb 2017 19:12:46 GMT")))
-                                        .item(y -> y.literal(z -> z.type(INCREMENTAL_INDEXING).name(31).value("text/html; charset=UTF-8")))
-                                        .item(y -> y.literal(z -> z.type(WITHOUT_INDEXING).name(28).value("147"))))
-                        .build();
-                System.out.println("nukleus --> source");
+                        .endHeaders();
+                if (extension.sizeof() > 0)
+                {
+                    final HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
+                    beginEx.headers().forEach(mapHeader());
+                }
 
-                SourceInputStreamFactory.printBuf(http2HeadersRO.buffer());
+                Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
+
+System.out.println("nukleus --> source");
+SourceInputStreamFactory.printBuf(http2HeadersRO.buffer());
 
 //                byte[] headersPayload = new byte[] {
 //                        0x00, 0x00, 0x45, 0x01, 0x04, 0x00, 0x00, 0x00, 0x01, (byte)0x8d, 0x76, (byte)0x90, (byte)0xaa, 0x69, (byte)0xd2, (byte)0x9a,
@@ -446,5 +428,19 @@ public final class TargetOutputEstablishedStreamFactory
 
             source.doReset(sourceId);
         }
+    }
+
+    // Map http1.1 header to http2 HeaderFiled
+    private Consumer<HttpHeaderFW> mapHeader() {
+        return httpHeader -> http2HeadersRW.header(hpackHeaderField -> {
+            StringFW name = httpHeader.name();
+            StringFW value = httpHeader.value();
+
+            // TODO indexing etc
+            hpackHeaderField.literal(literal -> literal
+                    .type(WITHOUT_INDEXING)
+                    .name(name.buffer(), name.offset() + 1, name.sizeof() - 1)      // +1, -1 for length-prefixed buffer
+                    .value(value.buffer(), value.offset() + 1, value.sizeof() - 1));// +1, -1 for length-prefixed buffer
+        });
     }
 }
