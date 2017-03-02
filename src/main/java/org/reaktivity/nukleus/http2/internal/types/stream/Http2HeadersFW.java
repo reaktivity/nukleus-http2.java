@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.nio.ByteOrder;
 import java.util.Map;
@@ -155,6 +156,8 @@ public class Http2HeadersFW extends Flyweight {
 
     public static final class Builder extends Flyweight.Builder<Http2HeadersFW>
     {
+        private final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
+
         public Builder()
         {
             super(new Http2HeadersFW());
@@ -170,9 +173,11 @@ public class Http2HeadersFW extends Flyweight {
             buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
             buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
 
-            buffer().putByte(offset() + TYPE_OFFSET, DATA.getType());
+            buffer().putByte(offset() + TYPE_OFFSET, HEADERS.getType());
 
             buffer().putByte(offset() + FLAGS_OFFSET, (byte) 0);
+
+            limit(offset() + PAYLOAD_OFFSET);
 
             return this;
         }
@@ -202,29 +207,15 @@ public class Http2HeadersFW extends Flyweight {
             return this;
         }
 
-        public Builder headers(Map<String, String> headers) {
-//            HpackEncoder encoder = new HpackEncoder(4096);
-//            HeaderMap map = new HeaderMap();
-//            headers.forEach((k,v) -> {
-//                k = k.substring(1);
-//                HttpString hs = new HttpString(k);
-//                map.add(hs, v);
-//            });
-//
-//            ByteBuffer bb = ByteBuffer.wrap(new byte[4096]);
-//            //bb.flip();
-//            encoder.encode(map, bb);
-//            bb.flip();
-//
-//            // TODO padded and priority flag
-//            buffer().putBytes(offset() + LENGTH_OFFSET, bb, bb.position(), bb.limit());
-//
-//            limit(offset() + 9 + bb.limit());
-//
-//            int length = bb.limit()-bb.position();
-//            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-//            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-//            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
+        public Builder headers(Consumer<ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW>> mutator) {
+            blockRW.wrap(buffer(), offset() + PAYLOAD_OFFSET, maxLimit());
+            blockRW.headers(mutator);
+            int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
+            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
+            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
+            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
+
+            limit(blockRW.limit());
             return this;
         }
 

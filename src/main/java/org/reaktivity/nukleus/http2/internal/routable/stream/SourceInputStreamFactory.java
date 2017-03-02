@@ -583,7 +583,7 @@ final Optional<Route> optional = resolveTarget(sourceRef, hos);
         };
     }
 
-    void printBuf(DirectBuffer buf) {
+    static void printBuf(DirectBuffer buf) {
         for(int i=0; i < buf.capacity(); i++) {
             System.out.printf("%02x ", buf.getByte(i));
         }
