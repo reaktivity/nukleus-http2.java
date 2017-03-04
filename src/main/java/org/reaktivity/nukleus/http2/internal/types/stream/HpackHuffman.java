@@ -16,11 +16,14 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+
+import static java.nio.ByteOrder.BIG_ENDIAN;
 
 public class HpackHuffman {
 
     private static final int[][] CODES =
-    {
+            {
         /*                                                          code
                                     code as bits                 as hex    len
                sym                 aligned to MSB                aligned    in
@@ -65,7 +68,7 @@ public class HpackHuffman {
         /*'$' ( 36)  |11111111|11001                      */      {0x1ff9, 13},
         /*'%' ( 37)  |010101                              */         {0x15, 6},
         /*'&' ( 38)  |11111000                            */         {0xf8, 8},
-        /*''' ( 39)  |11111111|010                        */        {0x7fa,11},
+        /*''' ( 39)  |11111111|010                        */        {0x7fa, 11},
         /*'(' ( 40)  |11111110|10                         */       {0x3fa, 10},
         /*')' ( 41)  |11111110|11                         */       {0x3fb, 10},
         /*'*' ( 42)  |11111001                            */         {0xf9, 8},
@@ -283,7 +286,7 @@ public class HpackHuffman {
         /*    (254)  |11111111|11111111|11111110|000      */   {0x7fffff0, 27},
         /*    (255)  |11111111|11111111|11111011|10       */   {0x3ffffee, 26},
         /*EOS (256)  |11111111|11111111|11111111|111111   */  {0x3fffffff, 30},
-    };
+            };
 
     // state x byte -> state
     private static final int[][] TRANSITIONS_TABLE;
@@ -304,14 +307,13 @@ public class HpackHuffman {
         root.state = state++;
         root.sym = -1;
 
-        for (int sym = 0; sym < CODES.length; sym++)
-        {
+        for (int sym = 0; sym < CODES.length; sym++) {
             Node cur = root;
 
             int code = CODES[sym][0];
             int len = CODES[sym][1];
 
-            for(int i=len-1; i >= 0; i--) {
+            for (int i = len - 1; i >= 0; i--) {
                 int bit = ((code >>> i) & 0x01);
                 if (bit == 0) {
                     if (cur.left == null) {
@@ -335,8 +337,8 @@ public class HpackHuffman {
         TRANSITIONS_TABLE = new int[state][256];
         SYMBOL_TABLE = new String[state][256];
 
-        for(int i=0; i < state; i++) {
-            for(int j=0; j < 256; j++) {
+        for (int i = 0; i < state; i++) {
+            for (int j = 0; j < 256; j++) {
                 TRANSITIONS_TABLE[i][j] = -1;
                 SYMBOL_TABLE[i][j] = null;
             }
@@ -349,7 +351,7 @@ public class HpackHuffman {
         if (node == null) {
             return;
         }
-        for(int i=0; i < 256; i++) {
+        for (int i = 0; i < 256; i++) {
             fillTables(root, node, i);
         }
         fillTables(root, node.left);
@@ -371,7 +373,7 @@ public class HpackHuffman {
                 break;
             }
             if (cur.sym != -1) {
-                sym = (sym == null) ? ("" + (char)cur.sym) : (sym+ (char)cur.sym);
+                sym = (sym == null) ? ("" + (char) cur.sym) : (sym + (char) cur.sym);
                 cur = root;
             }
         }
@@ -461,6 +463,58 @@ public class HpackHuffman {
             curState = newState;
         }
         return sb.toString();
+    }
+
+    // Returns the no of bytes needed to encode src
+    public static int encodedSize(DirectBuffer src, int offset, int length) {
+        int totalBits = 0;
+
+        for (int i = 0; i < length; i++) {
+            int index = src.getByte(offset + i) & 0xff;
+            int bits = CODES[index][1];
+            totalBits += bits;
+        }
+
+        return (totalBits + 7) / 8;
+    }
+
+    // Huffman encodes src buffer into dst buffer
+    // Assumes enough space is in the dst buffer
+    public static void encode(DirectBuffer src, MutableDirectBuffer dst)
+    {
+        assert dst.capacity() >= encodedSize(src, 0, src.capacity());
+
+        int remainingBits = 0;
+        int dstIndex = 0;
+        long currentSeq = 0;       // Aligned to LSB, for e.g 0000_0000_0XXX_XXXX
+
+        for (int i = 0; i < src.capacity(); i++)
+        {
+            int index = src.getByte(i) & 0xFF;
+            int code = CODES[index][0];
+            int bits = CODES[index][1];
+
+            if (remainingBits + bits > 64) {      // exceeds long (no more space for current bits)
+                dst.putLong(dstIndex, currentSeq << (64-remainingBits), BIG_ENDIAN);
+                dstIndex += (remainingBits / 8);
+                remainingBits = remainingBits % 8;
+            }
+
+            currentSeq <<= bits;
+            currentSeq |= code;
+            remainingBits += bits;
+        }
+
+        while(remainingBits > 0) {
+            if (remainingBits >= 8) {
+                remainingBits -= 8;
+                dst.putByte(dstIndex++, (byte)(currentSeq >> remainingBits));
+            } else {
+                currentSeq <<= (8 - remainingBits);            // partial byte, so align to MSB
+                currentSeq |= (0xFF >>> remainingBits);        // fill remaining bits with EOS bits
+                remainingBits = 8;
+            }
+        }
     }
 
 }

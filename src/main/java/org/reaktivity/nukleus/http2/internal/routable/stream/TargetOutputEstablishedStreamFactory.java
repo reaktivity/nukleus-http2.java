@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import static java.lang.Character.toUpperCase;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 import java.util.Collections;
@@ -40,6 +41,8 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
@@ -63,6 +66,10 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final Http2DataFW.Builder dataRW = new Http2DataFW.Builder();
     private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
+
+    private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
+    private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
+
 
     private final Source source;
     private final Function<String, Target> supplyTarget;
@@ -98,6 +105,8 @@ public final class TargetOutputEstablishedStreamFactory
         private int http2StreamId;
 
         private int window;
+
+        private final HpackContext hpackContext = new HpackContext();
 
         @Override
         public String toString()
@@ -246,8 +255,14 @@ public final class TargetOutputEstablishedStreamFactory
                 if (extension.sizeof() > 0)
                 {
                     final HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    beginEx.headers().forEach(mapHeader());
+                    beginEx.headers().forEach(mapHeader(hpackContext));
                 }
+
+//                http2HeadersRW.header(hf -> hf.indexed(13))     // :status: 404
+//                              .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(54).value("nghttpd nghttp2/1.19.0")))
+//                              .header(hf -> hf.literal(l -> l.type(WITHOUT_INDEXING).name(33).value("Wed, 01 Feb 2017 19:12:46 GMT")))
+//                              .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(31).value("text/html; charset=UTF-8")))
+//                              .header(hf -> hf.literal(l -> l.type(WITHOUT_INDEXING).name(28).value("147")));
 
                 Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
 
@@ -430,17 +445,35 @@ SourceInputStreamFactory.printBuf(http2HeadersRO.buffer());
         }
     }
 
-    // Map http1.1 header to http2 HeaderFiled
-    private Consumer<HttpHeaderFW> mapHeader() {
-        return httpHeader -> http2HeadersRW.header(hpackHeaderField -> {
+    // Map http1.1 header to http2 header field
+    private Consumer<HttpHeaderFW> mapHeader(HpackContext hpackContext) {
+        return httpHeader -> http2HeadersRW.header(hfBuilder -> {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
+            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+            valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
 
-            // TODO indexing etc
-            hpackHeaderField.literal(literal -> literal
-                    .type(WITHOUT_INDEXING)
-                    .name(name.buffer(), name.offset() + 1, name.sizeof() - 1)      // +1, -1 for length-prefixed buffer
-                    .value(value.buffer(), value.offset() + 1, value.sizeof() - 1));// +1, -1 for length-prefixed buffer
+            int index = hpackContext.index(nameRO, valueRO);
+            if (index != -1) {
+                // Indexed
+                hfBuilder.indexed(index);
+            } else {
+                // Literal
+                hfBuilder.literal(literalBuilder -> buildLiteral(literalBuilder, hpackContext));
+            }
         });
+    }
+
+    // Building Literal representation of header field
+    // TODO dynamic table, huffman, never indexed
+    private void buildLiteral(HpackLiteralHeaderFieldFW.Builder builder, HpackContext hpackContext) {
+        int nameIndex = hpackContext.index(nameRO);
+        builder.type(WITHOUT_INDEXING);
+        if (nameIndex != -1) {
+            builder.name(nameIndex);
+        } else {
+            builder.name(nameRO, 0, nameRO.capacity());
+        }
+        builder.value(valueRO, 0, valueRO.capacity());
     }
 }

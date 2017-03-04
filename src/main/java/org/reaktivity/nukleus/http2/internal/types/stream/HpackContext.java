@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -83,7 +84,7 @@ public class HpackContext {
     private final List<HeaderField> table = new ArrayList<>();
 
     private final Map<String, Integer> name2Index = new HashMap<>();
-    private final Map<DirectBuffer, Integer> namebuf2Index = new HashMap<>();
+    private final Map<NameValueKey, HeaderField> namebuf2Index = new HashMap<>();
 
 
     private static final class HeaderField {
@@ -135,7 +136,8 @@ public class HpackContext {
     }
 
     public HpackContext() {
-        for (String[] field : STATIC_TABLE) {
+        for (int i = 0; i < STATIC_TABLE.length; i++) {
+            String[] field = STATIC_TABLE[i];
             table.add(new HeaderField(field[0], field[1]));
         }
     }
@@ -174,12 +176,53 @@ public class HpackContext {
     }
 
     public int index(DirectBuffer name) {
-        throw new UnsupportedOperationException("TODO");
+        for(int i=0; i < table.size(); i++) {
+            HeaderField hf = table.get(i);
+            DirectBuffer nameBuffer = hf.nameBuffer();
+            if (nameBuffer != null && nameBuffer.equals(name)) {
+                return i;
+            }
+        }
+        return -1;
     }
 
 
     public int index(DirectBuffer name, DirectBuffer value) {
-        throw new UnsupportedOperationException("TODO");
+        for(int i=0; i < table.size(); i++) {
+            HeaderField hf = table.get(i);
+            DirectBuffer nameBuffer = hf.nameBuffer();
+            if (nameBuffer != null && nameBuffer.equals(name)) {
+                DirectBuffer valueBuffer = hf.valueBuffer();
+                if (valueBuffer != null && valueBuffer.equals(value)) {
+                    return i;
+                }
+            }
+        }
+        return -1;
+    }
+
+    private static class NameValueKey {
+        private final DirectBuffer name;
+        private final DirectBuffer value;
+
+        NameValueKey(DirectBuffer name, DirectBuffer value) {
+            this.name = name;
+            this.value = value;
+        }
+
+        @Override
+        public boolean equals(Object obj) {
+            if (obj instanceof NameValueKey) {
+                NameValueKey other = (NameValueKey) obj;
+                return Objects.equals(name, other.name) && Objects.equals(value, other.value);
+            }
+            return false;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(name, value);
+        }
     }
 
 }
