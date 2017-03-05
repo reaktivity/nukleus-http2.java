@@ -23,7 +23,7 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
 public class HpackHuffman {
 
     private static final int[][] CODES =
-            {
+    {
         /*                                                          code
                                     code as bits                 as hex    len
                sym                 aligned to MSB                aligned    in
@@ -286,102 +286,99 @@ public class HpackHuffman {
         /*    (254)  |11111111|11111111|11111110|000      */   {0x7fffff0, 27},
         /*    (255)  |11111111|11111111|11111011|10       */   {0x3ffffee, 26},
         /*EOS (256)  |11111111|11111111|11111111|111111   */  {0x3fffffff, 30},
-            };
+    };
 
-    // state x byte -> state
-    private static final int[][] TRANSITIONS_TABLE;
+    private static final Node ROOT;
 
-    // state x byte -> symbols
-    private static final String[][] SYMBOL_TABLE;
-
-    static final class Node {
+    private static final class Node {
         int sym;
-        int state;
         Node left;
         Node right;
+        Node[] transitions;     // node x byte --> node (256 transitions for byte)
+        String[] symbols;       // node x byte --> symbols (max 2 per transition)
+        boolean accept;         // valid huffman node
+
+        Node() {
+            this.sym = -1;
+            this.transitions = new Node[256];
+            this.symbols = new String[256];
+        }
+
+        @Override
+        public String toString() {
+            return "node[sym="+(char)sym+"]";
+        }
     }
 
     static {
-        int state = 0;
-        Node root = new Node();
-        root.state = state++;
-        root.sym = -1;
+        ROOT = new Node();
 
         for (int sym = 0; sym < CODES.length; sym++) {
-            Node cur = root;
+            Node current = ROOT;
 
             int code = CODES[sym][0];
             int len = CODES[sym][1];
 
             for (int i = len - 1; i >= 0; i--) {
-                int bit = ((code >>> i) & 0x01);
+                int bit = ((code >>> i) & 0x01);        // Using MSB to traverse
                 if (bit == 0) {
-                    if (cur.left == null) {
-                        cur.left = new Node();
-                        cur.left.state = state++;
-                        cur.sym = -1;
+                    if (current.left == null) {
+                        current.left = new Node();
                     }
-                    cur = cur.left;
+                    current = current.left;
                 } else {
-                    if (cur.right == null) {
-                        cur.right = new Node();
-                        cur.right.state = state++;
-                        cur.sym = -1;
+                    if (current.right == null) {
+                        current.right = new Node();
                     }
-                    cur = cur.right;
+                    current = current.right;
                 }
             }
-            cur.sym = sym;
+            current.sym = sym;
+            current.accept = true;
         }
 
-        TRANSITIONS_TABLE = new int[state][256];
-        SYMBOL_TABLE = new String[state][256];
+        transition(ROOT);
 
-        for (int i = 0; i < state; i++) {
-            for (int j = 0; j < 256; j++) {
-                TRANSITIONS_TABLE[i][j] = -1;
-                SYMBOL_TABLE[i][j] = null;
-            }
-        }
-
-        fillTables(root, root);
+        ROOT.accept = true;
+        ROOT.right.accept = true;                                       // 1 padding EOS bit
+        ROOT.right.right.accept = true;                                 // 11 padding EOS bits
+        ROOT.right.right.right.accept = true;                           // 111 padding EOS bits
+        ROOT.right.right.right.right.accept = true;                     // 1111 padding EOS bits
+        ROOT.right.right.right.right.right.accept = true;               // 11111 padding EOS bits
+        ROOT.right.right.right.right.right.right.accept = true;         // 111111 padding EOS bits
+        ROOT.right.right.right.right.right.right.right.accept = true;   // 1111111 padding EOS bits
     }
 
-    private static void fillTables(Node root, Node node) {
+    // Build all 256 Node x byte transitions
+    private static void transition(Node node) {
         if (node == null) {
             return;
         }
-        for (int i = 0; i < 256; i++) {
-            fillTables(root, node, i);
+        for(int i=0; i < 256; i++) {
+            transition(node, i);
         }
-        fillTables(root, node.left);
-        fillTables(root, node.right);
+        transition(node.left);
+        transition(node.right);
     }
 
-    private static void fillTables(Node root, Node node, int b) {
+    // Build one Node x byte transition
+    private static void transition(Node node, int b) {
         Node cur = node;
-        String sym = null;
+        String str = node.symbols[b];
 
         for (int i = 7; i >= 0; i--) {
-            int bit = ((b >>> i) & 0x01);
-            if (bit == 0) {
-                cur = cur.left;
-            } else {
-                cur = cur.right;
+            int bit = ((b >>> i) & 0x01);           // Using MSB to traverse
+            cur = bit == 0 ? cur.left : cur.right;
+            if (cur == null || cur.sym == 256) {    // EOS is invalid in sequence
+                return;
             }
-            if (cur == null) {
-                break;
-            }
-            if (cur.sym != -1) {
-                sym = (sym == null) ? ("" + (char) cur.sym) : (sym + (char) cur.sym);
-                cur = root;
+            if (cur.sym != -1) {                    // Can have two symbols in a byte traversal
+                str = (str == null) ? ""+(char)cur.sym : str+(char)cur.sym;
+                cur = ROOT;
             }
         }
-
-        if (cur != null) {
-            TRANSITIONS_TABLE[node.state][b] = cur.state;
-        }
-        SYMBOL_TABLE[node.state][b] = sym;
+        node.transitions[b] = cur;
+        node.symbols[b] = str;
     }
 
     /*
@@ -444,24 +441,20 @@ public class HpackHuffman {
      *
      * https://pdfs.semanticscholar.org/3697/8e4715a7bf21426877132f5b2e9c3d280287.pdf
      */
-    // TODO EOS handling
     public static String decode(DirectBuffer buf) {
         StringBuilder sb = new StringBuilder();
-        int curState = 0;
+        Node current = ROOT;
 
         for (int i = 0; i < buf.capacity(); i++) {
-
             int b = buf.getByte(i) & 0xff;
-
-            int newState = TRANSITIONS_TABLE[curState][b];
-            if (newState == -1) {
-                throw new RuntimeException("Not there, but parsed until " + sb.toString());
+            Node next = current.transitions[b];
+            // TODO handle next == null
+            if (current.symbols[b] != null) {
+                sb.append(current.symbols[b]);
             }
-            if (SYMBOL_TABLE[curState][b] != null) {
-                sb.append(SYMBOL_TABLE[curState][b]);
-            }
-            curState = newState;
+            current = next;
         }
+        // TODO handle current.accept == false
         return sb.toString();
     }
 
