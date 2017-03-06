@@ -27,7 +27,6 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
-import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -530,7 +529,9 @@ final Optional<Route> optional = resolveTarget(sourceRef, hos);
                     int index = x.index();
                     DirectBuffer nameBuffer = context.nameBuffer(index);
                     DirectBuffer valueBuffer = context.valueBuffer(index);
-                    builder.item(i -> i.representation((byte) 0).name(nameBuffer).value(valueBuffer));
+                    builder.item(i -> i.representation((byte) 0)
+                                       .name(nameBuffer, 0, nameBuffer.capacity())
+                                       .value(valueBuffer, 0, valueBuffer.capacity()));
                 }
                 break;
 
@@ -548,7 +549,9 @@ final Optional<Route> optional = resolveTarget(sourceRef, hos);
                                 valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
                             }
                             DirectBuffer valueBuffer = valuePayload;
-                            builder.item(i -> i.representation((byte) 0).name(nameBuffer).value(valueBuffer));
+                            builder.item(i -> i.representation((byte) 0)
+                                               .name(nameBuffer, 0, nameBuffer.capacity())
+                                               .value(valueBuffer, 0, valueBuffer.capacity()));
                         }
                         break;
                         case NEW: {
@@ -567,7 +570,9 @@ final Optional<Route> optional = resolveTarget(sourceRef, hos);
                                 valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
                             }
                             DirectBuffer valueBuffer = valuePayload;
-                            builder.item(i -> i.representation((byte) 0).name(nameBuffer).value(valueBuffer));
+                            builder.item(i -> i.representation((byte) 0)
+                                               .name(nameBuffer, 0, nameBuffer.capacity())
+                                               .value(valueBuffer, 0, valueBuffer.capacity()));
 
                             if (literalRO.literalType() == INCREMENTAL_INDEXING) {
                                 context.add(nameBuffer, valueBuffer);

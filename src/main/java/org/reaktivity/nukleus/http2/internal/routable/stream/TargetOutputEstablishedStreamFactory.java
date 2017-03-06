@@ -15,17 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import static java.lang.Character.toUpperCase;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
-
-import java.util.Collections;
-import java.util.Map;
-import java.util.function.Consumer;
-import java.util.function.Function;
-import java.util.function.LongFunction;
-import java.util.function.LongSupplier;
-
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
@@ -48,6 +37,15 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.LongFunction;
+import java.util.function.LongSupplier;
+
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 public final class TargetOutputEstablishedStreamFactory
 {
@@ -258,29 +256,9 @@ public final class TargetOutputEstablishedStreamFactory
                     beginEx.headers().forEach(mapHeader(hpackContext));
                 }
 
-//                http2HeadersRW.header(hf -> hf.indexed(13))     // :status: 404
-//                              .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(54).value("nghttpd nghttp2/1.19.0")))
-//                              .header(hf -> hf.literal(l -> l.type(WITHOUT_INDEXING).name(33).value("Wed, 01 Feb 2017 19:12:46 GMT")))
-//                              .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(31).value("text/html; charset=UTF-8")))
-//                              .header(hf -> hf.literal(l -> l.type(WITHOUT_INDEXING).name(28).value("147")));
-
                 Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
 
-System.out.println("nukleus --> source");
-SourceInputStreamFactory.printBuf(http2HeadersRO.buffer());
-
-//                byte[] headersPayload = new byte[] {
-//                        0x00, 0x00, 0x45, 0x01, 0x04, 0x00, 0x00, 0x00, 0x01, (byte)0x8d, 0x76, (byte)0x90, (byte)0xaa, 0x69, (byte)0xd2, (byte)0x9a,
-//                        (byte)0xe4, 0x52, (byte)0xa9, (byte)0xa7, 0x4a, 0x6b, 0x13, 0x01, 0x5c, 0x2f, (byte)0xae, 0x0f, 0x61, (byte)0x96, (byte)0xe4, 0x59,
-//                        0x3e, (byte)0x94, 0x00, 0x54, (byte)0xc2, 0x58, (byte)0xd4, 0x10, 0x02, (byte)0xea, (byte)0x81, 0x7e, (byte)0xe0, 0x45, 0x71, (byte)0xa7,
-//                        0x14, (byte)0xc5, (byte)0xa3, 0x7f, 0x5f, (byte)0x92, 0x49, 0x7c, (byte)0xa5, (byte)0x89, (byte)0xd3, 0x4d, 0x1f, 0x6a, 0x12, 0x71,
-//                        (byte)0xd8, (byte)0x82, (byte)0xa6, 0x0e, 0x1b, (byte)0xf0, (byte)0xac, (byte)0xf7, 0x0f, 0x0d, 0x03, 0x31, 0x34, 0x37
-//                };
-//
-//                final DirectBuffer payload = new UnsafeBuffer(headersPayload);
-
                 target.doData(targetId, http2HeadersRO.buffer(), http2HeadersRO.offset(), http2HeadersRO.limit());
-                //target.doData(targetId, payload, 0, payload.capacity());
 
                 this.streamState = this::afterBeginOrData;
                 this.throttleState = this::throttleNextThenSkipWindow;
