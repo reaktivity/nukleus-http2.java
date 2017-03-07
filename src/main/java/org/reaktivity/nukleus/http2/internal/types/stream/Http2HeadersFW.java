@@ -210,17 +210,6 @@ public class Http2HeadersFW extends Flyweight {
             return this;
         }
 
-//        public Builder headers(Consumer<ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW>> mutator) {
-//            blockRW.headers(mutator);
-//            int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
-//            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-//            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-//            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
-//
-//            limit(blockRW.limit());
-//            return this;
-//        }
-
         public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator) {
             blockRW.header(mutator);
             int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;

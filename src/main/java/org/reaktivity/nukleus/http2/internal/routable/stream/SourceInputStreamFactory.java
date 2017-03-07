@@ -45,7 +45,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -361,10 +360,10 @@ System.out.println(http2RO);
                         final Correlation correlation = new Correlation(correlationId, http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
 
                         correlateNew.accept(targetCorrelationId, correlation);
-// TODO
-Map<String, String> hos = new HashMap<>();
-hos.put(":authority", "localhost:8080");
-final Optional<Route> optional = resolveTarget(sourceRef, hos);
+                        // TODO avoid iterating over headers twice
+                        Map<String, String> headersMap = new HashMap<>();
+                        headersRO.forEach(handleHeaderField(hpackContext, headersMap));
+                        final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
                         final Route route = optional.get();
                         final Target newTarget = route.target();
                         final long targetRef = route.targetRef();
@@ -577,6 +576,58 @@ final Optional<Route> optional = resolveTarget(sourceRef, hos);
                             if (literalRO.literalType() == INCREMENTAL_INDEXING) {
                                 context.add(nameBuffer, valueBuffer);
                             }
+                        }
+                        break;
+                    }
+                    break;
+
+                case UPDATE:
+                    break;
+            }
+        };
+    }
+
+    private Consumer<HpackHeaderFieldFW> handleHeaderField(
+            HpackContext context,
+            Map<String, String> headersMap)
+    {
+        return x -> {
+            HpackHeaderFieldFW.HeaderFieldType headerFieldType = x.type();
+            switch (headerFieldType) {
+                case INDEXED : {
+                    int index = x.index();
+                    headersMap.put(context.name(index), context.value(index));
+                }
+                break;
+
+                case LITERAL :
+                    HpackLiteralHeaderFieldFW literalRO = x.literal();
+                    switch (literalRO.nameType()) {
+                        case INDEXED: {
+                            int index = literalRO.nameIndex();
+                            String name = context.name(index);
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            String value = valueRO.huffman()
+                                    ? HpackHuffman.decode(valuePayload)
+                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            headersMap.put(name, value);
+                        }
+                        break;
+                        case NEW: {
+                            HpackStringFW nameRO = literalRO.nameLiteral();
+                            DirectBuffer namePayload = nameRO.payload();
+                            String name = nameRO.huffman()
+                                    ? HpackHuffman.decode(namePayload)
+                                    : namePayload.getStringWithoutLengthUtf8(0, namePayload.capacity());
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            String value = valueRO.huffman()
+                                    ? HpackHuffman.decode(valuePayload)
+                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            headersMap.put(name, value);
                         }
                         break;
                     }
