@@ -287,7 +287,11 @@ public final class TargetOutputEstablishedStreamFactory
             {
                 final OctetsFW payload = dataRO.payload();
                 AtomicBuffer body = new UnsafeBuffer(new byte[2048]);
-                Http2DataFW http2Data = dataRW.wrap(body, 0, 2048).streamId(http2StreamId).endStream().payload(payload.buffer(), payload.offset(), payload.sizeof()).build();
+                Http2DataFW http2Data = dataRW.wrap(body, 0, 2048)
+                                              .streamId(http2StreamId)
+                                              .endStream()
+                                              .payload(payload.buffer(), payload.offset(), payload.sizeof())
+                                              .build();
                 target.doData(targetId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
 
                 //target.doData(targetId, payload);
@@ -424,7 +428,8 @@ public final class TargetOutputEstablishedStreamFactory
     }
 
     // Map http1.1 header to http2 header field
-    private Consumer<HttpHeaderFW> mapHeader(HpackContext hpackContext) {
+    private Consumer<HttpHeaderFW> mapHeader(HpackContext hpackContext)
+    {
         return httpHeader -> http2HeadersRW.header(hfBuilder -> {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
@@ -432,10 +437,13 @@ public final class TargetOutputEstablishedStreamFactory
             valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
 
             int index = hpackContext.index(nameRO, valueRO);
-            if (index != -1) {
+            if (index != -1)
+            {
                 // Indexed
                 hfBuilder.indexed(index);
-            } else {
+            }
+            else
+            {
                 // Literal
                 hfBuilder.literal(literalBuilder -> buildLiteral(literalBuilder, hpackContext));
             }
@@ -444,12 +452,16 @@ public final class TargetOutputEstablishedStreamFactory
 
     // Building Literal representation of header field
     // TODO dynamic table, huffman, never indexed
-    private void buildLiteral(HpackLiteralHeaderFieldFW.Builder builder, HpackContext hpackContext) {
+    private void buildLiteral(HpackLiteralHeaderFieldFW.Builder builder, HpackContext hpackContext)
+    {
         int nameIndex = hpackContext.index(nameRO);
         builder.type(WITHOUT_INDEXING);
-        if (nameIndex != -1) {
+        if (nameIndex != -1)
+        {
             builder.name(nameIndex);
-        } else {
+        }
+        else
+        {
             builder.name(nameRO, 0, nameRO.capacity());
         }
         builder.value(valueRO, 0, valueRO.capacity());

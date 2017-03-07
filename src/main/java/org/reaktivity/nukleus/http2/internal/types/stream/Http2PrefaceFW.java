@@ -23,10 +23,12 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 /*
  *  Flyweight for HTTP2 client preface
  */
-public class Http2PrefaceFW extends Flyweight {
+public class Http2PrefaceFW extends Flyweight
+{
 
     private static final byte[] PRI_REQUEST =
-            {'P','R','I',' ','*',' ','H','T','T','P','/','2','.','0','\r','\n','\r','\n','S','M','\r','\n','\r','\n'};
+            { 'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n',
+                    'S', 'M', '\r', '\n', '\r', '\n' };
 
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 

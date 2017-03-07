@@ -15,30 +15,36 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-public interface Http2Flags {
+public interface Http2Flags
+{
     byte END_STREAM = 0x01;
     byte ACK = 0x01;
     byte END_HEADERS = 0x04;
     byte PADDED = 0x08;
     byte PRIORITY = 0x20;
 
-    static boolean padded(byte flags) {
+    static boolean padded(byte flags)
+    {
         return (flags & PADDED) != 0;
     }
 
-    static boolean endStream(byte flags) {
+    static boolean endStream(byte flags)
+    {
         return (flags & END_STREAM) != 0;
     }
 
-    static boolean endHeaders(byte flags) {
+    static boolean endHeaders(byte flags)
+    {
         return (flags & END_HEADERS) != 0;
     }
 
-    static boolean priority(byte flags) {
+    static boolean priority(byte flags)
+    {
         return (flags & PRIORITY) != 0;
     }
 
-    static boolean ack(byte flags) {
+    static boolean ack(byte flags)
+    {
         return (flags & ACK) != 0;
     }
 }

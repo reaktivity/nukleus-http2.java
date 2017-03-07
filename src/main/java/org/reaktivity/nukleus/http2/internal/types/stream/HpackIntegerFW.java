@@ -37,7 +37,8 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
    +---+---------------------------+
 
  */
-public class HpackIntegerFW extends Flyweight {
+public class HpackIntegerFW extends Flyweight
+{
 
     private static final int[] TWON_TABLE;
     private final int n;
@@ -45,18 +46,22 @@ public class HpackIntegerFW extends Flyweight {
     private int decodedOctets;
     private int value;
 
-    static {
+    static
+    {
         TWON_TABLE = new int[32];
-        for (int i = 0; i < 32; ++i) {
+        for (int i = 0; i < 32; ++i)
+        {
             TWON_TABLE[i] = 1 << i;
         }
     }
 
-    public HpackIntegerFW(int n) {
+    public HpackIntegerFW(int n)
+    {
         this.n = n;
     }
 
-    public int integer() {
+    public int integer()
+    {
         return value;
     }
 
@@ -87,10 +92,12 @@ public class HpackIntegerFW extends Flyweight {
          */
         int i = (TWON_TABLE[n] - 1) & buffer().getByte(offset());
         decodedOctets++;
-        if (i >= TWON_TABLE[n] - 1) {
+        if (i >= TWON_TABLE[n] - 1)
+        {
             int m = 0;
             int b;
-            do {
+            do
+            {
                 b = buffer().getByte(offset() + decodedOctets);
                 decodedOctets++;
                 i = i + (b & 127) * TWON_TABLE[m];
@@ -134,19 +141,24 @@ public class HpackIntegerFW extends Flyweight {
          * @param offset offset for current octet
          * @param n number of bits of the prefix
          */
-        public HpackIntegerFW.Builder integer(int value) {
+        public HpackIntegerFW.Builder integer(int value)
+        {
             assert n >= 1;
             assert n <= 8;
             int twoNminus1 = TWON_TABLE[n]-1;
             int i = offset();
 
             byte cur = buffer().getByte(i);
-            if (value < twoNminus1) {
+            if (value < twoNminus1)
+            {
                 buffer().putByte(i++, (byte) (cur | value));
-            } else {
+            }
+            else
+            {
                 buffer().putByte(i++, (byte) (cur | twoNminus1));
                 value = value - twoNminus1;
-                while (value >= 128) {
+                while (value >= 128)
+                {
                     buffer().putByte(i++, (byte) (value % 128 + 128));
                     value = value / 128;
                 }

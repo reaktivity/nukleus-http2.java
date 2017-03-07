@@ -22,11 +22,13 @@ import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
 
-public class HpackIntegerFWTest {
+public class HpackIntegerFWTest
+{
 
     // C.1.1. Encoding 10 Using a 5-Bit Prefix
     @Test
-    public void encode() {
+    public void encode()
+    {
         int value = 10;
         int n = 5;
         byte[] bytes = new byte[100];
@@ -46,7 +48,8 @@ public class HpackIntegerFWTest {
 
     // C.1.1. Decoding 10 Using a 5-Bit Prefix
     @Test
-    public void decode() {
+    public void decode()
+    {
         // Decoding 10 Using a 5-Bit Prefix
         int value = 10;
         int n = 5;
@@ -65,7 +68,8 @@ public class HpackIntegerFWTest {
 
     // C.1.2. Encoding 1337 Using a 5-Bit Prefix
     @Test
-    public void encode1() {
+    public void encode1()
+    {
         int value = 1337;
         int n = 5;
         byte[]bytes = new byte[100];
@@ -87,7 +91,8 @@ public class HpackIntegerFWTest {
 
     // C.1.2. Decoding 1337 Using a 5-Bit Prefix
     @Test
-    public void decode1() {
+    public void decode1()
+    {
         int value = 1337;
         int n = 5;
         byte[]bytes = new byte[100];
@@ -106,7 +111,8 @@ public class HpackIntegerFWTest {
     }
 
     @Test
-    public void encode2() {
+    public void encode2()
+    {
         // Encoding 1337 Using a 5-Bit Prefix
         int value = 1337;
         int n = 5;
@@ -128,7 +134,8 @@ public class HpackIntegerFWTest {
     }
 
     @Test
-    public void decode2() {
+    public void decode2()
+    {
         // Decoding 1337 Using a 5-Bit Prefix
         int value = 1337;
         int n = 5;
@@ -149,7 +156,8 @@ public class HpackIntegerFWTest {
 
     // C.1.3.  Encoding 42 Starting at an Octet Boundary
     @Test
-    public void encode3() {
+    public void encode3()
+    {
         // Encoding 42 Starting at an Octet Boundary (n = 8)
         int value = 42;
         int n = 8;
@@ -169,7 +177,8 @@ public class HpackIntegerFWTest {
 
     // C.1.3. Decoding 42 Starting at an Octet Boundary
     @Test
-    public void decode3() {
+    public void decode3()
+    {
         // Decoding 42 Starting at an Octet Boundary (n = 8)
         int value = 42;
         int n = 8;

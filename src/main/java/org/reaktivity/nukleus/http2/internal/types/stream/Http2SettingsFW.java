@@ -21,8 +21,6 @@ import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
-import java.nio.ByteOrder;
-
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
@@ -47,7 +45,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +---------------------------------------------------------------+
 
  */
-public class Http2SettingsFW extends Flyweight {
+public class Http2SettingsFW extends Flyweight
+{
     private static final int HEADER_TABLE_SIZE = 1;
     public static final int ENABLE_PUSH = 2;
     public static final int MAX_CONCURRENT_STREAMS = 3;
@@ -63,7 +62,8 @@ public class Http2SettingsFW extends Flyweight {
 
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
-    public int payloadLength() {
+    public int payloadLength()
+    {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
         length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
         length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
@@ -72,53 +72,66 @@ public class Http2SettingsFW extends Flyweight {
         return length;
     }
 
-    public Http2FrameType type() {
-        assert buffer().getByte(offset() + TYPE_OFFSET) == SETTINGS.getType();
+    public Http2FrameType type()
+    {
+        //assert buffer().getByte(offset() + TYPE_OFFSET) == SETTINGS.getType();
         return SETTINGS;
     }
 
-    public byte flags() {
+    public byte flags()
+    {
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    public int streamId() {
+    public int streamId()
+    {
         // Most significant bit is reserved and is ignored when receiving
         int streamId = buffer().getInt(offset() + STREAM_ID_OFFSET) & 0x7F_FF_FF_FF;
         assert streamId == 0;
         return streamId;
     }
 
-    public long headerTableSize() {
+    public long headerTableSize()
+    {
         return settings(HEADER_TABLE_SIZE);
     }
 
-    public long enablePush() {
+    public long enablePush()
+    {
         return settings(ENABLE_PUSH);
     }
 
-    public long maxConcurrentStreams() {
+    public long maxConcurrentStreams()
+    {
         return settings(MAX_CONCURRENT_STREAMS);
     }
 
-    public long initialWindowSize() {
+    public long initialWindowSize()
+    {
         return settings(INITIAL_WINDOW_SIZE);
     }
 
-    public long maxFrameSize() {
+    public long maxFrameSize()
+    {
         return settings(MAX_FRAME_SIZE);
     }
 
-    public long maxHeaderListSize() {
+    public long maxHeaderListSize()
+    {
         return settings(MAX_HEADER_LIST_SIZE);
     }
 
-    public long settings(int key) {
+    public long settings(int key)
+    {
         int payloadLength = payloadLength();
         int noSettings = payloadLength/6;
-        if (noSettings > 0) {
-            for (int i = 0; i < noSettings; i++) {
+        if (noSettings > 0)
+        {
+            for (int i = 0; i < noSettings; i++)
+            {
                 int got = buffer().getShort(offset() + PAYLOAD_OFFSET + 6 * i, BIG_ENDIAN);
-                if (key == got) {
+                if (key == got)
+                {
                     return buffer().getInt(offset() + PAYLOAD_OFFSET + 6 * i + 2, BIG_ENDIAN);
                 }
             }
@@ -185,7 +198,8 @@ public class Http2SettingsFW extends Flyweight {
             return this;
         }
 
-        public Builder ack() {
+        public Builder ack()
+        {
             buffer().putByte(offset() + FLAGS_OFFSET, ACK);
             return this;
         }
@@ -226,7 +240,8 @@ public class Http2SettingsFW extends Flyweight {
             return this;
         }
 
-        private void addSetting(int key, long value) {
+        private void addSetting(int key, long value)
+        {
             int curLimit = limit();
             limit(curLimit + 6);
 

@@ -46,22 +46,26 @@ public final class Http2FrameFW extends Flyweight
 
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
-    public int payloadLength() {
+    public int payloadLength()
+    {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
         length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
         length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
         return length;
     }
 
-    public Http2FrameType type() {
+    public Http2FrameType type()
+    {
         return Http2FrameType.from(buffer().getByte(offset() + TYPE_OFFSET));
     }
 
-    public byte flags() {
+    public byte flags()
+    {
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    public int streamId() {
+    public int streamId()
+    {
         // Most significant bit is reserved and is ignored when receiving
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }

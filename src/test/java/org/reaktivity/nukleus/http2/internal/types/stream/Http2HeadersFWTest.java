@@ -18,27 +18,22 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
 
-import javax.xml.bind.DatatypeConverter;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.INDEXED;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.NEW;
 
-public class Http2HeadersFWTest {
+public class Http2HeadersFWTest
+{
 
     @Test
-    public void decode() {
-        byte[] bytes = new byte[] {
+    public void decode()
+    {
+        byte[] bytes = new byte[]
+        {
                 0x7f, 0x7f,
                 // HEADERS frame begin
                 0x00, 0x00, 0x0f, 0x01, 0x05, 0x00, 0x00, 0x00, 0x01, (byte) 0x82, (byte) 0x86,

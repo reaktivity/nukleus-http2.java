@@ -319,7 +319,8 @@ public final class SourceInputStreamFactory
         }
 
 
-        private int decodePreface(final DirectBuffer buffer, final int offset, final int limit) {
+        private int decodePreface(final DirectBuffer buffer, final int offset, final int limit)
+        {
             prefaceRO.wrap(buffer, offset, limit);
             this.decoderState = this::decodeHttp2Frames;
             source.doWindow(sourceId, limit - offset);
@@ -338,26 +339,29 @@ public final class SourceInputStreamFactory
             return prefaceRO.limit();
         }
 
-        private int decodeHttp2Frames(final DirectBuffer buffer, final int offset, final int limit) {
+        private int decodeHttp2Frames(final DirectBuffer buffer, final int offset, final int limit)
+        {
             int nextOffset = offset;
 
-            for (; nextOffset < limit; nextOffset = http2RO.limit()) {
+            for (; nextOffset < limit; nextOffset = http2RO.limit())
+            {
 
                 assert limit - nextOffset >= 3;
 
                 http2RO.wrap(buffer, nextOffset, limit);
-System.out.println(http2RO);
-                switch (http2RO.type()) {
+                switch (http2RO.type())
+                {
                     case DATA:
                         //target.doData(targetId, payload, offset, limit - offset);
                         break;
-                    case HEADERS: {
+                    case HEADERS:
 
                         headersRO.wrap(buffer, nextOffset, limit);
 
                         final long newTargetId = supplyStreamId.getAsLong();
                         final long targetCorrelationId = newTargetId;
-                        final Correlation correlation = new Correlation(correlationId, http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
+                        final Correlation correlation = new Correlation(correlationId, http2RO.streamId(),
+                                source.routableName(), OUTPUT_ESTABLISHED);
 
                         correlateNew.accept(targetCorrelationId, correlation);
                         // TODO avoid iterating over headers twice
@@ -376,7 +380,7 @@ System.out.println(http2RO);
                         newTarget.doHttpEnd(newTargetId);
                         source.doWindow(sourceId, limit - offset);
                         this.throttleState = this::throttleSkipNextWindow;
-                    }
+
                         break;
                     case PRIORITY:
                         break;
@@ -523,7 +527,8 @@ System.out.println(http2RO);
     {
         return x -> {
             HpackHeaderFieldFW.HeaderFieldType headerFieldType = x.type();
-            switch (headerFieldType) {
+            switch (headerFieldType)
+            {
                 case INDEXED : {
                     int index = x.index();
                     DirectBuffer nameBuffer = context.nameBuffer(index);
@@ -536,14 +541,17 @@ System.out.println(http2RO);
 
                 case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = x.literal();
-                    switch (literalRO.nameType()) {
-                        case INDEXED: {
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
                             int index = literalRO.nameIndex();
                             DirectBuffer nameBuffer = context.nameBuffer(index);
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
                             DirectBuffer valuePayload = valueRO.payload();
-                            if (valueRO.huffman()) {
+                            if (valueRO.huffman())
+                            {
                                 String value = HpackHuffman.decode(valuePayload);
                                 valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
                             }
@@ -553,10 +561,12 @@ System.out.println(http2RO);
                                                .value(valueBuffer, 0, valueBuffer.capacity()));
                         }
                         break;
-                        case NEW: {
+                        case NEW:
+                        {
                             HpackStringFW nameRO = literalRO.nameLiteral();
                             DirectBuffer namePayload = nameRO.payload();
-                            if (nameRO.huffman()) {
+                            if (nameRO.huffman())
+                            {
                                 String name = HpackHuffman.decode(namePayload);
                                 namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
                             }
@@ -564,7 +574,8 @@ System.out.println(http2RO);
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
                             DirectBuffer valuePayload = valueRO.payload();
-                            if (valueRO.huffman()) {
+                            if (valueRO.huffman())
+                            {
                                 String value = HpackHuffman.decode(valuePayload);
                                 valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
                             }
@@ -573,7 +584,8 @@ System.out.println(http2RO);
                                                .name(nameBuffer, 0, nameBuffer.capacity())
                                                .value(valueBuffer, 0, valueBuffer.capacity()));
 
-                            if (literalRO.literalType() == INCREMENTAL_INDEXING) {
+                            if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                            {
                                 context.add(nameBuffer, valueBuffer);
                             }
                         }
@@ -593,8 +605,10 @@ System.out.println(http2RO);
     {
         return x -> {
             HpackHeaderFieldFW.HeaderFieldType headerFieldType = x.type();
-            switch (headerFieldType) {
-                case INDEXED : {
+            switch (headerFieldType)
+            {
+                case INDEXED :
+                {
                     int index = x.index();
                     headersMap.put(context.name(index), context.value(index));
                 }
@@ -602,8 +616,10 @@ System.out.println(http2RO);
 
                 case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = x.literal();
-                    switch (literalRO.nameType()) {
-                        case INDEXED: {
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
                             int index = literalRO.nameIndex();
                             String name = context.name(index);
 
@@ -637,14 +653,6 @@ System.out.println(http2RO);
                     break;
             }
         };
-    }
-
-    static void printBuf(DirectBuffer buf) {
-        for(int i=0; i < buf.capacity(); i++) {
-            System.out.printf("%02x ", buf.getByte(i));
-        }
-        System.out.println();
-
     }
 
 }

@@ -33,7 +33,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 
 public final class Target implements Nukleus
@@ -187,11 +186,6 @@ public final class Target implements Nukleus
                 .correlationId(correlationId)
                 .extension(e -> e.set(visitHttpBeginEx(mutator)))
                 .build();
-
-        for(int i=0; i < 100; i++) {
-            System.out.printf("%02x ", writeBuffer.getByte(i));
-        }
-        System.out.println();
 
         streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }

@@ -32,11 +32,13 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.INDEXED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.NEW;
 
-public class HpackHeaderFieldFWTest {
+public class HpackHeaderFieldFWTest
+{
 
     // Decoding "C.2.1.  Literal Header Field with Indexing"
     @Test
-    public void decodeC_2_1() {
+    public void decodeC21()
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header field  begin
@@ -65,7 +67,8 @@ public class HpackHeaderFieldFWTest {
 
     // Encoding "C.2.1.  Literal Header Field with Indexing"
     @Test
-    public void encodeC_2_1() {
+    public void encodeC21()
+    {
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
@@ -94,7 +97,8 @@ public class HpackHeaderFieldFWTest {
 
     // Decoding "C.2.2.  Literal Header Field without Indexing"
     @Test
-    public void decodeC_2_2() {
+    public void decodeC22()
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header field  begin
@@ -122,7 +126,8 @@ public class HpackHeaderFieldFWTest {
 
     // Encoding "C.2.2.  Literal Header Field without Indexing"
     @Test
-    public void encodeC_2_2() {
+    public void encodeC22()
+    {
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
@@ -149,7 +154,8 @@ public class HpackHeaderFieldFWTest {
 
     // Decoding "C.2.3.  Literal Header Field Never Indexed"
     @Test
-    public void decodeC_2_3() {
+    public void decodeC23()
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header field  begin
@@ -178,7 +184,8 @@ public class HpackHeaderFieldFWTest {
 
     // Decoding "C.2.3.  Literal Header Field Never Indexed"
     @Test
-    public void encodeC_2_3() {
+    public void encodeC23()
+    {
         DirectBuffer password = new UnsafeBuffer("password".getBytes(UTF_8));
         DirectBuffer secret = new UnsafeBuffer("secret".getBytes(UTF_8));
 
@@ -211,7 +218,8 @@ public class HpackHeaderFieldFWTest {
 
     // Decoding "C.2.4.  Indexed Header Field"
     @Test
-    public void decodeC_2_4() {
+    public void decodeC24()
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header field  begin
@@ -232,7 +240,8 @@ public class HpackHeaderFieldFWTest {
 
     // Encoding "C.2.4.  Indexed Header Field"
     @Test
-    public void encodeC_2_4() {
+    public void encodeC24()
+    {
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 

@@ -25,11 +25,13 @@ import javax.xml.bind.DatatypeConverter;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 
-public class HpackHuffmanTest {
+public class HpackHuffmanTest
+{
 
     // Tests decoding of examples from RFC 7541 (HPACK)
     @Test
-    public void decode() {
+    public void decode()
+    {
         decode("f1e3c2e5f23a6ba0ab90f4ff", "www.example.com");
         decode("a8eb10649cbf", "no-cache");
         decode("25a849e95ba97d7f", "custom-key");
@@ -45,7 +47,8 @@ public class HpackHuffmanTest {
                 "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1");
     }
 
-    private void decode(String encoded, String expected) {
+    private void decode(String encoded, String expected)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary("00" + encoded);    // +00 to test offset
         DirectBuffer buf = new UnsafeBuffer(bytes, 1, bytes.length - 1);
         String got = HpackHuffman.decode(buf);
@@ -54,7 +57,8 @@ public class HpackHuffmanTest {
 
     // Tests encoding of examples from RFC 7541 (HPACK)
     @Test
-    public void encode() {
+    public void encode()
+    {
         encode("www.example.com", "f1e3c2e5f23a6ba0ab90f4ff");
         encode("no-cache", "a8eb10649cbf");
         encode("custom-key", "25a849e95ba97d7f");
@@ -70,7 +74,8 @@ public class HpackHuffmanTest {
                 "94e7821dd7f2e6c7b335dfdfcd5b3960d5af27087f3672c1ab270fb5291f9587316065c003ed4ee5b1063d5007");
     }
 
-    private void encode(String str, String expected) {
+    private void encode(String str, String expected)
+    {
         byte[] expectedBytes = DatatypeConverter.parseHexBinary(expected);
         DirectBuffer expectedBuf = new UnsafeBuffer(expectedBytes);
 

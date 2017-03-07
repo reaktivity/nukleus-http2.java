@@ -18,17 +18,14 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.nio.ByteOrder;
-import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PADDED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PRIORITY;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
 
 /*
@@ -54,7 +51,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +---------------------------------------------------------------+
 
  */
-public class Http2HeadersFW extends Flyweight {
+public class Http2HeadersFW extends Flyweight
+{
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
@@ -63,71 +61,86 @@ public class Http2HeadersFW extends Flyweight {
 
     private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
 
-    public int payloadLength() {
+    public int payloadLength()
+    {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
         length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
         length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
         return length;
     }
 
-    public Http2FrameType type() {
-        assert buffer().getByte(offset() + TYPE_OFFSET) == HEADERS.getType();
+    public Http2FrameType type()
+    {
+        //assert buffer().getByte(offset() + TYPE_OFFSET) == HEADERS.getType();
         return HEADERS;
     }
 
-    public byte flags() {
+    public byte flags()
+    {
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    public int streamId() {
+    public int streamId()
+    {
         // Most significant bit is reserved and is ignored when receiving
         int streamId = buffer().getInt(offset() + STREAM_ID_OFFSET) & 0x7F_FF_FF_FF;
         assert streamId != 0;
         return streamId;
     }
 
-    public boolean padded() {
+    public boolean padded()
+    {
         return Http2Flags.padded(flags());
     }
 
-    public boolean endStream() {
+    public boolean endStream()
+    {
         return Http2Flags.endStream(flags());
     }
 
-    public boolean endHeaders() {
+    public boolean endHeaders()
+    {
         return Http2Flags.endHeaders(flags());
     }
 
-    public boolean priority() {
+    public boolean priority()
+    {
         return Http2Flags.priority(flags());
     }
 
-    private int dataOffset() {
+    private int dataOffset()
+    {
         int dataOffset = offset() + PAYLOAD_OFFSET;
-        if (padded()) {
+        if (padded())
+        {
             dataOffset++;        // +1 for Pad Length
         }
-        if (priority()) {
+        if (priority())
+        {
             dataOffset += 5;      // +4 for Stream Dependency, +1 for Weight
         }
         return dataOffset;
     }
 
-    public int dataLength() {
+    public int dataLength()
+    {
         int dataLength = payloadLength();
-        if (padded()) {
+        if (padded())
+        {
             int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
             dataLength -= (paddingLength + 1);    // -1 for Pad Length, -Padding
         }
 
-        if (priority()) {
+        if (priority())
+        {
             dataLength -= 5;    // -4 for Stream Dependency, -1 for Weight
         }
 
         return dataLength;
     }
 
-    public void forEach(Consumer<HpackHeaderFieldFW> headerField) {
+    public void forEach(Consumer<HpackHeaderFieldFW> headerField)
+    {
         headerBlockRO.forEach(headerField);
     }
 
@@ -185,32 +198,38 @@ public class Http2HeadersFW extends Flyweight {
             return this;
         }
 
-        public Builder streamId(int streamId) {
+        public Builder streamId(int streamId)
+        {
             buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, ByteOrder.BIG_ENDIAN);
             return this;
         }
 
-        public Builder padded(boolean padded) {
+        public Builder padded(boolean padded)
+        {
             buffer().putByte(offset() + FLAGS_OFFSET, PADDED);
             return this;
         }
 
-        public Builder endStream() {
+        public Builder endStream()
+        {
             buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
             return this;
         }
 
-        public Builder endHeaders() {
+        public Builder endHeaders()
+        {
             buffer().putByte(offset() + FLAGS_OFFSET, END_HEADERS);
             return this;
         }
 
-        public Builder priority() {
+        public Builder priority()
+        {
             buffer().putByte(offset() + FLAGS_OFFSET, PRIORITY);
             return this;
         }
 
-        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator) {
+        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator)
+        {
             blockRW.header(mutator);
             int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
             buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));

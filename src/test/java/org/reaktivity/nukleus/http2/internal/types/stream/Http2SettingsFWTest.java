@@ -19,16 +19,14 @@ import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
-import java.util.Map;
-
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
 
-public class Http2SettingsFWTest {
+public class Http2SettingsFWTest
+{
 
     @Test
-    public void decode() {
+    public void decode()
+    {
         byte[] bytes = new byte[] {
                 0x7f, 0x7f,
                 // SETTINGS frame begin

@@ -26,10 +26,12 @@ import static java.nio.charset.StandardCharsets.US_ASCII;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 
-public class HpackStringFWTest {
+public class HpackStringFWTest
+{
 
     @Test
-    public void encode() {
+    public void encode()
+    {
         String value = "custom-key";
         byte[] valueBytes = value.getBytes(US_ASCII);
         DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
@@ -49,7 +51,8 @@ public class HpackStringFWTest {
     }
 
     @Test
-    public void decode() {
+    public void decode()
+    {
         String value = "custom-key";
         byte[] valueBytes = value.getBytes(US_ASCII);
         DirectBuffer valueBuf = new UnsafeBuffer(valueBytes);
@@ -66,7 +69,8 @@ public class HpackStringFWTest {
     }
 
     @Test
-    public void encode1() {
+    public void encode1()
+    {
         StringBuilder sb = new StringBuilder();
         IntStream.range(0, 1337).forEach(x -> sb.append("a"));
         String value = sb.toString();
@@ -90,7 +94,8 @@ public class HpackStringFWTest {
     }
 
     @Test
-    public void decode1() {
+    public void decode1()
+    {
         StringBuilder sb = new StringBuilder();
         IntStream.range(0, 1337).forEach(x -> sb.append("a"));
         String value = sb.toString();
@@ -112,7 +117,8 @@ public class HpackStringFWTest {
 
     // Encodes string (passed as DirectBuffer)
     @Test
-    public void encode2() {
+    public void encode2()
+    {
         StringBuilder sb = new StringBuilder();
         IntStream.range(0, 1337).forEach(x -> sb.append("a"));
         String value = sb.toString();

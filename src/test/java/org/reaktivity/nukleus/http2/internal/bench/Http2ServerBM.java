@@ -15,25 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.bench;
 
-import static java.nio.ByteBuffer.allocateDirect;
-import static java.nio.file.FileVisitOption.FOLLOW_LINKS;
-import static java.util.Collections.emptyMap;
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.agrona.BitUtil.SIZE_OF_INT;
-import static org.agrona.BitUtil.SIZE_OF_LONG;
-import static org.reaktivity.nukleus.Configuration.DIRECTORY_PROPERTY_NAME;
-import static org.reaktivity.nukleus.Configuration.STREAMS_BUFFER_CAPACITY_PROPERTY_NAME;
-import static org.reaktivity.nukleus.http2.internal.types.control.Role.INPUT;
-import static org.reaktivity.nukleus.http2.internal.types.control.State.NEW;
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Properties;
-import java.util.Random;
-
 import org.agrona.LangUtil;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
@@ -66,6 +47,23 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.reaktor.internal.Reaktor;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Properties;
+import java.util.Random;
+
+import static java.nio.ByteBuffer.allocateDirect;
+import static java.nio.file.FileVisitOption.FOLLOW_LINKS;
+import static java.util.Collections.emptyMap;
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.agrona.BitUtil.SIZE_OF_INT;
+import static org.agrona.BitUtil.SIZE_OF_LONG;
+import static org.reaktivity.nukleus.Configuration.DIRECTORY_PROPERTY_NAME;
+import static org.reaktivity.nukleus.Configuration.STREAMS_BUFFER_CAPACITY_PROPERTY_NAME;
 
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)

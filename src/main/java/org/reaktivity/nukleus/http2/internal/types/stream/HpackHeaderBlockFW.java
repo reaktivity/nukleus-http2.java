@@ -20,7 +20,6 @@ import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /*
@@ -35,16 +34,19 @@ import java.util.function.Consumer;
     +---------------------------------------------------------------+
 
  */
-public class HpackHeaderBlockFW extends Flyweight {
+public class HpackHeaderBlockFW extends Flyweight
+{
 
     private final ListFW<HpackHeaderFieldFW> listFW = new ListFW<>(new HpackHeaderFieldFW());
 
     @Override
-    public int limit() {
+    public int limit()
+    {
         return listFW.limit();
     }
 
-    public HpackHeaderBlockFW forEach(Consumer<HpackHeaderFieldFW> headerField) {
+    public HpackHeaderBlockFW forEach(Consumer<HpackHeaderFieldFW> headerField)
+    {
         listFW.forEach(x -> headerField.accept(x));
         return this;
     }
@@ -62,17 +64,20 @@ public class HpackHeaderBlockFW extends Flyweight {
         private final ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> headersRW =
                 new ListFW.Builder<>(new HpackHeaderFieldFW.Builder(), new HpackHeaderFieldFW());
 
-        public Builder() {
+        public Builder()
+        {
             super(new HpackHeaderBlockFW());
         }
 
-        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator) {
+        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator)
+        {
             headersRW.item(mutator);
             super.limit(headersRW.limit());
             return this;
         }
 
-        public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit) {
+        public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        {
             super.wrap(buffer, offset, maxLimit);
             headersRW.wrap(buffer, offset, maxLimit);
             return this;

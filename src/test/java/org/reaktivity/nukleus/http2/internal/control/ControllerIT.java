@@ -15,17 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.control;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.junit.rules.RuleChain.outerRule;
-import static org.reaktivity.nukleus.http2.internal.types.control.Role.INPUT;
-import static org.reaktivity.nukleus.http2.internal.types.control.Role.OUTPUT;
-import static org.reaktivity.nukleus.http2.internal.types.control.State.ESTABLISHED;
-import static org.reaktivity.nukleus.http2.internal.types.control.State.NEW;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Random;
-
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -35,6 +24,13 @@ import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.nukleus.http2.internal.Http2Controller;
 import org.reaktivity.reaktor.test.ControllerRule;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Random;
+
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.rules.RuleChain.outerRule;
 
 public class ControllerIT
 {

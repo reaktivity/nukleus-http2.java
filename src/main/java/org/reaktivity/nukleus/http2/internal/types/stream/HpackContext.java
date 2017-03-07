@@ -11,10 +11,11 @@ import java.util.Objects;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class HpackContext {
+public class HpackContext
+{
 
     private static final String[][] STATIC_TABLE =
-            {
+    {
         /* 0  */ {null, null},
         /* 1  */ {":authority", null},
         /* 2  */ {":method", "GET"},
@@ -77,7 +78,7 @@ public class HpackContext {
         /* 59 */ {"vary", null},
         /* 60 */ {"via", null},
         /* 61 */ {"www-authenticate", null},
-            };
+    };
 
     // TODO use a ring buffer to avoid moving entries
     // TODO eviction of entries
@@ -87,7 +88,8 @@ public class HpackContext {
     private final Map<NameValueKey, HeaderField> namebuf2Index = new HashMap<>();
 
 
-    private static final class HeaderField {
+    private static final class HeaderField
+    {
         private String name;
         private DirectBuffer nameBuffer;
         private String value;
@@ -95,91 +97,114 @@ public class HpackContext {
         private int index;
         private int size;
 
-        HeaderField(String name, String value) {
+        HeaderField(String name, String value)
+        {
             this.name = name;
             this.value = value;
         }
 
-        HeaderField(DirectBuffer nameBuffer, DirectBuffer valueBuffer) {
+        HeaderField(DirectBuffer nameBuffer, DirectBuffer valueBuffer)
+        {
             this.nameBuffer = nameBuffer;
             this.valueBuffer = valueBuffer;
         }
 
-        private String name() {
-            if (name == null && nameBuffer != null) {
+        private String name()
+        {
+            if (name == null && nameBuffer != null)
+            {
                 name = nameBuffer.getStringWithoutLengthUtf8(0, nameBuffer.capacity());
             }
             return name;
         }
 
-        private DirectBuffer nameBuffer() {
-            if (nameBuffer == null && name != null) {
+        private DirectBuffer nameBuffer()
+        {
+            if (nameBuffer == null && name != null)
+            {
                 nameBuffer = new UnsafeBuffer(name.getBytes(UTF_8));
             }
             return nameBuffer;
         }
 
 
-        private String value() {
-            if (value == null && valueBuffer != null) {
+        private String value()
+        {
+            if (value == null && valueBuffer != null)
+            {
                 value = valueBuffer.getStringWithoutLengthUtf8(0, valueBuffer.capacity());
             }
             return value;
         }
 
-        private DirectBuffer valueBuffer() {
-            if (valueBuffer == null && value != null) {
+        private DirectBuffer valueBuffer()
+        {
+            if (valueBuffer == null && value != null)
+            {
                 valueBuffer = new UnsafeBuffer(value.getBytes(UTF_8));
             }
             return valueBuffer;
         }
     }
 
-    public HpackContext() {
-        for (int i = 0; i < STATIC_TABLE.length; i++) {
+    public HpackContext()
+    {
+        for (int i = 0; i < STATIC_TABLE.length; i++)
+        {
             String[] field = STATIC_TABLE[i];
             table.add(new HeaderField(field[0], field[1]));
         }
     }
 
-    public void add(String name, String value) {
+    public void add(String name, String value)
+    {
         table.add(STATIC_TABLE.length, new HeaderField(name, value));
     }
 
-    public void add(DirectBuffer nameBuffer, DirectBuffer valueBuffer) {
+    public void add(DirectBuffer nameBuffer, DirectBuffer valueBuffer)
+    {
         table.add(STATIC_TABLE.length, new HeaderField(nameBuffer, valueBuffer));
     }
 
-    public String name(int index) {
+    public String name(int index)
+    {
         return table.get(index).name();
     }
 
-    public DirectBuffer nameBuffer(int index) {
+    public DirectBuffer nameBuffer(int index)
+    {
         return table.get(index).nameBuffer();
     }
 
-    public String value(int index) {
+    public String value(int index)
+    {
         return table.get(index).value();
     }
 
-    public DirectBuffer valueBuffer(int index) {
+    public DirectBuffer valueBuffer(int index)
+    {
         return table.get(index).valueBuffer();
     }
 
-    public int index(String name) {
+    public int index(String name)
+    {
         Integer index = name2Index.get(name);
         return index == null ? -1 : index;
     }
 
-    public int index(String name, String value) {
+    public int index(String name, String value)
+    {
         throw new UnsupportedOperationException("TODO");
     }
 
-    public int index(DirectBuffer name) {
-        for(int i=0; i < table.size(); i++) {
+    public int index(DirectBuffer name)
+    {
+        for(int i=0; i < table.size(); i++)
+        {
             HeaderField hf = table.get(i);
             DirectBuffer nameBuffer = hf.nameBuffer();
-            if (nameBuffer != null && nameBuffer.equals(name)) {
+            if (nameBuffer != null && nameBuffer.equals(name))
+            {
                 return i;
             }
         }
@@ -187,13 +212,17 @@ public class HpackContext {
     }
 
 
-    public int index(DirectBuffer name, DirectBuffer value) {
-        for(int i=0; i < table.size(); i++) {
+    public int index(DirectBuffer name, DirectBuffer value)
+    {
+        for(int i=0; i < table.size(); i++)
+        {
             HeaderField hf = table.get(i);
             DirectBuffer nameBuffer = hf.nameBuffer();
-            if (nameBuffer != null && nameBuffer.equals(name)) {
+            if (nameBuffer != null && nameBuffer.equals(name))
+            {
                 DirectBuffer valueBuffer = hf.valueBuffer();
-                if (valueBuffer != null && valueBuffer.equals(value)) {
+                if (valueBuffer != null && valueBuffer.equals(value))
+                {
                     return i;
                 }
             }
@@ -201,18 +230,22 @@ public class HpackContext {
         return -1;
     }
 
-    private static class NameValueKey {
+    private static class NameValueKey
+    {
         private final DirectBuffer name;
         private final DirectBuffer value;
 
-        NameValueKey(DirectBuffer name, DirectBuffer value) {
+        NameValueKey(DirectBuffer name, DirectBuffer value)
+        {
             this.name = name;
             this.value = value;
         }
 
         @Override
-        public boolean equals(Object obj) {
-            if (obj instanceof NameValueKey) {
+        public boolean equals(Object obj)
+        {
+            if (obj instanceof NameValueKey)
+            {
                 NameValueKey other = (NameValueKey) obj;
                 return Objects.equals(name, other.name) && Objects.equals(value, other.value);
             }
@@ -220,7 +253,8 @@ public class HpackContext {
         }
 
         @Override
-        public int hashCode() {
+        public int hashCode()
+        {
             return Objects.hash(name, value);
         }
     }

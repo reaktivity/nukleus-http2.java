@@ -34,7 +34,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * +-------------------------------+
  *
  */
-public class HpackStringFW extends Flyweight {
+public class HpackStringFW extends Flyweight
+{
 
     private final HpackIntegerFW integerRO = new HpackIntegerFW(7);
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
@@ -85,13 +86,15 @@ public class HpackStringFW extends Flyweight {
             return this;
         }
 
-        public HpackStringFW.Builder huffman() {
+        public HpackStringFW.Builder huffman()
+        {
             throw new UnsupportedOperationException("TODO");
 //            buffer().putByte(offset(), (byte) 0x80);
 //            return this;
         }
 
-        public HpackStringFW.Builder string(DirectBuffer value, int offset, int length) {
+        public HpackStringFW.Builder string(DirectBuffer value, int offset, int length)
+        {
             integerRW.integer(length);
             buffer().putBytes(integerRW.limit(), value, offset, length);
             limit(integerRW.limit() + length);
@@ -99,7 +102,8 @@ public class HpackStringFW extends Flyweight {
             return this;
         }
 
-        public HpackStringFW.Builder string(String str) {
+        public HpackStringFW.Builder string(String str)
+        {
             byte[] bytes = str.getBytes(UTF_8);
             integerRW.integer(bytes.length);
             buffer().putBytes(integerRW.limit(), bytes);

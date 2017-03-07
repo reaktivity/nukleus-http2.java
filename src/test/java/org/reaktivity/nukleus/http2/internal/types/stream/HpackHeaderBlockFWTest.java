@@ -29,25 +29,28 @@ import java.util.function.Consumer;
 import static org.junit.Assert.assertEquals;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
-public class HpackHeaderBlockFWTest {
+public class HpackHeaderBlockFWTest
+{
 
     // Test for decoding "C.3.  Request Examples without Huffman Coding"
     @Test
-    public void decodeC_3() {
+    public void decodeC3()
+    {
         HpackContext context = new HpackContext();
 
         // First request
-        decodeC_3_1(context);
+        decodeC31(context);
 
         // Second request
-        decodeC_3_2(context);
+        decodeC32(context);
 
         // Third request
-        decodeC_3_3(context);
+        decodeC33(context);
     }
 
     // Decoding "C.3.1.  First Request"
-    private void decodeC_3_1(HpackContext context) {
+    private void decodeC31(HpackContext context)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header list begin
@@ -69,7 +72,8 @@ public class HpackHeaderBlockFWTest {
     }
 
     // Decoding "C.3.2.  Second Request"
-    private void decodeC_3_2(HpackContext context) {
+    private void decodeC32(HpackContext context)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header list begin
@@ -92,7 +96,8 @@ public class HpackHeaderBlockFWTest {
     }
 
     // Decoding "C.3.3.  Third Request"
-    private void decodeC_3_3(HpackContext context) {
+    private void decodeC33(HpackContext context)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header list begin
@@ -116,21 +121,23 @@ public class HpackHeaderBlockFWTest {
 
     // Test for encoding "C.3.  Request Examples without Huffman Coding"
     @Test
-    public void encodeC_3() {
+    public void encodeC3()
+    {
         HpackContext context = new HpackContext();
 
         // First request
-        encodeC_3_1(context);
+        encodeC31(context);
 
         // Second request
-        encodeC_3_2(context);
+        encodeC32(context);
 
         // Third request
-        encodeC_3_3(context);
+        encodeC33(context);
     }
 
     // Encoding "C.3.1.  First Request"
-    private void encodeC_3_1(HpackContext context) {
+    private void encodeC31(HpackContext context)
+    {
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
@@ -155,7 +162,8 @@ public class HpackHeaderBlockFWTest {
     }
 
     // Encoding "C.3.2.  Second Request"
-    private void encodeC_3_2(HpackContext context) {
+    private void encodeC32(HpackContext context)
+    {
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
@@ -181,7 +189,8 @@ public class HpackHeaderBlockFWTest {
     }
 
     // Encoding "C.3.3.  Third Request"
-    private void encodeC_3_3(HpackContext context) {
+    private void encodeC33(HpackContext context)
+    {
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
@@ -208,21 +217,23 @@ public class HpackHeaderBlockFWTest {
 
     // Test for decoding "C.4.  Request Examples with Huffman Coding"
     @Test
-    public void decodeC_4() {
+    public void decodeC4()
+    {
         HpackContext context = new HpackContext();
 
         // First request
-        decodeC_4_1(context);
+        decodeC41(context);
 
         // Second request
-        decodeC_4_2(context);
+        decodeC42(context);
 
         // Third request
-        decodeC_4_3(context);
+        decodeC43(context);
     }
 
     // Decoding "C.4.1.  First Request"
-    private void decodeC_4_1(HpackContext context) {
+    private void decodeC41(HpackContext context)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header list begin
@@ -244,7 +255,8 @@ public class HpackHeaderBlockFWTest {
     }
 
     // Decoding "C.4.2.  Second Request"
-    private void decodeC_4_2(HpackContext context) {
+    private void decodeC42(HpackContext context)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header list begin
@@ -267,7 +279,8 @@ public class HpackHeaderBlockFWTest {
     }
 
     // Decoding "C.4.3.  Third Request"
-    private void decodeC_4_3(HpackContext context) {
+    private void decodeC43(HpackContext context)
+    {
         byte[] bytes = DatatypeConverter.parseHexBinary(
                 "00" +  // +00 to test offset
                         // Header list begin
@@ -290,12 +303,14 @@ public class HpackHeaderBlockFWTest {
     }
 
 
-    static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers) {
+    static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers)
+    {
         return x -> {
             HeaderFieldType headerFieldType = x.type();
             String name = null;
             String value = null;
-            switch (headerFieldType) {
+            switch (headerFieldType)
+            {
                 case INDEXED :
                     int index = x.index();
                     name = context.name(index);
@@ -304,8 +319,10 @@ public class HpackHeaderBlockFWTest {
                     break;
                 case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = x.literal();
-                    switch (literalRO.nameType()) {
-                        case INDEXED: {
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
                             index = literalRO.nameIndex();
                             name = context.name(index);
 
@@ -317,7 +334,8 @@ public class HpackHeaderBlockFWTest {
                             headers.put(name, value);
                         }
                         break;
-                        case NEW: {
+                        case NEW:
+                        {
                             HpackStringFW nameRO = literalRO.nameLiteral();
                             DirectBuffer namePayload = nameRO.payload();
                             name = nameRO.huffman()
@@ -333,7 +351,8 @@ public class HpackHeaderBlockFWTest {
                         }
                         break;
                     }
-                    if (literalRO.literalType() == INCREMENTAL_INDEXING) {
+                    if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                    {
                         context.add(name, value);
                     }
                     break;

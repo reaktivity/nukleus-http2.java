@@ -20,7 +20,8 @@ import org.agrona.MutableDirectBuffer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 
-public class HpackHuffman {
+public class HpackHuffman
+{
 
     private static final int[][] CODES =
     {
@@ -290,7 +291,8 @@ public class HpackHuffman {
 
     private static final Node ROOT;
 
-    private static final class Node {
+    private static final class Node
+    {
         int sym;
         Node left;
         Node right;
@@ -298,36 +300,46 @@ public class HpackHuffman {
         String[] symbols;       // node x byte --> symbols (max 2 per transition)
         boolean accept;         // valid huffman node
 
-        Node() {
+        Node()
+        {
             this.sym = -1;
             this.transitions = new Node[256];
             this.symbols = new String[256];
         }
 
         @Override
-        public String toString() {
+        public String toString()
+        {
             return "node[sym="+(char)sym+"]";
         }
     }
 
-    static {
+    static
+    {
         ROOT = new Node();
 
-        for (int sym = 0; sym < CODES.length; sym++) {
+        for (int sym = 0; sym < CODES.length; sym++)
+        {
             Node current = ROOT;
 
             int code = CODES[sym][0];
             int len = CODES[sym][1];
 
-            for (int i = len - 1; i >= 0; i--) {
+            for (int i = len - 1; i >= 0; i--)
+            {
                 int bit = ((code >>> i) & 0x01);        // Using MSB to traverse
-                if (bit == 0) {
-                    if (current.left == null) {
+                if (bit == 0)
+                {
+                    if (current.left == null)
+                    {
                         current.left = new Node();
                     }
                     current = current.left;
-                } else {
-                    if (current.right == null) {
+                }
+                else
+                {
+                    if (current.right == null)
+                    {
                         current.right = new Node();
                     }
                     current = current.right;
@@ -350,11 +362,14 @@ public class HpackHuffman {
     }
 
     // Build all 256 Node x byte transitions
-    private static void transition(Node node) {
-        if (node == null) {
+    private static void transition(Node node)
+    {
+        if (node == null)
+        {
             return;
         }
-        for(int i=0; i < 256; i++) {
+        for(int i=0; i < 256; i++)
+        {
             transition(node, i);
         }
         transition(node.left);
@@ -362,17 +377,21 @@ public class HpackHuffman {
     }
 
     // Build one Node x byte transition
-    private static void transition(Node node, int b) {
+    private static void transition(Node node, int b)
+    {
         Node cur = node;
         String str = node.symbols[b];
 
-        for (int i = 7; i >= 0; i--) {
+        for (int i = 7; i >= 0; i--)
+        {
             int bit = ((b >>> i) & 0x01);           // Using MSB to traverse
             cur = bit == 0 ? cur.left : cur.right;
-            if (cur == null || cur.sym == 256) {    // EOS is invalid in sequence
+            if (cur == null || cur.sym == 256)      // EOS is invalid in sequence
+            {
                 return;
             }
-            if (cur.sym != -1) {                    // Can have two symbols in a byte traversal
+            if (cur.sym != -1)                      // Can have two symbols in a byte traversal
+            {
                 str = (str == null) ? ""+(char)cur.sym : str+(char)cur.sym;
                 cur = ROOT;
             }
@@ -441,15 +460,18 @@ public class HpackHuffman {
      *
      * https://pdfs.semanticscholar.org/3697/8e4715a7bf21426877132f5b2e9c3d280287.pdf
      */
-    public static String decode(DirectBuffer buf) {
+    public static String decode(DirectBuffer buf)
+    {
         StringBuilder sb = new StringBuilder();
         Node current = ROOT;
 
-        for (int i = 0; i < buf.capacity(); i++) {
+        for (int i = 0; i < buf.capacity(); i++)
+        {
             int b = buf.getByte(i) & 0xff;
             Node next = current.transitions[b];
             // TODO handle next == null
-            if (current.symbols[b] != null) {
+            if (current.symbols[b] != null)
+            {
                 sb.append(current.symbols[b]);
             }
             current = next;
@@ -459,10 +481,12 @@ public class HpackHuffman {
     }
 
     // Returns the no of bytes needed to encode src
-    public static int encodedSize(DirectBuffer src, int offset, int length) {
+    public static int encodedSize(DirectBuffer src, int offset, int length)
+    {
         int totalBits = 0;
 
-        for (int i = 0; i < length; i++) {
+        for (int i = 0; i < length; i++)
+        {
             int index = src.getByte(offset + i) & 0xff;
             int bits = CODES[index][1];
             totalBits += bits;
@@ -475,7 +499,7 @@ public class HpackHuffman {
     // Assumes enough space is in the dst buffer
     public static void encode(DirectBuffer src, MutableDirectBuffer dst)
     {
-        assert dst.capacity() >= encodedSize(src, 0, src.capacity());
+        //assert dst.capacity() >= encodedSize(src, 0, src.capacity());
 
         int remainingBits = 0;
         int dstIndex = 0;
@@ -487,7 +511,8 @@ public class HpackHuffman {
             int code = CODES[index][0];
             int bits = CODES[index][1];
 
-            if (remainingBits + bits > 64) {      // exceeds long (no more space for current bits)
+            if (remainingBits + bits > 64)                  // exceeds long (no more space for current bits)
+            {
                 dst.putLong(dstIndex, currentSeq << (64-remainingBits), BIG_ENDIAN);
                 dstIndex += (remainingBits / 8);
                 remainingBits = remainingBits % 8;
@@ -498,11 +523,15 @@ public class HpackHuffman {
             remainingBits += bits;
         }
 
-        while(remainingBits > 0) {
-            if (remainingBits >= 8) {
+        while(remainingBits > 0)
+        {
+            if (remainingBits >= 8)
+            {
                 remainingBits -= 8;
                 dst.putByte(dstIndex++, (byte)(currentSeq >> remainingBits));
-            } else {
+            }
+            else
+            {
                 currentSeq <<= (8 - remainingBits);            // partial byte, so align to MSB
                 currentSeq |= (0xFF >>> remainingBits);        // fill remaining bits with EOS bits
                 remainingBits = 8;

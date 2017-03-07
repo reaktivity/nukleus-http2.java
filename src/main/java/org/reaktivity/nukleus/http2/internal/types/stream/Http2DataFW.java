@@ -43,7 +43,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +---------------------------------------------------------------+
 
  */
-public class Http2DataFW extends Flyweight {
+public class Http2DataFW extends Flyweight
+{
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
@@ -52,45 +53,56 @@ public class Http2DataFW extends Flyweight {
 
     private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
 
-    public int payloadLength() {
+    public int payloadLength()
+    {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
         length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
         length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
         return length;
     }
 
-    public Http2FrameType type() {
-        assert buffer().getByte(offset() + TYPE_OFFSET) == DATA.getType();
+    public Http2FrameType type()
+    {
+        //assert buffer().getByte(offset() + TYPE_OFFSET) == DATA.getType();
         return DATA;
     }
 
-    public byte flags() {
+    public byte flags()
+    {
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    public int streamId() {
+    public int streamId()
+    {
         // Most significant bit is reserved and is ignored when receiving
         return buffer().getInt(offset() + STREAM_ID_OFFSET) & 0x7F_FF_FF_FF;
     }
 
-    private boolean padding() {
+    private boolean padding()
+    {
         return Http2Flags.padded(flags());
     }
 
-    private boolean endStream() {
+    private boolean endStream()
+    {
         return Http2Flags.endStream(flags());
     }
 
-    private int dataOffset() {
+    private int dataOffset()
+    {
         int payloadOffset = offset() + PAYLOAD_OFFSET;
         return  padding() ? payloadOffset + 1 : payloadOffset;
     }
 
-    public int dataLength() {
-        if (padding()) {
+    public int dataLength()
+    {
+        if (padding())
+        {
             int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
             return payloadLength() - paddingLength - 1;
-        } else {
+        }
+        else
+        {
             return payloadLength();
         }
     }
@@ -149,12 +161,14 @@ public class Http2DataFW extends Flyweight {
             return this;
         }
 
-        public Builder streamId(int streamId) {
+        public Builder streamId(int streamId)
+        {
             buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, ByteOrder.BIG_ENDIAN);
             return this;
         }
 
-        public Builder endStream() {
+        public Builder endStream()
+        {
             buffer().putByte(offset() + FLAGS_OFFSET, (byte) 1);
             return this;
         }

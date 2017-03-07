@@ -26,7 +26,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 /*
  * Flyweight for HPACK Header Field
  */
-public class HpackHeaderFieldFW extends Flyweight {
+public class HpackHeaderFieldFW extends Flyweight
+{
 
     private final HpackIntegerFW indexedRO = new HpackIntegerFW(7);
     private final HpackLiteralHeaderFieldFW literalRO = new HpackLiteralHeaderFieldFW();
@@ -35,7 +36,8 @@ public class HpackHeaderFieldFW extends Flyweight {
     @Override
     public int limit()
     {
-        switch (type()) {
+        switch (type())
+        {
             case INDEXED :
                 return indexedRO.limit();
             case LITERAL :
@@ -53,27 +55,35 @@ public class HpackHeaderFieldFW extends Flyweight {
         UPDATE          // Dynamic Table Size Update
     }
 
-    public HeaderFieldType type() {
+    public HeaderFieldType type()
+    {
         byte b = buffer().getByte(offset());
 
-        if ((b & 0b1000_0000) == 0b1000_0000) {
+        if ((b & 0b1000_0000) == 0b1000_0000)
+        {
             return HeaderFieldType.INDEXED;
-        } else if ((b & 0b1100_0000) == 0b0100_0000 || (b & 0b1111_0000) == 0 || (b & 0b1111_0000) == 0b0001_0000) {
+        }
+        else if ((b & 0b1100_0000) == 0b0100_0000 || (b & 0b1111_0000) == 0 || (b & 0b1111_0000) == 0b0001_0000)
+        {
             return HeaderFieldType.LITERAL;
-        } else if ((b & 0b1110_0000) == 0b0010_0000) {
+        }
+        else if ((b & 0b1110_0000) == 0b0010_0000)
+        {
             return HeaderFieldType.UPDATE;
         }
 
         return null;
     }
 
-    public int index() {
+    public int index()
+    {
         assert type() == HeaderFieldType.INDEXED;
 
         return indexedRO.integer();
     }
 
-    public HpackLiteralHeaderFieldFW literal() {
+    public HpackLiteralHeaderFieldFW literal()
+    {
         assert type() == HeaderFieldType.LITERAL;
 
         return literalRO;
@@ -84,7 +94,8 @@ public class HpackHeaderFieldFW extends Flyweight {
     {
         super.wrap(buffer, offset, maxLimit);
 
-        switch (type()) {
+        switch (type())
+        {
             case INDEXED :
                 indexedRO.wrap(buffer(), offset, maxLimit());
                 break;
@@ -117,7 +128,8 @@ public class HpackHeaderFieldFW extends Flyweight {
             return this;
         }
 
-        public HpackHeaderFieldFW.Builder indexed(int index) {
+        public HpackHeaderFieldFW.Builder indexed(int index)
+        {
             buffer().putByte(offset(), (byte) 0x80);
             indexedRW.wrap(buffer(), offset(), maxLimit());
             indexedRW.integer(index).build();
@@ -125,14 +137,16 @@ public class HpackHeaderFieldFW extends Flyweight {
             return this;
         }
 
-        public HpackHeaderFieldFW.Builder literal(Consumer<HpackLiteralHeaderFieldFW.Builder> mutator) {
+        public HpackHeaderFieldFW.Builder literal(Consumer<HpackLiteralHeaderFieldFW.Builder> mutator)
+        {
             literalRW.wrap(buffer(), offset(), maxLimit());
             mutator.accept(literalRW);
             limit(literalRW.build().limit());
             return this;
         }
 
-        public HpackHeaderFieldFW.Builder literal(String name, String value) {
+        public HpackHeaderFieldFW.Builder literal(String name, String value)
+        {
             return literal(x -> x.type(WITHOUT_INDEXING).name(name).value(value));
         }
 
