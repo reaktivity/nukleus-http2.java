@@ -40,7 +40,7 @@ public final class Router extends Nukleus.Composite
     private final Context context;
     private final Map<String, Routable> routables;
     private final Long2ObjectHashMap<Correlation> correlations;
-    private final AtomicCounter routesSourced;
+    private final AtomicCounter routes;
 
     private Conductor conductor;
 
@@ -50,7 +50,7 @@ public final class Router extends Nukleus.Composite
         this.context = context;
         this.routables = new HashMap<>();
         this.correlations = new Long2ObjectHashMap<>();
-        this.routesSourced = context.counters().routesSourced();
+        this.routes = context.counters().routesSourced();
     }
 
     public void setConductor(Conductor conductor)
@@ -78,7 +78,7 @@ public final class Router extends Nukleus.Composite
 
         if (sourceRef == 0L)
         {
-            sourceRef = routeKind.nextRef(routesSourced);
+            sourceRef = routeKind.nextRef(routes);
         }
 
         if (RouteKind.match(sourceRef) == routeKind)

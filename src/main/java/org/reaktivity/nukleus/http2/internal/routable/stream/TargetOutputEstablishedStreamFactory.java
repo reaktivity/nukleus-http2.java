@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
@@ -40,7 +39,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
 import java.util.Collections;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
@@ -103,7 +101,8 @@ public final class TargetOutputEstablishedStreamFactory
         private int http2StreamId;
 
         private int window;
-
+        // TODO size ??
+        private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
         private final HpackContext hpackContext = new HpackContext();
 
         @Override
@@ -244,16 +243,14 @@ public final class TargetOutputEstablishedStreamFactory
                 newTarget.addThrottle(newTargetId, this::handleThrottle);
                 // TODO: replace with connection pool (end)
 
-                // TODO buffer as field and what about size ??
-                final MutableDirectBuffer buf = new UnsafeBuffer(new byte[4096]);
                 http2HeadersRW
-                        .wrap(buf, 0, buf.capacity())
+                        .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
                         .endHeaders();
                 if (extension.sizeof() > 0)
                 {
                     final HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    beginEx.headers().forEach(mapHeader(hpackContext));
+                    beginEx.headers().forEach(httpHeader -> mapHeader(hpackContext, httpHeader));
                 }
 
                 Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
@@ -286,8 +283,7 @@ public final class TargetOutputEstablishedStreamFactory
             else
             {
                 final OctetsFW payload = dataRO.payload();
-                AtomicBuffer body = new UnsafeBuffer(new byte[2048]);
-                Http2DataFW http2Data = dataRW.wrap(body, 0, 2048)
+                Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                               .streamId(http2StreamId)
                                               .endStream()
                                               .payload(payload.buffer(), payload.offset(), payload.sizeof())
@@ -428,9 +424,9 @@ public final class TargetOutputEstablishedStreamFactory
     }
 
     // Map http1.1 header to http2 header field
-    private Consumer<HttpHeaderFW> mapHeader(HpackContext hpackContext)
+    private Http2HeadersFW.Builder mapHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
     {
-        return httpHeader -> http2HeadersRW.header(hfBuilder -> {
+        return http2HeadersRW.header(hfBuilder -> {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
