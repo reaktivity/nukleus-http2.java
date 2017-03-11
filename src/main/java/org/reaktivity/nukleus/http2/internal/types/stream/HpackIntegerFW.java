@@ -106,6 +106,8 @@ public class HpackIntegerFW extends Flyweight
         }
         value = i;
 
+        checkLimit(limit(), maxLimit);
+
         return this;
     }
 
