@@ -27,14 +27,17 @@ public class Correlation
     private final long id;
     private final int http2StreamId;
     private final RouteKind established;
+    private final long sourceOutputEstId;
 
     public Correlation(
         long id,
+        long sourceOutputEstId,
         int http2StreamId,
         String source,
         RouteKind established)
     {
         this.id = id;
+        this.sourceOutputEstId = sourceOutputEstId;
         this.http2StreamId = http2StreamId;
         this.source = requireNonNull(source, "source");
         this.established = requireNonNull(established, "established");
@@ -50,6 +53,10 @@ public class Correlation
         return id;
     }
 
+    public long getSourceOutputEstId() {
+        return sourceOutputEstId;
+    }
+
     public int http2StreamId()
     {
         return http2StreamId;
@@ -63,7 +70,7 @@ public class Correlation
     @Override
     public int hashCode()
     {
-        return Objects.hash(id, http2StreamId, source, established);
+        return Objects.hash(id, sourceOutputEstId, http2StreamId, source, established);
     }
 
     @Override
@@ -77,6 +84,7 @@ public class Correlation
 
         Correlation that = (Correlation) obj;
         return this.id == that.id &&
+                this.sourceOutputEstId == that.sourceOutputEstId &&
                 this.http2StreamId == that.http2StreamId &&
                 this.established == that.established &&
                 Objects.equals(this.source, that.source);
@@ -85,6 +93,7 @@ public class Correlation
     @Override
     public String toString()
     {
-        return String.format("[id=%s, http2StreamId = %s source=\"%s\", established=%s]", id, http2StreamId, source, established);
+        return String.format("[id=%s, sourceOutputEstId=%s http2StreamId=%s source=\"%s\", established=%s]",
+                id, sourceOutputEstId, http2StreamId, source, established);
     }
 }

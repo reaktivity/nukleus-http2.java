@@ -69,7 +69,6 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final Source source;
     private final Function<String, Target> supplyTarget;
-    private final LongSupplier supplyStreamId;
     private final LongFunction<Correlation> correlateEstablished;
 
     public TargetOutputEstablishedStreamFactory(
@@ -80,7 +79,6 @@ public final class TargetOutputEstablishedStreamFactory
     {
         this.source = source;
         this.supplyTarget = supplyTarget;
-        this.supplyStreamId = supplyStreamId;
         this.correlateEstablished = correlateEstablished;
     }
 
@@ -97,7 +95,7 @@ public final class TargetOutputEstablishedStreamFactory
         private long sourceId;
 
         private Target target;
-        private long targetId;
+        private long sourceOutputEstId;
         private int http2StreamId;
 
         private int window;
@@ -108,8 +106,8 @@ public final class TargetOutputEstablishedStreamFactory
         @Override
         public String toString()
         {
-            return String.format("%s[source=%s, sourceId=%016x, window=%d, targetId=%016x]",
-                    getClass().getSimpleName(), source.routableName(), sourceId, window, targetId);
+            return String.format("%s[source=%s, sourceId=%016x, window=%d, sourceOutputEstId=%016x]",
+                    getClass().getSimpleName(), source.routableName(), sourceId, window, sourceOutputEstId);
         }
 
         private TargetOutputEstablishedStream()
@@ -227,21 +225,14 @@ public final class TargetOutputEstablishedStreamFactory
             if (sourceRef == 0L && correlation != null)
             {
                 final Target newTarget = supplyTarget.apply(correlation.source());
-                final long newTargetId = supplyStreamId.getAsLong();
+                sourceOutputEstId = correlation.getSourceOutputEstId();
                 final long sourceCorrelationId = correlation.id();
-
-                Map<String, String> headers = EMPTY_HEADERS;
-
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
-                this.targetId = newTargetId;
                 this.http2StreamId = correlation.http2StreamId();
 
-                // TODO: replace with connection pool (start)
-                target.doBegin(newTargetId, 0L, sourceCorrelationId);
-                newTarget.addThrottle(newTargetId, this::handleThrottle);
-                // TODO: replace with connection pool (end)
+                newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
 
                 http2HeadersRW
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
@@ -255,7 +246,8 @@ public final class TargetOutputEstablishedStreamFactory
 
                 Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
 
-                target.doData(targetId, http2HeadersRO.buffer(), http2HeadersRO.offset(), http2HeadersRO.limit());
+                target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
+                        http2HeadersRO.limit());
 
                 this.streamState = this::afterBeginOrData;
                 this.throttleState = this::throttleNextThenSkipWindow;
@@ -288,9 +280,9 @@ public final class TargetOutputEstablishedStreamFactory
                                               .endStream()
                                               .payload(payload.buffer(), payload.offset(), payload.sizeof())
                                               .build();
-                target.doData(targetId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
-
-                //target.doData(targetId, payload);
+                target.doData(sourceOutputEstId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
+                // TODO revisit throttle
+                source.doWindow(sourceId, length);
             }
         }
 
@@ -301,7 +293,7 @@ public final class TargetOutputEstablishedStreamFactory
         {
             endRO.wrap(buffer, index, index + length);
 
-            target.removeThrottle(targetId);
+            target.removeThrottle(sourceOutputEstId);
             source.removeStream(sourceId);
         }
 
@@ -424,9 +416,9 @@ public final class TargetOutputEstablishedStreamFactory
     }
 
     // Map http1.1 header to http2 header field
-    private Http2HeadersFW.Builder mapHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
+    private void mapHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
     {
-        return http2HeadersRW.header(hfBuilder -> {
+        http2HeadersRW.header(hfBuilder -> {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer

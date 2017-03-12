@@ -121,7 +121,7 @@ public final class SourceInputStreamFactory
         private int window;
         private int contentRemaining;
         private int sourceUpdateDeferred;
-        private final long newReplyId;
+        private final long sourceOutputEstId;
         private final HpackContext hpackContext;
 
         @Override
@@ -135,7 +135,7 @@ public final class SourceInputStreamFactory
         {
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
-            newReplyId = supplyStreamId.getAsLong();
+            sourceOutputEstId = supplyStreamId.getAsLong();
             hpackContext = new HpackContext();
         }
 
@@ -243,13 +243,13 @@ public final class SourceInputStreamFactory
             //final long newTargetId = supplyStreamId.getAsLong();
 
             // TODO: replace with connection pool (start)
-            target.doBegin(newReplyId, 0L, correlationId);
-            target.addThrottle(newReplyId, this::handleThrottle);
+            target.doBegin(sourceOutputEstId, 0L, correlationId);
+            target.addThrottle(sourceOutputEstId, this::handleThrottle);
             // TODO: replace with connection pool (end)
 
             // TODO: acquire slab for response if targetWindow requires partial write
             DirectBuffer payload = new UnsafeBuffer(payloadChars.getBytes(UTF_8));
-            target.doData(newReplyId, payload, 0, payload.capacity());
+            target.doData(sourceOutputEstId, payload, 0, payload.capacity());
 
             this.decoderState = this::decodePreface;
             this.streamState = this::streamAfterReplyOrReset;
@@ -325,14 +325,14 @@ public final class SourceInputStreamFactory
             source.doWindow(sourceId, limit - offset);
 
             // TODO: replace with connection pool (start)
-            replyTarget.doBegin(newReplyId, 0L, correlationId);
-            replyTarget.addThrottle(newReplyId, this::handleThrottle);
+            replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
+            replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             // TODO: replace with connection pool (end)
 
             AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
             Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).maxConcurrentStreams(100).build();
 
-            replyTarget.doData(newReplyId, settings.buffer(), settings.offset(), settings.limit());
+            replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
 
 
             return prefaceRO.limit();
@@ -359,8 +359,8 @@ public final class SourceInputStreamFactory
 
                         final long newTargetId = supplyStreamId.getAsLong();
                         final long targetCorrelationId = newTargetId;
-                        final Correlation correlation = new Correlation(correlationId, http2RO.streamId(),
-                                source.routableName(), OUTPUT_ESTABLISHED);
+                        final Correlation correlation = new Correlation(correlationId, sourceOutputEstId,
+                                http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
 
                         correlateNew.accept(targetCorrelationId, correlation);
                         // TODO avoid iterating over headers twice
@@ -389,7 +389,7 @@ public final class SourceInputStreamFactory
                         AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
                         Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).ack().build();
                         //long newTargetId = dataRO.streamId();
-                        replyTarget.doData(newReplyId, settings.buffer(), settings.offset(), settings.limit());
+                        replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
                         break;
                     case PUSH_PROMISE:
                         break;
