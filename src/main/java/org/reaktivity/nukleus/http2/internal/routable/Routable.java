@@ -76,7 +76,7 @@ public final class Routable extends Nukleus.Composite
         this.sourcesByPartitionName = new HashMap<>();
         this.targetsByName = new HashMap<>();
         this.routesByRef = new Long2ObjectHashMap<>();
-        this.supplyTargetId = context.counters().streamsSourced()::increment;
+        this.supplyTargetId = context.counters().streams()::increment;
     }
 
     @Override

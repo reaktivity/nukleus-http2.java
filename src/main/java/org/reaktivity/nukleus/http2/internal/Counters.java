@@ -36,12 +36,12 @@ public final class Counters implements AutoCloseable
         streams.close();
     }
 
-    public AtomicCounter routesSourced()
+    public AtomicCounter routes()
     {
         return routes;
     }
 
-    public AtomicCounter streamsSourced()
+    public AtomicCounter streams()
     {
         return streams;
     }

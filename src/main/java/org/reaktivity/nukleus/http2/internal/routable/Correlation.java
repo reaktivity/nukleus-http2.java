@@ -53,7 +53,8 @@ public class Correlation
         return id;
     }
 
-    public long getSourceOutputEstId() {
+    public long getSourceOutputEstId()
+    {
         return sourceOutputEstId;
     }
 
