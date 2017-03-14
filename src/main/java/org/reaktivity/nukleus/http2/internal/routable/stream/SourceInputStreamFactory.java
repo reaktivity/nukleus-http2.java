@@ -311,7 +311,7 @@ public final class SourceInputStreamFactory
             decoderState = (b, o, l) -> o;
 
             source.removeStream(streamId);
-            target.removeThrottle(targetId);
+            //target.removeThrottle(targetId);
         }
 
 
@@ -357,7 +357,7 @@ public final class SourceInputStreamFactory
 
                     correlateNew.accept(targetId, correlation);
                 }
-                http2Stream.decode(http2RO, buffer, offset, http2RO.limit());
+                http2Stream.decode(http2RO);
             }
 
             return nextOffset;

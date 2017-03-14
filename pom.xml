@@ -50,7 +50,7 @@
     <nukleus.http2.spec.version>develop-SNAPSHOT</nukleus.http2.spec.version>
     <nukleus.http.spec.version>0.6</nukleus.http.spec.version>
     <reaktor.test.version>0.1</reaktor.test.version>
-    <reaktor.version>0.1</reaktor.version>
+    <reaktor.version>0.2.1</reaktor.version>
   </properties>
 
   <dependencies>
@@ -115,6 +115,12 @@
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-generator-annprocess</artifactId>
       <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.reaktivity</groupId>
+      <artifactId>nukleus-tcp</artifactId>
+      <version>develop-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

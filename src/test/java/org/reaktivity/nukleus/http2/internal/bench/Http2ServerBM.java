@@ -46,7 +46,8 @@ import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
-import org.reaktivity.reaktor.internal.Reaktor;
+import org.reaktivity.reaktor.Reaktor;
+
 
 import java.io.File;
 import java.io.IOException;
@@ -94,7 +95,8 @@ public class Http2ServerBM
             LangUtil.rethrowUnchecked(ex);
         }
 
-        reaktor = Reaktor.launch(configuration, n -> "http".equals(n), Http2Controller.class::isAssignableFrom);
+        //reaktor = Reaktor.launch(configuration, n -> "http".equals(n), Http2Controller.class::isAssignableFrom);
+        reaktor = null;
     }
 
     private final BeginFW beginRO = new BeginFW();

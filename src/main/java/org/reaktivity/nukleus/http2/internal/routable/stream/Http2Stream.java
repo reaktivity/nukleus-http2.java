@@ -53,23 +53,22 @@ class Http2Stream
         this.targetId = targetId;
     }
 
-    void decode(Http2FrameFW http2RO, DirectBuffer buffer, int offset, int limit)
+    void decode(Http2FrameFW http2RO)
     {
 System.out.println("---> " + http2RO);
-        assert limit - offset >= 3;
 
         switch (http2RO.type())
         {
             case DATA: {
                 Target newTarget = route.target();
-                Http2DataFW dataRO = connection.dataRO().wrap(buffer, offset, limit);
+                Http2DataFW dataRO = connection.dataRO().wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
                 newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
 
             }
                 break;
             case HEADERS:
                 Http2HeadersFW headersRO = connection.headersRO();
-                headersRO.wrap(buffer, offset, limit);
+                headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
 
                 // TODO avoid iterating over headers twice
                 Map<String, String> headersMap = new HashMap<>();
@@ -83,7 +82,7 @@ System.out.println("---> " + http2RO);
                         hs -> headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, hs, hf)));
                 newTarget.addThrottle(targetId, connection::handleThrottle);
 
-                connection.source().doWindow(connection.sourceId, limit - offset);
+                connection.source().doWindow(connection.sourceId, http2RO.sizeof());
                 connection.throttleState = connection::throttleSkipNextWindow;
 
                 break;
