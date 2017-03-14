@@ -33,10 +33,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
@@ -46,7 +42,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -57,7 +52,6 @@ import java.util.function.Predicate;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
 public final class SourceInputStreamFactory
 {
@@ -468,23 +462,28 @@ public final class SourceInputStreamFactory
             source.doReset(sourceId);
         }
 
-        Http2HeadersFW headersRO() {
+        Http2HeadersFW headersRO()
+        {
             return headersRO;
         }
 
-        Http2SettingsFW.Builder settingsRW() {
+        Http2SettingsFW.Builder settingsRW()
+        {
             return settingsRW;
         }
 
-        Target replyTarget() {
+        Target replyTarget()
+        {
             return replyTarget;
         }
 
-        Source source() {
+        Source source()
+        {
             return source;
         }
 
-        Http2DataFW dataRO() {
+        Http2DataFW dataRO()
+        {
             return http2DataRO;
         }
     }

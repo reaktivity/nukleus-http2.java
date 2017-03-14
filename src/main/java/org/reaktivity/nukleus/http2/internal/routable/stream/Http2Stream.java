@@ -96,7 +96,8 @@ System.out.println("---> " + http2RO);
                 Http2SettingsFW.Builder settingsRW = connection.settingsRW();
                 Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).ack().build();
                 //long newTargetId = dataRO.streamId();
-                connection.replyTarget().doData(connection.sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
+                connection.replyTarget().doData(connection.sourceOutputEstId,
+                        settings.buffer(), settings.offset(), settings.limit());
                 break;
             case PUSH_PROMISE:
                 break;
