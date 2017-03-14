@@ -73,4 +73,17 @@ public class ConnectionManagementIT
         k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${streams}/http.post.exchange/server/source",
+            "${streams}/http.post.exchange/server/target" })
+    public void httpPostExchange() throws Exception
+    {
+        k3po.start();
+        k3po.awaitBarrier("ROUTED_INPUT");
+        k3po.notifyBarrier("ROUTED_OUTPUT");
+        k3po.finish();
+    }
 }

@@ -88,7 +88,7 @@ public class Http2DataFW extends Flyweight
         return Http2Flags.endStream(flags());
     }
 
-    private int dataOffset()
+    public int dataOffset()
     {
         int payloadOffset = offset() + PAYLOAD_OFFSET;
         return  padding() ? payloadOffset + 1 : payloadOffset;
