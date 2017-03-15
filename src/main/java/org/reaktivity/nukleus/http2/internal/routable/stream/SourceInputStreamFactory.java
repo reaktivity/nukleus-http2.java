@@ -34,8 +34,12 @@ import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
@@ -70,8 +74,11 @@ public final class SourceInputStreamFactory
     private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
     private final Http2HeadersFW headersRO = new Http2HeadersFW();
+    private final Http2PingFW pingRO = new Http2PingFW();
 
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
+    private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
+    private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
 
     private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> headersRW =
             new ListFW.Builder<>(new HttpHeaderFW.Builder(), new HttpHeaderFW());
@@ -81,6 +88,8 @@ public final class SourceInputStreamFactory
     private final LongSupplier supplyStreamId;
     private final Target replyTarget;
     private final LongObjectBiConsumer<Correlation> correlateNew;
+
+    private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);
 
     public SourceInputStreamFactory(
         Source source,
@@ -108,6 +117,7 @@ public final class SourceInputStreamFactory
         private DecoderState decoderState;
 
         long sourceId;
+        int lastStreamId;
 
         private Target target;
         private long targetId;      // TODO multiple targetId since multiplexing
@@ -224,7 +234,7 @@ public final class SourceInputStreamFactory
             processUnexpected(streamId);
         }
 
-        private void processUnexpected(
+        void processUnexpected(
             long streamId)
         {
             source.doReset(streamId);
@@ -318,6 +328,11 @@ public final class SourceInputStreamFactory
         private int decodePreface(final DirectBuffer buffer, final int offset, final int limit)
         {
             prefaceRO.wrap(buffer, offset, limit);
+            if (!prefaceRO.matches())
+            {
+                processUnexpected(sourceId);
+                return limit;
+            }
             this.decoderState = this::decodeHttp2Frames;
             source.doWindow(sourceId, limit - offset);
 
@@ -335,16 +350,43 @@ public final class SourceInputStreamFactory
             return prefaceRO.limit();
         }
 
+        private int http2Length(DirectBuffer buffer, final int offset, int limit)
+        {
+            assert limit - offset >= 3;
+
+            int length = (buffer.getByte(offset) & 0xFF) << 16;
+            length += (buffer.getByte(offset + 1) & 0xFF) << 8;
+            length += buffer.getByte(offset + 2) & 0xFF;
+            return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
+        }
+
         private int decodeHttp2Frames(final DirectBuffer buffer, final int offset, final int limit)
         {
             int nextOffset = offset;
 
             for (; nextOffset < limit; nextOffset = http2RO.limit())
             {
-                assert limit - nextOffset >= 3;
+                int available = limit - nextOffset;
+                if (available < 3)
+                {
+                    throw new UnsupportedOperationException("Need slab offset = " + nextOffset + " limit = " + limit);
+                }
+                else
+                {
+                    int length = http2Length(buffer, offset, limit);
+                    if (available < length)
+                    {
+                        throw new UnsupportedOperationException("Need slab offset = " + nextOffset + " limit = " + limit);
+                    }
+                }
 
                 http2RO.wrap(buffer, nextOffset, limit);
-                int streamId = http2RO.streamId();
+                Http2FrameType frameType = http2RO.type();
+                if (frameType == null)
+                {
+                    continue;               // Ignore and discard unknown frame
+                }
+                int streamId = lastStreamId = http2RO.streamId();
                 Http2Stream http2Stream = http2Streams.get(streamId);
                 if (http2Stream == null)
                 {
@@ -485,6 +527,33 @@ public final class SourceInputStreamFactory
         Http2DataFW dataRO()
         {
             return http2DataRO;
+        }
+
+        public Http2SettingsFW settingsRO()
+        {
+            return settingsRO;
+        }
+
+        public Http2PingFW pingRO()
+        {
+            return pingRO;
+        }
+
+        public Http2PingFW.Builder pingRW()
+        {
+            return pingRW;
+        }
+
+        void error(Http2ErrorCode error)
+        {
+            Http2GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
+                          .lastStreamId(lastStreamId)
+                          .errorCode(error.errorCode)
+                          .build();
+            replyTarget().doData(sourceOutputEstId,
+                    goawayRO.buffer(), goawayRO.offset(), goawayRO.sizeof());
+
+            replyTarget.doEnd(sourceOutputEstId);
         }
     }
 

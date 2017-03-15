@@ -22,6 +22,7 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PADDED;
@@ -80,12 +81,11 @@ public class Http2HeadersFW extends Flyweight
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
+    // streamId != 0, caller to validate
     public int streamId()
     {
         // Most significant bit is reserved and is ignored when receiving
-        int streamId = buffer().getInt(offset() + STREAM_ID_OFFSET) & 0x7F_FF_FF_FF;
-        assert streamId != 0;
-        return streamId;
+        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public boolean padded()

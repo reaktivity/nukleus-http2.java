@@ -83,12 +83,16 @@ public class Http2SettingsFW extends Flyweight
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
+    public boolean ack()
+    {
+        return Http2Flags.ack(flags());
+    }
+
+    // streamId == 0, caller to validate
     public int streamId()
     {
         // Most significant bit is reserved and is ignored when receiving
-        int streamId = buffer().getInt(offset() + STREAM_ID_OFFSET) & 0x7F_FF_FF_FF;
-        assert streamId == 0;
-        return streamId;
+        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public long headerTableSize()

@@ -29,8 +29,10 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 
 import java.util.HashMap;
@@ -42,6 +44,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 class Http2Stream
 {
+    private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);    // todo buf size, move to SourceInputStreamFactory
 
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final long targetId;
@@ -60,6 +63,11 @@ System.out.println("---> " + http2RO);
         switch (http2RO.type())
         {
             case DATA: {
+                if (route == null)
+                {
+                    connection.processUnexpected(connection.sourceId);
+                    return;
+                }
                 Target newTarget = route.target();
                 Http2DataFW dataRO = connection.dataRO().wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
                 newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
@@ -91,16 +99,24 @@ System.out.println("---> " + http2RO);
             case RST_STREAM:
                 break;
             case SETTINGS:
-                AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
-                Http2SettingsFW.Builder settingsRW = connection.settingsRW();
-                Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).ack().build();
-                //long newTargetId = dataRO.streamId();
-                connection.replyTarget().doData(connection.sourceOutputEstId,
-                        settings.buffer(), settings.offset(), settings.limit());
+                Http2SettingsFW settingsRO = connection.settingsRO();
+                settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+                if (!settingsRO.ack())
+                {
+                    Http2SettingsFW.Builder settingsRW = connection.settingsRW();
+                    Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
+                                                         .ack()
+                                                         .build();
+                    //long newTargetId = dataRO.streamId();
+                    connection.replyTarget().doData(connection.sourceOutputEstId,
+                            settings.buffer(), settings.offset(), settings.limit());
+                }
+                // TODO when ack flag is true
                 break;
             case PUSH_PROMISE:
                 break;
             case PING:
+                doPing(http2RO);
                 break;
             case GO_AWAY:
                 break;
@@ -110,6 +126,33 @@ System.out.println("---> " + http2RO);
                 break;
         }
 
+    }
+
+    private void doPing(Http2FrameFW http2RO)
+    {
+        Http2PingFW pingRO = connection.pingRO();
+        pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+        if (pingRO.streamId() != 0)
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (pingRO.payloadLength() != 8)
+        {
+            connection.error(Http2ErrorCode.FRAME_SIZE_ERROR);
+            return;
+        }
+
+        if (!pingRO.ack())
+        {
+            Http2PingFW.Builder pingRW = connection.pingRW();
+            pingRO = pingRW.wrap(buffer, 0, buffer.capacity())
+                           .ack()
+                           .payload(pingRO.buffer(), pingRO.payloadOffset(), pingRO.payloadLength())
+                           .build();
+            connection.replyTarget().doData(connection.sourceOutputEstId,
+                    pingRO.buffer(), pingRO.offset(), pingRO.sizeof());
+        }
     }
 
     private void decodeHeaderField(HpackContext context, ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
