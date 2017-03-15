@@ -44,16 +44,30 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 class Http2Stream
 {
+
+    enum State
+    {
+        IDLE,
+        RESERVED_LOCAL,
+        RESERVED_REMOTE,
+        OPEN,
+        HALF_CLOSED_LOCAL,
+        HALF_CLOSED_REMOTE,
+        CLOSED
+    }
+
     private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);    // todo buf size, move to SourceInputStreamFactory
 
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final long targetId;
     private Route route;
+    private State state;
 
     Http2Stream(SourceInputStreamFactory.SourceInputStream connection, long targetId)
     {
         this.connection = connection;
         this.targetId = targetId;
+        this.state = State.IDLE;
     }
 
     void decode(Http2FrameFW http2RO)
@@ -62,41 +76,16 @@ System.out.println("---> " + http2RO);
 
         switch (http2RO.type())
         {
-            case DATA: {
-                if (route == null)
-                {
-                    connection.processUnexpected(connection.sourceId);
-                    return;
-                }
-                Target newTarget = route.target();
-                Http2DataFW dataRO = connection.dataRO().wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-                newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
-
-            }
+            case DATA:
+                doData(http2RO);
                 break;
             case HEADERS:
-                Http2HeadersFW headersRO = connection.headersRO();
-                headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-
-                // TODO avoid iterating over headers twice
-                Map<String, String> headersMap = new HashMap<>();
-                headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, headersMap, hf));
-                final Optional<Route> optional = connection.resolveTarget(connection.sourceRef, headersMap);
-                route = optional.get();
-                Target newTarget = route.target();
-                final long targetRef = route.targetRef();
-
-                newTarget.doHttpBegin(targetId, targetRef, targetId,
-                        hs -> headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, hs, hf)));
-                newTarget.addThrottle(targetId, connection::handleThrottle);
-
-                connection.source().doWindow(connection.sourceId, http2RO.sizeof());
-                connection.throttleState = connection::throttleSkipNextWindow;
-
+                doHeaders(http2RO);
                 break;
             case PRIORITY:
                 break;
             case RST_STREAM:
+                doRst(http2RO);
                 break;
             case SETTINGS:
                 Http2SettingsFW settingsRO = connection.settingsRO();
@@ -121,10 +110,79 @@ System.out.println("---> " + http2RO);
             case GO_AWAY:
                 break;
             case WINDOW_UPDATE:
+                doWindow(http2RO);
                 break;
             case CONTINUATION:
+                doContinuation(http2RO);
                 break;
         }
+
+    }
+
+    private void doHeaders(Http2FrameFW http2RO)
+    {
+        Http2HeadersFW headersRO = connection.headersRO();
+        headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+        // TODO avoid iterating over headers twice
+        Map<String, String> headersMap = new HashMap<>();
+        headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, headersMap, hf));
+        final Optional<Route> optional = connection.resolveTarget(connection.sourceRef, headersMap);
+        route = optional.get();
+        Target newTarget = route.target();
+        final long targetRef = route.targetRef();
+
+        newTarget.doHttpBegin(targetId, targetRef, targetId,
+                hs -> headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, hs, hf)));
+        newTarget.addThrottle(targetId, connection::handleThrottle);
+
+        connection.source().doWindow(connection.sourceId, http2RO.sizeof());
+        connection.throttleState = connection::throttleSkipNextWindow;
+        state = State.OPEN;
+    }
+
+    private void doRst(Http2FrameFW http2RO)
+    {
+        if (state == State.IDLE)
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+    }
+
+    private void doWindow(Http2FrameFW http2RO)
+    {
+        if (state == State.IDLE)
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+    }
+
+    private void doContinuation(Http2FrameFW http2RO)
+    {
+        if (state == State.IDLE)
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+    }
+
+    private void doData(Http2FrameFW http2RO)
+    {
+        if (state == State.IDLE)
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (route == null)
+        {
+            connection.processUnexpected(connection.sourceId);
+            return;
+        }
+        Target newTarget = route.target();
+        Http2DataFW dataRO = connection.dataRO().wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+        newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
 
     }
 
