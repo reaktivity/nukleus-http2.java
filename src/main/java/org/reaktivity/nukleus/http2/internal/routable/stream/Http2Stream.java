@@ -17,7 +17,6 @@
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Route;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
