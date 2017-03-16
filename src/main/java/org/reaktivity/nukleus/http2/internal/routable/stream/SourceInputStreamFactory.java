@@ -130,6 +130,9 @@ public final class SourceInputStreamFactory
         final HpackContext hpackContext;
         private final Int2ObjectHashMap<Http2Stream> http2Streams;
 
+        private final AtomicBuffer slab = new UnsafeBuffer(new byte[4096]);
+        private int slabLength = 0;
+
         @Override
         public String toString()
         {
@@ -333,7 +336,7 @@ public final class SourceInputStreamFactory
                 processUnexpected(sourceId);
                 return limit;
             }
-            this.decoderState = this::decodeHttp2Frames;
+            this.decoderState = this::decodeHttp2Frame;
             source.doWindow(sourceId, limit - offset);
 
             // TODO: replace with connection pool (start)
@@ -350,7 +353,7 @@ public final class SourceInputStreamFactory
             return prefaceRO.limit();
         }
 
-        private int http2Length(DirectBuffer buffer, final int offset, int limit)
+        private int http2FrameLength(DirectBuffer buffer, final int offset, int limit)
         {
             assert limit - offset >= 3;
 
@@ -360,49 +363,125 @@ public final class SourceInputStreamFactory
             return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
         }
 
-        private int decodeHttp2Frames(final DirectBuffer buffer, final int offset, final int limit)
+        // @return true if a complete HTTP2 frame is assembled
+        //         false otherwise
+        // TODO check slab capacity
+        private boolean http2Frame(DirectBuffer buffer, final int offset, final int limit)
         {
-            int nextOffset = offset;
+            int available = limit - offset;
 
-            for (; nextOffset < limit; nextOffset = http2RO.limit())
+            if (slabLength > 0 && slabLength+available >= 3)
             {
-                int available = limit - nextOffset;
-                if (available < 3)
+                if (slabLength < 3)
                 {
-                    throw new UnsupportedOperationException("Need slab offset = " + nextOffset + " limit = " + limit);
+                    slab.putBytes(slabLength, buffer, offset, 3-slabLength);
                 }
-                else
+                int length = http2FrameLength(slab, 0, 3);
+                if (slabLength+available >= length)
                 {
-                    int length = http2Length(buffer, offset, limit);
-                    if (available < length)
-                    {
-                        throw new UnsupportedOperationException("Need slab offset = " + nextOffset + " limit = " + limit);
-                    }
+                    slab.putBytes(slabLength, buffer, offset, length-slabLength);
+                    http2RO.wrap(slab, 0, length);
+                    slabLength = 0;
+                    return true;
                 }
-
-                http2RO.wrap(buffer, nextOffset, limit);
-                Http2FrameType frameType = http2RO.type();
-                if (frameType == null)
+            }
+            else if (available >= 3)
+            {
+                int length = http2FrameLength(buffer, offset, limit);
+                if (available >= length)
                 {
-                    continue;               // Ignore and discard unknown frame
+                    http2RO.wrap(buffer, offset, limit);
+                    return true;
                 }
-                int streamId = lastStreamId = http2RO.streamId();
-                Http2Stream http2Stream = http2Streams.get(streamId);
-                if (http2Stream == null)
-                {
-                    long targetId = supplyStreamId.getAsLong();
-                    http2Stream = new Http2Stream(this, targetId);
-                    http2Streams.put(streamId, http2Stream);
-
-                    final Correlation correlation = new Correlation(correlationId, sourceOutputEstId,
-                            http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
-
-                    correlateNew.accept(targetId, correlation);
-                }
-                http2Stream.decode(http2RO);
             }
 
+            slab.putBytes(slabLength, buffer, offset, available);
+            slabLength += available;
+            return false;
+        }
+
+
+        private int decodeHttp2Frame(final DirectBuffer buffer, final int offset, final int limit)
+        {
+            boolean got = http2Frame(buffer, offset, limit);
+            if (!got)
+            {
+                return limit;
+            }
+
+            int nextOffset = offset + http2RO.sizeof();
+
+            Http2FrameType frameType = http2RO.type();
+System.out.println("---> " + http2RO);
+
+            if (frameType == null)
+            {
+                return nextOffset;               // Ignore and discard unknown frame
+            }
+            if (frameType == Http2FrameType.SETTINGS)
+            {
+                doSettings(http2RO);
+                return nextOffset;
+            }
+            else if (frameType == Http2FrameType.PING)
+            {
+                doPing(http2RO);
+                return nextOffset;
+            }
+            int streamId = lastStreamId = http2RO.streamId();
+            Http2Stream http2Stream = http2Streams.get(streamId);
+            if (http2Stream == null)
+            {
+                long targetId = supplyStreamId.getAsLong();
+                http2Stream = new Http2Stream(this, streamId, targetId);
+                http2Streams.put(streamId, http2Stream);
+
+                final Correlation correlation = new Correlation(correlationId, sourceOutputEstId,
+                        http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
+
+                correlateNew.accept(targetId, correlation);
+            }
+            http2Stream.decode(http2RO);
             return nextOffset;
+        }
+
+        private void doSettings(Http2FrameFW http2RO)
+        {
+            settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            if (!settingsRO.ack())
+            {
+                Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
+                                                     .ack()
+                                                     .build();
+                replyTarget().doData(sourceOutputEstId,
+                        settings.buffer(), settings.offset(), settings.limit());
+            }
+            // TODO when ack flag is true
+        }
+
+        private void doPing(Http2FrameFW http2RO)
+        {
+            pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            if (pingRO.streamId() != 0)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (pingRO.payloadLength() != 8)
+            {
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
+            }
+
+            if (!pingRO.ack())
+            {
+                Http2PingFW ping = pingRW.wrap(buffer, 0, buffer.capacity())
+                               .ack()
+                               .payload(pingRO.buffer(), pingRO.payloadOffset(), pingRO.payloadLength())
+                               .build();
+                replyTarget().doData(sourceOutputEstId,
+                        ping.buffer(), ping.offset(), ping.sizeof());
+            }
         }
 
         Optional<Route> resolveTarget(

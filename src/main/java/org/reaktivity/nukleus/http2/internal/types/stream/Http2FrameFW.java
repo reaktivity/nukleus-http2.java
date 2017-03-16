@@ -64,6 +64,11 @@ public final class Http2FrameFW extends Flyweight
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
+    public boolean endStream()
+    {
+        return Http2Flags.endStream(flags());
+    }
+
     public int streamId()
     {
         // Most significant bit is reserved and is ignored when receiving

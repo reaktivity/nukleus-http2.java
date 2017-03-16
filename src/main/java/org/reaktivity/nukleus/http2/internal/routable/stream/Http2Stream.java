@@ -31,9 +31,8 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -56,67 +55,134 @@ class Http2Stream
         CLOSED
     }
 
-    private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);    // todo buf size, move to SourceInputStreamFactory
-
     private final SourceInputStreamFactory.SourceInputStream connection;
+    private final int http2StreamId;
     private final long targetId;
     private Route route;
     private State state;
 
-    Http2Stream(SourceInputStreamFactory.SourceInputStream connection, long targetId)
+    Http2Stream(SourceInputStreamFactory.SourceInputStream connection, int http2StreamId, long targetId)
     {
         this.connection = connection;
+        this.http2StreamId = http2StreamId;
         this.targetId = targetId;
         this.state = State.IDLE;
     }
 
     void decode(Http2FrameFW http2RO)
     {
-System.out.println("---> " + http2RO);
-
-        switch (http2RO.type())
+        switch (state)
         {
-            case DATA:
-                doData(http2RO);
+            case IDLE:
+                inIdle(http2RO);
                 break;
-            case HEADERS:
-                doHeaders(http2RO);
+            case RESERVED_LOCAL:
+                inReservedLocal(http2RO);
                 break;
-            case PRIORITY:
+            case RESERVED_REMOTE:
+                inReservedRemote(http2RO);
                 break;
-            case RST_STREAM:
-                doRst(http2RO);
+            case OPEN:
+                inOpen(http2RO);
                 break;
-            case SETTINGS:
-                Http2SettingsFW settingsRO = connection.settingsRO();
-                settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-                if (!settingsRO.ack())
-                {
-                    Http2SettingsFW.Builder settingsRW = connection.settingsRW();
-                    Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
-                                                         .ack()
-                                                         .build();
-                    //long newTargetId = dataRO.streamId();
-                    connection.replyTarget().doData(connection.sourceOutputEstId,
-                            settings.buffer(), settings.offset(), settings.limit());
-                }
-                // TODO when ack flag is true
+            case HALF_CLOSED_LOCAL:
+                inHalfClosedLocal(http2RO);
                 break;
-            case PUSH_PROMISE:
+            case HALF_CLOSED_REMOTE:
+                inHalfClosedRemote(http2RO);
                 break;
-            case PING:
-                doPing(http2RO);
-                break;
-            case GO_AWAY:
-                break;
-            case WINDOW_UPDATE:
-                doWindow(http2RO);
-                break;
-            case CONTINUATION:
-                doContinuation(http2RO);
+            case CLOSED:
+                inClosed(http2RO);
                 break;
         }
+    }
 
+    private void inClosed(Http2FrameFW http2RO)
+    {
+    }
+
+    private void inHalfClosedRemote(Http2FrameFW http2RO)
+    {
+        if (!(http2RO.type() == Http2FrameType.WINDOW_UPDATE || http2RO.type() == Http2FrameType.PRIORITY
+                || http2RO.type() == Http2FrameType.RST_STREAM))
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (http2RO.type() == Http2FrameType.RST_STREAM)
+        {
+            state = State.CLOSED;
+        }
+    }
+
+    private void inHalfClosedLocal(Http2FrameFW http2RO)
+    {
+        if (http2RO.endStream() || http2RO.type() == Http2FrameType.RST_STREAM)
+        {
+            state = State.CLOSED;
+        }
+    }
+
+    private void inOpen(Http2FrameFW http2RO)
+    {
+        if (http2RO.type() == Http2FrameType.DATA)
+        {
+            doData(http2RO);
+        }
+        if (http2RO.endStream())
+        {
+            state = State.HALF_CLOSED_REMOTE;
+        }
+    }
+
+    private void inReservedRemote(Http2FrameFW http2RO)
+    {
+        if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.RST_STREAM
+                || http2RO.type() == Http2FrameType.PRIORITY))
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (http2RO.type() == Http2FrameType.RST_STREAM)
+        {
+            state = State.CLOSED;
+        }
+        else if (http2RO.type() == Http2FrameType.HEADERS)
+        {
+            state = State.HALF_CLOSED_LOCAL;
+        }
+    }
+
+    private void inReservedLocal(Http2FrameFW http2RO)
+    {
+        if (!(http2RO.type() == Http2FrameType.RST_STREAM || http2RO.type() == Http2FrameType.PRIORITY
+                || http2RO.type() == Http2FrameType.WINDOW_UPDATE))
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (http2RO.type() == Http2FrameType.RST_STREAM)
+        {
+            state = State.CLOSED;
+        }
+    }
+
+    private void inIdle(Http2FrameFW http2RO)
+    {
+        if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.PRIORITY))
+        {
+            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (http2RO.type() == Http2FrameType.HEADERS)
+        {
+            state = State.OPEN;
+            doHeaders(http2RO);
+        }
+        else if (http2RO.type() == Http2FrameType.PUSH_PROMISE)
+        {
+            state = State.RESERVED_REMOTE;
+        }
     }
 
     private void doHeaders(Http2FrameFW http2RO)
@@ -186,32 +252,7 @@ System.out.println("---> " + http2RO);
 
     }
 
-    private void doPing(Http2FrameFW http2RO)
-    {
-        Http2PingFW pingRO = connection.pingRO();
-        pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-        if (pingRO.streamId() != 0)
-        {
-            connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-        if (pingRO.payloadLength() != 8)
-        {
-            connection.error(Http2ErrorCode.FRAME_SIZE_ERROR);
-            return;
-        }
 
-        if (!pingRO.ack())
-        {
-            Http2PingFW.Builder pingRW = connection.pingRW();
-            pingRO = pingRW.wrap(buffer, 0, buffer.capacity())
-                           .ack()
-                           .payload(pingRO.buffer(), pingRO.payloadOffset(), pingRO.payloadLength())
-                           .build();
-            connection.replyTarget().doData(connection.sourceOutputEstId,
-                    pingRO.buffer(), pingRO.offset(), pingRO.sizeof());
-        }
-    }
 
     private void decodeHeaderField(HpackContext context, ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
                                    HpackHeaderFieldFW hf)
