@@ -15,6 +15,8 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import org.agrona.collections.Int2ObjectHashMap;
+
 public enum Http2ErrorCode
 {
     NO_ERROR(0),
@@ -32,10 +34,21 @@ public enum Http2ErrorCode
     INADEQUATE_SECURITY(12),
     HTTP_1_1_REQUIRED(13);
 
-    public final byte errorCode;
+    public final int errorCode;
+
+    private static class Codes
+    {
+        private static final Int2ObjectHashMap<Http2ErrorCode> CODES = new Int2ObjectHashMap<>();
+    }
 
     Http2ErrorCode(int errorCode)
     {
-        this.errorCode = (byte) errorCode;
+        this.errorCode = errorCode;
+        Codes.CODES.put(errorCode, this);
+    }
+
+    static Http2ErrorCode from(long errorCode)
+    {
+        return Codes.CODES.get((int) errorCode);
     }
 }
