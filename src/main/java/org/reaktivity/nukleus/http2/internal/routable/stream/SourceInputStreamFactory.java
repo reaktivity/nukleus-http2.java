@@ -56,6 +56,7 @@ import java.util.function.Predicate;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 public final class SourceInputStreamFactory
 {
@@ -330,14 +331,17 @@ public final class SourceInputStreamFactory
 
         private int decodePreface(final DirectBuffer buffer, final int offset, final int limit)
         {
-            prefaceRO.wrap(buffer, offset, limit);
+            if (!prefaceAvailable(buffer, offset, limit))
+            {
+                return limit;
+            }
             if (!prefaceRO.matches())
             {
                 processUnexpected(sourceId);
                 return limit;
             }
             this.decoderState = this::decodeHttp2Frame;
-            source.doWindow(sourceId, limit - offset);
+            source.doWindow(sourceId, prefaceRO.sizeof());
 
             // TODO: replace with connection pool (start)
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
@@ -345,7 +349,9 @@ public final class SourceInputStreamFactory
             // TODO: replace with connection pool (end)
 
             AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
-            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).maxConcurrentStreams(100).build();
+            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048)
+                                                 .maxConcurrentStreams(100)
+                                                 .build();
 
             replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
 
@@ -363,10 +369,44 @@ public final class SourceInputStreamFactory
             return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
         }
 
-        // @return true if a complete HTTP2 frame is assembled
-        //         false otherwise
+        /*
+         * Assembles a complete HTTP2 client preface and the flyweight is wrapped with the
+         * buffer (it could be given buffer or slab)
+         *
+         * @return true if a complete HTTP2 frame is assembled
+         *         false otherwise
+         */
+        private boolean prefaceAvailable(DirectBuffer buffer, int offset, int limit)
+        {
+            int available = limit - offset;
+
+            if (slabLength > 0 && slabLength+available >= PRI_REQUEST.length)
+            {
+                slab.putBytes(slabLength, buffer, offset, PRI_REQUEST.length-slabLength);
+                prefaceRO.wrap(slab, 0, PRI_REQUEST.length);
+                slabLength = 0;
+                return true;
+            }
+            else if (available >= PRI_REQUEST.length)
+            {
+                prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
+                return true;
+            }
+
+            slab.putBytes(slabLength, buffer, offset, available);
+            slabLength += available;
+            return false;
+        }
+
+        /*
+         * Assembles a complete HTTP2 frame and the flyweight is wrapped with the
+         * buffer (it could be given buffer or slab)
+         *
+         * @return true if a complete HTTP2 frame is assembled
+         *         false otherwise
+         */
         // TODO check slab capacity
-        private boolean http2Frame(DirectBuffer buffer, final int offset, final int limit)
+        private boolean http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
@@ -390,7 +430,7 @@ public final class SourceInputStreamFactory
                 int length = http2FrameLength(buffer, offset, limit);
                 if (available >= length)
                 {
-                    http2RO.wrap(buffer, offset, limit);
+                    http2RO.wrap(buffer, offset, offset + length);
                     return true;
                 }
             }
@@ -400,11 +440,9 @@ public final class SourceInputStreamFactory
             return false;
         }
 
-
         private int decodeHttp2Frame(final DirectBuffer buffer, final int offset, final int limit)
         {
-            boolean got = http2Frame(buffer, offset, limit);
-            if (!got)
+            if (!http2FrameAvailable(buffer, offset, limit))
             {
                 return limit;
             }

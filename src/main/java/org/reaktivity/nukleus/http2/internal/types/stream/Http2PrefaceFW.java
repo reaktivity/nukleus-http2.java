@@ -26,7 +26,7 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 public class Http2PrefaceFW extends Flyweight
 {
 
-    private static final byte[] PRI_REQUEST =
+    public static final byte[] PRI_REQUEST =
     {
             'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n',
                     'S', 'M', '\r', '\n', '\r', '\n'
