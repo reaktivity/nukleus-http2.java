@@ -72,11 +72,11 @@ public class Http2HeadersFWTest
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
         Http2HeadersFW fw = new Http2HeadersFW.Builder()
-                .wrap(buf, 1, buf.capacity())
-                .header(hf -> hf.indexed(2))      // :method: GET
-                .header(hf -> hf.indexed(6))      // :scheme: http
-                .header(hf -> hf.indexed(4))      // :path: /
-                .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(1).value("www.example.com")))
+                .wrap(buf, 1, buf.capacity())   // 1 to test offsets
+                .header(h -> h.indexed(2))      // :method: GET
+                .header(h -> h.indexed(6))      // :scheme: http
+                .header(h -> h.indexed(4))      // :path: /
+                .header(h -> h.literal(l -> l.type(INCREMENTAL_INDEXING).name(1).value("www.example.com")))
                 .endHeaders()
                 .streamId(3)
                 .build();

@@ -73,7 +73,6 @@ public class Http2ContinuationFW extends Flyweight
     // streamId != 0, caller to validate
     public int streamId()
     {
-        // Most significant bit is reserved and is ignored when receiving
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
@@ -125,17 +124,17 @@ public class Http2ContinuationFW extends Flyweight
             super.wrap(buffer, offset, maxLimit);
 
             int length = 0;
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
+            buffer.putByte(offset + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
+            buffer.putByte(offset + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
+            buffer.putByte(offset + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
 
-            buffer().putByte(offset() + TYPE_OFFSET, CONTINUATION.getType());
+            buffer.putByte(offset + TYPE_OFFSET, CONTINUATION.getType());
 
-            buffer().putByte(offset() + FLAGS_OFFSET, (byte) 0);
+            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 
-            limit(offset() + PAYLOAD_OFFSET);
+            limit(offset + PAYLOAD_OFFSET);
 
-            blockRW.wrap(buffer(), offset() + PAYLOAD_OFFSET, maxLimit());
+            blockRW.wrap(buffer, offset + PAYLOAD_OFFSET, maxLimit);
 
             return this;
         }

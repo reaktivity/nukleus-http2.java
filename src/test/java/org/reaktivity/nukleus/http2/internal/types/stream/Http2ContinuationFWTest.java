@@ -37,11 +37,11 @@ public class Http2ContinuationFWTest
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
         Http2ContinuationFW fw = new Http2ContinuationFW.Builder()
-                .wrap(buf, 1, buf.capacity())
-                .header(hf -> hf.indexed(2))      // :method: GET
-                .header(hf -> hf.indexed(6))      // :scheme: http
-                .header(hf -> hf.indexed(4))      // :path: /
-                .header(hf -> hf.literal(l -> l.type(INCREMENTAL_INDEXING).name(1).value("www.example.com")))
+                .wrap(buf, 1, buf.capacity())   // 1 to test offset
+                .header(h -> h.indexed(2))      // :method: GET
+                .header(h -> h.indexed(6))      // :scheme: http
+                .header(h -> h.indexed(4))      // :path: /
+                .header(h -> h.literal(l -> l.type(INCREMENTAL_INDEXING).name(1).value("www.example.com")))
                 .endHeaders()
                 .streamId(3)
                 .build();

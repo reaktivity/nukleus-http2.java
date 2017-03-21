@@ -84,7 +84,6 @@ public class Http2HeadersFW extends Flyweight
     // streamId != 0, caller to validate
     public int streamId()
     {
-        // Most significant bit is reserved and is ignored when receiving
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 

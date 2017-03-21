@@ -79,7 +79,6 @@ public class Http2PingFW extends Flyweight
     // streamId == 0, caller to validate
     public int streamId()
     {
-        // Most significant bit is reserved and is ignored when receiving
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
@@ -122,17 +121,17 @@ public class Http2PingFW extends Flyweight
         {
             super.wrap(buffer, offset, maxLimit);
 
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) 0);
-            buffer().putByte(offset() + LENGTH_OFFSET + 1, (byte) 0);
-            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) 8);
+            buffer.putByte(offset + LENGTH_OFFSET, (byte) 0);
+            buffer.putByte(offset + LENGTH_OFFSET + 1, (byte) 0);
+            buffer.putByte(offset + LENGTH_OFFSET + 2, (byte) 8);
 
-            buffer().putByte(offset() + TYPE_OFFSET, PING.getType());
+            buffer.putByte(offset + TYPE_OFFSET, PING.getType());
 
-            buffer().putByte(offset() + FLAGS_OFFSET, (byte) 0);
+            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 
-            buffer().putInt(offset() + STREAM_ID_OFFSET, 0, ByteOrder.BIG_ENDIAN);
+            buffer.putInt(offset + STREAM_ID_OFFSET, 0, ByteOrder.BIG_ENDIAN);
 
-            limit(offset() + PAYLOAD_OFFSET + 8);
+            limit(offset + PAYLOAD_OFFSET + 8);
 
             return this;
         }

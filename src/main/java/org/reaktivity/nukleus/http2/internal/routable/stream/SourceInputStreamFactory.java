@@ -33,6 +33,10 @@ import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
@@ -46,6 +50,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,6 +61,7 @@ import java.util.function.Predicate;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 public final class SourceInputStreamFactory
@@ -91,6 +97,17 @@ public final class SourceInputStreamFactory
     private final LongObjectBiConsumer<Correlation> correlateNew;
 
     private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);
+
+    enum State
+    {
+        IDLE,
+        RESERVED_LOCAL,
+        RESERVED_REMOTE,
+        OPEN,
+        HALF_CLOSED_LOCAL,
+        HALF_CLOSED_REMOTE,
+        CLOSED
+    }
 
     public SourceInputStreamFactory(
         Source source,
@@ -463,7 +480,7 @@ System.out.println("---> " + http2RO);
             }
             else if (frameType == Http2FrameType.PING)
             {
-                doPing(http2RO);
+                doPing();
                 return nextOffset;
             }
             int streamId = lastStreamId = http2RO.streamId();
@@ -479,7 +496,7 @@ System.out.println("---> " + http2RO);
 
                 correlateNew.accept(targetId, correlation);
             }
-            http2Stream.decode(http2RO);
+            http2Stream.onFrame();
             return nextOffset;
         }
 
@@ -491,25 +508,25 @@ System.out.println("---> " + http2RO);
                 Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
                                                      .ack()
                                                      .build();
-                replyTarget().doData(sourceOutputEstId,
+                replyTarget.doData(sourceOutputEstId,
                         settings.buffer(), settings.offset(), settings.limit());
             }
             // TODO when ack flag is true
         }
 
-        private void doPing(Http2FrameFW http2RO)
+        private void doPing()
         {
-            pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-            if (pingRO.streamId() != 0)
+            if (http2RO.streamId() != 0)
             {
                 error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-            if (pingRO.payloadLength() != 8)
+            if (http2RO.payloadLength() != 8)
             {
                 error(Http2ErrorCode.FRAME_SIZE_ERROR);
                 return;
             }
+            pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
 
             if (!pingRO.ack())
             {
@@ -517,7 +534,7 @@ System.out.println("---> " + http2RO);
                                .ack()
                                .payload(pingRO.buffer(), pingRO.payloadOffset(), pingRO.payloadLength())
                                .build();
-                replyTarget().doData(sourceOutputEstId,
+                replyTarget.doData(sourceOutputEstId,
                         ping.buffer(), ping.offset(), ping.sizeof());
             }
         }
@@ -621,53 +638,13 @@ System.out.println("---> " + http2RO);
             source.doReset(sourceId);
         }
 
-        Http2HeadersFW headersRO()
-        {
-            return headersRO;
-        }
-
-        Http2SettingsFW.Builder settingsRW()
-        {
-            return settingsRW;
-        }
-
-        Target replyTarget()
-        {
-            return replyTarget;
-        }
-
-        Source source()
-        {
-            return source;
-        }
-
-        Http2DataFW dataRO()
-        {
-            return http2DataRO;
-        }
-
-        public Http2SettingsFW settingsRO()
-        {
-            return settingsRO;
-        }
-
-        public Http2PingFW pingRO()
-        {
-            return pingRO;
-        }
-
-        public Http2PingFW.Builder pingRW()
-        {
-            return pingRW;
-        }
-
         void error(Http2ErrorCode error)
         {
             Http2GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
                           .lastStreamId(lastStreamId)
                           .errorCode(error.errorCode)
                           .build();
-            replyTarget().doData(sourceOutputEstId,
+            replyTarget.doData(sourceOutputEstId,
                     goawayRO.buffer(), goawayRO.offset(), goawayRO.sizeof());
 
             replyTarget.doEnd(sourceOutputEstId);
@@ -687,4 +664,331 @@ System.out.println("---> " + http2RO);
         int decode(DirectBuffer buffer, int offset, int length);
     }
 
+    class Http2Stream
+    {
+        private final SourceInputStream connection;
+        private final int http2StreamId;
+        private final long targetId;
+        private Route route;
+        private State state;
+
+        Http2Stream(SourceInputStream connection, int http2StreamId, long targetId)
+        {
+            this.connection = connection;
+            this.http2StreamId = http2StreamId;
+            this.targetId = targetId;
+            this.state = State.IDLE;
+        }
+
+        void onFrame()
+        {
+            switch (state)
+            {
+                case IDLE:
+                    inIdle();
+                    break;
+                case RESERVED_LOCAL:
+                    inReservedLocal();
+                    break;
+                case RESERVED_REMOTE:
+                    inReservedRemote();
+                    break;
+                case OPEN:
+                    inOpen();
+                    break;
+                case HALF_CLOSED_LOCAL:
+                    inHalfClosedLocal();
+                    break;
+                case HALF_CLOSED_REMOTE:
+                    inHalfClosedRemote();
+                    break;
+                case CLOSED:
+                    inClosed();
+                    break;
+            }
+        }
+
+        private void inClosed()
+        {
+        }
+
+        private void inHalfClosedRemote()
+        {
+            if (!(http2RO.type() == Http2FrameType.WINDOW_UPDATE || http2RO.type() == Http2FrameType.PRIORITY
+                    || http2RO.type() == Http2FrameType.RST_STREAM))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+        }
+
+        private void inHalfClosedLocal()
+        {
+            if (http2RO.endStream() || http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+        }
+
+        private void inOpen()
+        {
+            if (http2RO.type() == Http2FrameType.DATA)
+            {
+                doData();
+            }
+            if (http2RO.endStream())
+            {
+                state = State.HALF_CLOSED_REMOTE;
+            }
+        }
+
+        private void inReservedRemote()
+        {
+            if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.RST_STREAM
+                    || http2RO.type() == Http2FrameType.PRIORITY))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+            else if (http2RO.type() == Http2FrameType.HEADERS)
+            {
+                state = State.HALF_CLOSED_LOCAL;
+            }
+        }
+
+        private void inReservedLocal()
+        {
+            if (!(http2RO.type() == Http2FrameType.RST_STREAM || http2RO.type() == Http2FrameType.PRIORITY
+                    || http2RO.type() == Http2FrameType.WINDOW_UPDATE))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+        }
+
+        private void inIdle()
+        {
+            if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.PRIORITY))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.HEADERS)
+            {
+                state = State.OPEN;
+                doHeaders();
+            }
+            else if (http2RO.type() == Http2FrameType.PUSH_PROMISE)
+            {
+                state = State.RESERVED_REMOTE;
+            }
+        }
+
+        private void doHeaders()
+        {
+            headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            // TODO avoid iterating over headers twice
+            Map<String, String> headersMap = new HashMap<>();
+            headersRO.forEach(h -> decodeHeaderField(connection.hpackContext, headersMap, h));
+            final Optional<Route> optional = connection.resolveTarget(connection.sourceRef, headersMap);
+            route = optional.get();
+            Target newTarget = route.target();
+            final long targetRef = route.targetRef();
+
+            newTarget.doHttpBegin(targetId, targetRef, targetId,
+                    hs -> headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, hs, hf)));
+            newTarget.addThrottle(targetId, connection::handleThrottle);
+
+            source.doWindow(connection.sourceId, http2RO.sizeof());
+            connection.throttleState = connection::throttleSkipNextWindow;
+            state = State.OPEN;
+        }
+
+        private void doRst()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+
+        private void doWindow()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+
+        private void doContinuation()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+
+        private void doData()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (route == null)
+            {
+                connection.processUnexpected(connection.sourceId);
+                return;
+            }
+            Target newTarget = route.target();
+            Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
+
+        }
+
+        private void decodeHeaderField(HpackContext context, ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
+                                       HpackHeaderFieldFW hf)
+        {
+
+            HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
+            switch (headerFieldType)
+            {
+                case INDEXED :
+                {
+                    int index = hf.index();
+                    DirectBuffer nameBuffer = context.nameBuffer(index);
+                    DirectBuffer valueBuffer = context.valueBuffer(index);
+                    builder.item(i -> i.representation((byte) 0)
+                                       .name(nameBuffer, 0, nameBuffer.capacity())
+                                       .value(valueBuffer, 0, valueBuffer.capacity()));
+                }
+                break;
+
+                case LITERAL :
+                    HpackLiteralHeaderFieldFW literalRO = hf.literal();
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
+                            int index = literalRO.nameIndex();
+                            DirectBuffer nameBuffer = context.nameBuffer(index);
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            if (valueRO.huffman())
+                            {
+                                String value = HpackHuffman.decode(valuePayload);
+                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                            }
+                            DirectBuffer valueBuffer = valuePayload;
+                            builder.item(i -> i.representation((byte) 0)
+                                               .name(nameBuffer, 0, nameBuffer.capacity())
+                                               .value(valueBuffer, 0, valueBuffer.capacity()));
+                        }
+                        break;
+                        case NEW:
+                        {
+                            HpackStringFW nameRO = literalRO.nameLiteral();
+                            DirectBuffer namePayload = nameRO.payload();
+                            if (nameRO.huffman())
+                            {
+                                String name = HpackHuffman.decode(namePayload);
+                                namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
+                            }
+                            DirectBuffer nameBuffer = namePayload;
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            if (valueRO.huffman())
+                            {
+                                String value = HpackHuffman.decode(valuePayload);
+                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                            }
+                            DirectBuffer valueBuffer = valuePayload;
+                            builder.item(i -> i.representation((byte) 0)
+                                               .name(nameBuffer, 0, nameBuffer.capacity())
+                                               .value(valueBuffer, 0, valueBuffer.capacity()));
+
+                            if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                            {
+                                context.add(nameBuffer, valueBuffer);
+                            }
+                        }
+                        break;
+                    }
+                    break;
+
+                case UPDATE:
+                    break;
+            }
+        }
+
+        private void decodeHeaderField(HpackContext context, Map<String, String> headersMap, HpackHeaderFieldFW hf)
+        {
+            HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
+            switch (headerFieldType)
+            {
+                case INDEXED :
+                {
+                    int index = hf.index();
+                    headersMap.put(context.name(index), context.value(index));
+                }
+                break;
+
+                case LITERAL :
+                    HpackLiteralHeaderFieldFW literalRO = hf.literal();
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
+                            int index = literalRO.nameIndex();
+                            String name = context.name(index);
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            String value = valueRO.huffman()
+                                    ? HpackHuffman.decode(valuePayload)
+                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            headersMap.put(name, value);
+                        }
+                        break;
+                        case NEW: {
+                            HpackStringFW nameRO = literalRO.nameLiteral();
+                            DirectBuffer namePayload = nameRO.payload();
+                            String name = nameRO.huffman()
+                                    ? HpackHuffman.decode(namePayload)
+                                    : namePayload.getStringWithoutLengthUtf8(0, namePayload.capacity());
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            String value = valueRO.huffman()
+                                    ? HpackHuffman.decode(valuePayload)
+                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            headersMap.put(name, value);
+                        }
+                        break;
+                    }
+                    break;
+
+                case UPDATE:
+                    break;
+            }
+        }
+    }
 }

@@ -15,8 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.collections.Int2ObjectHashMap;
-
 public enum Http2ErrorCode
 {
     NO_ERROR(0),
@@ -36,19 +34,30 @@ public enum Http2ErrorCode
 
     public final int errorCode;
 
-    private static class Codes
-    {
-        private static final Int2ObjectHashMap<Http2ErrorCode> CODES = new Int2ObjectHashMap<>();
-    }
-
     Http2ErrorCode(int errorCode)
     {
         this.errorCode = errorCode;
-        Codes.CODES.put(errorCode, this);
     }
 
-    static Http2ErrorCode from(long errorCode)
+    static Http2ErrorCode from(int errorCode)
     {
-        return Codes.CODES.get((int) errorCode);
+        switch (errorCode)
+        {
+            case 0 : return NO_ERROR;
+            case 1 : return PROTOCOL_ERROR;
+            case 2 : return INTERNAL_ERROR;
+            case 3 : return FLOW_CONTROL_ERROR;
+            case 4 : return SETTINGS_TIMEOUT;
+            case 5 : return STREAM_CLOSED;
+            case 6 : return FRAME_SIZE_ERROR;
+            case 7 : return REFUSED_STREAM;
+            case 8 : return CANCEL;
+            case 9 : return COMPRESSION_ERROR;
+            case 10 : return CONNECT_ERROR;
+            case 11 : return ENHANCE_YOUR_CALM;
+            case 12 : return INADEQUATE_SECURITY;
+            case 13 : return HTTP_1_1_REQUIRED;
+        }
+        return null;
     }
 }
