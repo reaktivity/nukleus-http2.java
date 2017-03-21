@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
@@ -48,15 +49,12 @@ public final class Http2FrameFW extends Flyweight
 
     public int payloadLength()
     {
-        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
-        return length;
+        return payloadLength(buffer(), offset());
     }
 
-    public Http2FrameType type()
+    public FrameType type()
     {
-        return Http2FrameType.from(buffer().getByte(offset() + TYPE_OFFSET));
+        return type(buffer(), offset());
     }
 
     public byte flags()
@@ -66,12 +64,12 @@ public final class Http2FrameFW extends Flyweight
 
     public boolean endStream()
     {
-        return Http2Flags.endStream(flags());
+        return Flags.endStream(flags());
     }
 
     public int streamId()
     {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        return streamId(buffer(), offset());
     }
 
     public DirectBuffer payload()
@@ -102,6 +100,30 @@ public final class Http2FrameFW extends Flyweight
     {
         return String.format("%s frame <length=%s, flags=%s, id=%s>",
                 type(), payloadLength(), flags(), streamId());
+    }
+
+    static int payloadLength(DirectBuffer buffer, int offset)
+    {
+        int length = (buffer.getByte(offset + LENGTH_OFFSET) & 0xFF) << 16;
+        length += (buffer.getByte(offset + LENGTH_OFFSET + 1) & 0xFF) << 8;
+        length += buffer.getByte(offset + LENGTH_OFFSET + 2) & 0xFF;
+        return length;
+    }
+
+    static FrameType type(DirectBuffer buffer, int offset)
+    {
+        return FrameType.from(buffer.getByte(offset + TYPE_OFFSET));
+    }
+
+    static int streamId(DirectBuffer buffer, int offset)
+    {
+        return buffer.getInt(offset + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+    }
+
+    static void putPayloadLength(MutableDirectBuffer buffer, int offset, int payloadLength)
+    {
+        buffer.putShort(offset + LENGTH_OFFSET, (short) ((payloadLength & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
+        buffer.putByte(offset + LENGTH_OFFSET + 2, (byte) (payloadLength & 0x00_00_00_FF));
     }
 
 }

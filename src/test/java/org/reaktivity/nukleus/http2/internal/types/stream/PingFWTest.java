@@ -15,14 +15,16 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
+import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
 
-public class Http2WindowUpdateFWTest
+public class PingFWTest
 {
 
     @Test
@@ -31,19 +33,20 @@ public class Http2WindowUpdateFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        Http2WindowUpdateFW fw = new Http2WindowUpdateFW.Builder()
+        DirectBuffer payload = new UnsafeBuffer(new byte[] {1, 2, 3, 4, 5, 6, 7, 8});
+        PingFW fw = new PingFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .streamId(3)
-                .size(100)
+                .ack()
+                .payload(payload, 0, payload.capacity())
                 .build();
 
-        assertEquals(4, fw.payloadLength());
+        assertEquals(8, fw.payloadLength());
         assertEquals(1, fw.offset());
-        assertEquals(14, fw.limit());
-        assertEquals(WINDOW_UPDATE, fw.type());
-        assertEquals(0, fw.flags());
-        assertEquals(3, fw.streamId());
-        assertEquals(100, fw.size());
+        assertEquals(18, fw.limit());
+        assertEquals(PING, fw.type());
+        assertTrue(fw.ack());
+        assertEquals(0, fw.streamId());
+        assertEquals(payload, fw.payload());
     }
 
 }

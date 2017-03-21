@@ -23,8 +23,8 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.ACK;
+import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTINGS;
 
 /*
     Flyweight for HTTP2 SETTINGS frame
@@ -46,14 +46,14 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +---------------------------------------------------------------+
 
  */
-public class Http2SettingsFW extends Flyweight
+public class SettingsFW extends Flyweight
 {
     private static final int HEADER_TABLE_SIZE = 1;
-    public static final int ENABLE_PUSH = 2;
-    public static final int MAX_CONCURRENT_STREAMS = 3;
-    public static final int INITIAL_WINDOW_SIZE = 4;
-    public static final int MAX_FRAME_SIZE = 5;
-    public static final int MAX_HEADER_LIST_SIZE = 6;
+    private static final int ENABLE_PUSH = 2;
+    private static final int MAX_CONCURRENT_STREAMS = 3;
+    private static final int INITIAL_WINDOW_SIZE = 4;
+    private static final int MAX_FRAME_SIZE = 5;
+    private static final int MAX_HEADER_LIST_SIZE = 6;
 
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -61,21 +61,15 @@ public class Http2SettingsFW extends Flyweight
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final ListFW<Http2SettingFW> listFW = new ListFW<>(new Http2SettingFW());
+    private final ListFW<SettingFW> listFW = new ListFW<>(new SettingFW());
 
     public int payloadLength()
     {
-        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
-
-        assert length % 6 == 0;
-        return length;
+        return Http2FrameFW.payloadLength(buffer(), offset());
     }
 
-    public Http2FrameType type()
+    public FrameType type()
     {
-        //assert buffer().getByte(offset() + TYPE_OFFSET) == SETTINGS.getType();
         return SETTINGS;
     }
 
@@ -86,10 +80,9 @@ public class Http2SettingsFW extends Flyweight
 
     public boolean ack()
     {
-        return Http2Flags.ack(flags());
+        return Flags.ack(flags());
     }
 
-    // streamId == 0, caller to validate
     public int streamId()
     {
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
@@ -146,9 +139,28 @@ public class Http2SettingsFW extends Flyweight
     }
 
     @Override
-    public Http2SettingsFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public SettingsFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
+
+        int streamId = Http2FrameFW.streamId(buffer, offset);
+        if (streamId != 0)
+        {
+            throw new Http2Exception(String.format("Invalid SETTINGS frame stream-id=%d", streamId));
+        }
+
+        FrameType type = Http2FrameFW.type(buffer, offset);
+        if (type != SETTINGS)
+        {
+            throw new Http2Exception(String.format("Invalid SETTINGS frame type=%s", type));
+        }
+
+        int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+        if (payloadLength%6 != 0)
+        {
+            throw new Http2Exception(String.format("Invalid SETTINGS frame length=%d", payloadLength));
+        }
+
         listFW.wrap(buffer, offset + PAYLOAD_OFFSET, limit());
         checkLimit(limit(), maxLimit);
         return this;
@@ -161,14 +173,14 @@ public class Http2SettingsFW extends Flyweight
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<Http2SettingsFW>
+    public static final class Builder extends Flyweight.Builder<SettingsFW>
     {
-        private final ListFW.Builder<Http2SettingFW.Builder, Http2SettingFW> settingsRW =
-                new ListFW.Builder<>(new Http2SettingFW.Builder(), new Http2SettingFW());
+        private final ListFW.Builder<SettingFW.Builder, SettingFW> settingsRW =
+                new ListFW.Builder<>(new SettingFW.Builder(), new SettingFW());
 
         public Builder()
         {
-            super(new Http2SettingsFW());
+            super(new SettingsFW());
         }
 
         @Override
@@ -176,9 +188,7 @@ public class Http2SettingsFW extends Flyweight
         {
             super.wrap(buffer, offset, maxLimit);
 
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) 0);
-            buffer().putByte(offset() + LENGTH_OFFSET+1, (byte) 0);
-            buffer().putByte(offset() + LENGTH_OFFSET+2, (byte) 0);
+            Http2FrameFW.putPayloadLength(buffer, offset, 0);
 
             buffer().putByte(offset() + TYPE_OFFSET, SETTINGS.getType());
 
@@ -234,14 +244,11 @@ public class Http2SettingsFW extends Flyweight
             return this;
         }
 
-        private Builder addSetting(Consumer<Http2SettingFW.Builder> mutator)
+        private Builder addSetting(Consumer<SettingFW.Builder> mutator)
         {
             settingsRW.item(mutator);
             int length = settingsRW.limit() - offset() - PAYLOAD_OFFSET;
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-            buffer().putByte(offset() + LENGTH_OFFSET + 1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
-
+            Http2FrameFW.putPayloadLength(buffer(), offset(), length);
             limit(settingsRW.limit());
             return this;
         }

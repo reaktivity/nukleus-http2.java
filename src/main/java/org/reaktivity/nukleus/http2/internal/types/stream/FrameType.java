@@ -15,10 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import java.util.HashMap;
-import java.util.Map;
-
-public enum Http2FrameType
+public enum FrameType
 {
     DATA(0),
     HEADERS(1),
@@ -33,10 +30,9 @@ public enum Http2FrameType
 
     private final byte type;
 
-    Http2FrameType(int type)
+    FrameType(int type)
     {
         this.type = (byte) type;
-        Types.TYPES.put(this.type, this);
     }
 
     public byte getType()
@@ -44,13 +40,21 @@ public enum Http2FrameType
         return type;
     }
 
-    private static class Types
+    public static FrameType from(byte type)
     {
-        private static final Map<Byte, Http2FrameType> TYPES = new HashMap<>();
-    }
-
-    public static Http2FrameType from(byte type)
-    {
-        return Types.TYPES.get(type);
+        switch (type)
+        {
+            case 0 : return DATA;
+            case 1 : return HEADERS;
+            case 2 : return PRIORITY;
+            case 3 : return RST_STREAM;
+            case 4 : return SETTINGS;
+            case 5 : return PUSH_PROMISE;
+            case 6 : return PING;
+            case 7 : return GO_AWAY;
+            case 8 : return WINDOW_UPDATE;
+            case 9 : return CONTINUATION;
+        }
+        return null;
     }
 }

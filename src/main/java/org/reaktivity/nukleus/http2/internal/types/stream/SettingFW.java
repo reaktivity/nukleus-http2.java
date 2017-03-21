@@ -31,7 +31,7 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
     +---------------------------------------------------------------+
 
  */
-public class Http2SettingFW extends Flyweight
+public class SettingFW extends Flyweight
 {
 
     public int id()
@@ -51,7 +51,7 @@ public class Http2SettingFW extends Flyweight
     }
 
     @Override
-    public Http2SettingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public SettingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
@@ -60,11 +60,11 @@ public class Http2SettingFW extends Flyweight
         return this;
     }
 
-    public static final class Builder extends Flyweight.Builder<Http2SettingFW>
+    public static final class Builder extends Flyweight.Builder<SettingFW>
     {
         public Builder()
         {
-            super(new Http2SettingFW());
+            super(new SettingFW());
         }
 
         @Override

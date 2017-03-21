@@ -23,7 +23,7 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 /*
  *  Flyweight for HTTP2 client preface
  */
-public class Http2PrefaceFW extends Flyweight
+public class PrefaceFW extends Flyweight
 {
 
     public static final byte[] PRI_REQUEST =
@@ -47,7 +47,7 @@ public class Http2PrefaceFW extends Flyweight
     }
 
     @Override
-    public Http2PrefaceFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public PrefaceFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 

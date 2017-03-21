@@ -20,15 +20,13 @@ import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.nio.ByteOrder;
-import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.CONTINUATION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.RST_STREAM;
 
 /*
 
-    Flyweight for HTTP2 CONTINUATION frame
+    Flyweight for HTTP2 RST_STREAM frame
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -37,11 +35,11 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
     +=+=============+===============================================+
-    |                   Header Block Fragment (*)                 ...
+    |                        Error Code (32)                        |
     +---------------------------------------------------------------+
 
  */
-public class Http2ContinuationFW extends Flyweight
+public class RstStreamFW extends Flyweight
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -49,20 +47,14 @@ public class Http2ContinuationFW extends Flyweight
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
-
     public int payloadLength()
     {
-        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
-        return length;
+        return 4;
     }
 
-    public Http2FrameType type()
+    public FrameType type()
     {
-        //assert buffer().getByte(offset() + TYPE_OFFSET) == CONTINUATION.getType();
-        return CONTINUATION;
+        return RST_STREAM;
     }
 
     public byte flags()
@@ -70,20 +62,14 @@ public class Http2ContinuationFW extends Flyweight
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    // streamId != 0, caller to validate
     public int streamId()
     {
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
-    public boolean endHeaders()
+    public int errorCode()
     {
-        return Http2Flags.endHeaders(flags());
-    }
-
-    public void forEach(Consumer<HpackHeaderFieldFW> headerField)
-    {
-        headerBlockRO.forEach(headerField);
+        return buffer().getInt(offset() + PAYLOAD_OFFSET, BIG_ENDIAN);
     }
 
     @Override
@@ -93,11 +79,27 @@ public class Http2ContinuationFW extends Flyweight
     }
 
     @Override
-    public Http2ContinuationFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public RstStreamFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
-        headerBlockRO.wrap(buffer(), offset() + PAYLOAD_OFFSET, offset() + PAYLOAD_OFFSET + payloadLength());
 
+        int streamId = Http2FrameFW.streamId(buffer, offset);
+        if (streamId == 0)
+        {
+            throw new Http2Exception(String.format("Invalid RST_STREAM frame stream-id=%d (must not be 0)", streamId));
+        }
+
+        FrameType type = Http2FrameFW.type(buffer, offset);
+        if (type != RST_STREAM)
+        {
+            throw new Http2Exception(String.format("Invalid RST_STREAM frame type=%s", type));
+        }
+
+        int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+        if (payloadLength != 4)
+        {
+            throw new Http2Exception(String.format("Invalid RST_STREAM frame length=%d (must be 4)", payloadLength));
+        }
         checkLimit(limit(), maxLimit);
         return this;
     }
@@ -109,13 +111,12 @@ public class Http2ContinuationFW extends Flyweight
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<Http2ContinuationFW>
+    public static final class Builder extends Flyweight.Builder<RstStreamFW>
     {
-        private final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
         public Builder()
         {
-            super(new Http2ContinuationFW());
+            super(new RstStreamFW());
         }
 
         @Override
@@ -123,18 +124,15 @@ public class Http2ContinuationFW extends Flyweight
         {
             super.wrap(buffer, offset, maxLimit);
 
-            int length = 0;
-            buffer.putByte(offset + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-            buffer.putByte(offset + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-            buffer.putByte(offset + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
+            Http2FrameFW.putPayloadLength(buffer, offset, 4);
 
-            buffer.putByte(offset + TYPE_OFFSET, CONTINUATION.getType());
+            buffer.putByte(offset + TYPE_OFFSET, RST_STREAM.getType());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 
-            limit(offset + PAYLOAD_OFFSET);
+            buffer.putInt(offset + STREAM_ID_OFFSET, 0, ByteOrder.BIG_ENDIAN);
 
-            blockRW.wrap(buffer, offset + PAYLOAD_OFFSET, maxLimit);
+            limit(offset + PAYLOAD_OFFSET + 4);
 
             return this;
         }
@@ -145,21 +143,9 @@ public class Http2ContinuationFW extends Flyweight
             return this;
         }
 
-        public Builder endHeaders()
+        public RstStreamFW.Builder errorCode(ErrorCode errorCode)
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, END_HEADERS);
-            return this;
-        }
-
-        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator)
-        {
-            blockRW.header(mutator);
-            int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) ((length & 0x00_FF_00_00) >>> 16));
-            buffer().putByte(offset() + LENGTH_OFFSET +1, (byte) ((length & 0x00_00_FF_00) >>> 8));
-            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) ((length & 0x00_00_00_FF)));
-
-            limit(blockRW.limit());
+            buffer().putInt(offset() + PAYLOAD_OFFSET, errorCode.errorCode, ByteOrder.BIG_ENDIAN);
             return this;
         }
 

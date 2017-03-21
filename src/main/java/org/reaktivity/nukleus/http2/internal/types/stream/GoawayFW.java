@@ -19,14 +19,12 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
-import java.nio.ByteOrder;
-
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.GO_AWAY;
 
 /*
 
-    Flyweight for HTTP2 RST_STREAM frame
+    Flyweight for HTTP2 GOAWAY frame
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -34,32 +32,33 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     |   Type (8)    |   Flags (8)   |
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
-    +=+=============================================================+
-    |R|              Window Size Increment (31)                     |
+    +=+=============+===============================================+
+    |R|                  Last-Stream-ID (31)                        |
     +-+-------------------------------------------------------------+
+    |                      Error Code (32)                          |
+    +---------------------------------------------------------------+
+    |                  Additional Debug Data (*)                    |
+    +---------------------------------------------------------------+
 
  */
-public class Http2WindowUpdateFW extends Flyweight
+public class GoawayFW extends Flyweight
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
     private static final int STREAM_ID_OFFSET = 5;
+    private static final int LAST_STREAM_ID_OFFSET = 9;
+    private static final int ERROR_CODE_OFFSET = 13;
     private static final int PAYLOAD_OFFSET = 9;
 
     public int payloadLength()
     {
-        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
-
-        return length;
+        return Http2FrameFW.payloadLength(buffer(), offset());
     }
 
-    public Http2FrameType type()
+    public FrameType type()
     {
-        //assert buffer().getByte(offset() + TYPE_OFFSET) == WINDOW_UPDATE.getType();
-        return WINDOW_UPDATE;
+        return GO_AWAY;
     }
 
     public byte flags()
@@ -69,12 +68,17 @@ public class Http2WindowUpdateFW extends Flyweight
 
     public int streamId()
     {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        return 0;
     }
 
-    public int size()
+    public int lastStreamId()
     {
-        return buffer().getInt(offset() + PAYLOAD_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        return buffer().getInt(offset() + LAST_STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+    }
+
+    public int errorCode()
+    {
+        return buffer().getInt(offset() + ERROR_CODE_OFFSET, BIG_ENDIAN);
     }
 
     @Override
@@ -84,9 +88,22 @@ public class Http2WindowUpdateFW extends Flyweight
     }
 
     @Override
-    public Http2WindowUpdateFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public GoawayFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
+
+        int streamId = Http2FrameFW.streamId(buffer, offset);
+        if (streamId != 0)
+        {
+            throw new Http2Exception(String.format("Invalid stream-id=%d for GOAWAY frame", streamId));
+        }
+
+        FrameType type = Http2FrameFW.type(buffer, offset);
+        if (type != GO_AWAY)
+        {
+            throw new Http2Exception(String.format("Invalid type=%s for GOAWAY frame", type));
+        }
+
         checkLimit(limit(), maxLimit);
         return this;
     }
@@ -98,12 +115,12 @@ public class Http2WindowUpdateFW extends Flyweight
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<Http2WindowUpdateFW>
+    public static final class Builder extends Flyweight.Builder<GoawayFW>
     {
 
         public Builder()
         {
-            super(new Http2WindowUpdateFW());
+            super(new GoawayFW());
         }
 
         @Override
@@ -111,32 +128,29 @@ public class Http2WindowUpdateFW extends Flyweight
         {
             super.wrap(buffer, offset, maxLimit);
 
-            buffer().putByte(offset() + LENGTH_OFFSET, (byte) 0);
-            buffer().putByte(offset() + LENGTH_OFFSET + 1, (byte) 0);
-            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) 4);
+            // not including "Additional Debug Data"
+            Http2FrameFW.putPayloadLength(buffer, offset, 8);
 
-            buffer().putByte(offset() + TYPE_OFFSET, WINDOW_UPDATE.getType());
+            buffer.putByte(offset + TYPE_OFFSET, GO_AWAY.getType());
 
-            buffer().putByte(offset() + FLAGS_OFFSET, (byte) 0);
+            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 
-            buffer().putInt(offset() + STREAM_ID_OFFSET, 0, ByteOrder.BIG_ENDIAN);
+            buffer.putInt(offset + STREAM_ID_OFFSET, 0, BIG_ENDIAN);
 
-            limit(offset() + PAYLOAD_OFFSET + 4);
+            limit(offset + PAYLOAD_OFFSET + 8);   // +4 for last stream id, +4 for error code
 
             return this;
         }
 
-        public Builder streamId(int streamId)
+        public GoawayFW.Builder lastStreamId(int lastStreamId)
         {
-            buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, ByteOrder.BIG_ENDIAN);
+            buffer().putInt(offset() + LAST_STREAM_ID_OFFSET, lastStreamId, BIG_ENDIAN);
             return this;
         }
 
-        public Http2WindowUpdateFW.Builder size(int size)
+        public GoawayFW.Builder errorCode(ErrorCode error)
         {
-            assert size > 0;
-
-            buffer().putInt(offset() + PAYLOAD_OFFSET, size & 0x7F_FF_FF_FF, ByteOrder.BIG_ENDIAN);
+            buffer().putInt(offset() + ERROR_CODE_OFFSET, error.errorCode, BIG_ENDIAN);
             return this;
         }
 

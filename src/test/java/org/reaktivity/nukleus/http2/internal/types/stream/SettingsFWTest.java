@@ -15,16 +15,33 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode.PROTOCOL_ERROR;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTINGS;
 
-public class Http2RstStreamFWTest
+public class SettingsFWTest
 {
+
+    @Test
+    public void decode()
+    {
+        byte[] bytes = new byte[] {
+                0x7f, 0x7f,
+                // SETTINGS frame begin
+                0x00, 0x00, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, (byte) 0xff, (byte) 0xff,
+                // SETTINGS frame end
+                0x7f, 0x7f
+        };
+
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        SettingsFW fw = new SettingsFW().wrap(buffer, 2, buffer.capacity());
+        assertEquals(17, fw.limit());
+        assertEquals(65535L, fw.initialWindowSize());
+    }
 
     @Test
     public void encode()
@@ -32,20 +49,20 @@ public class Http2RstStreamFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        Http2RstStreamFW fw = new Http2RstStreamFW.Builder()
+        SettingsFW fw = new SettingsFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .streamId(3)
-                .errorCode(PROTOCOL_ERROR)
+                .initialWindowSize(65535L)
+                .maxHeaderListSize(4096L)
                 .build();
 
-        assertEquals(4, fw.payloadLength());
+        assertEquals(12, fw.payloadLength());
         assertEquals(1, fw.offset());
-        assertEquals(14, fw.limit());
-        assertEquals(RST_STREAM, fw.type());
+        assertEquals(22, fw.limit());
+        assertEquals(SETTINGS, fw.type());
         assertEquals(0, fw.flags());
-        assertEquals(3, fw.streamId());
-        Http2ErrorCode errorCode = Http2ErrorCode.from(fw.errorCode());
-        assertEquals(PROTOCOL_ERROR, errorCode);
+        assertEquals(0, fw.streamId());
+        assertEquals(65535L, fw.initialWindowSize());
+        assertEquals(4096L, fw.maxHeaderListSize());
     }
 
 }

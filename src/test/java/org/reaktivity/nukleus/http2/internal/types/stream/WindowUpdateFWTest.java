@@ -15,33 +15,15 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDOW_UPDATE;
 
-public class Http2SettingsFWTest
+public class WindowUpdateFWTest
 {
-
-    @Test
-    public void decode()
-    {
-        byte[] bytes = new byte[] {
-                0x7f, 0x7f,
-                // SETTINGS frame begin
-                0x00, 0x00, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, (byte) 0xff, (byte) 0xff,
-                // SETTINGS frame end
-                0x7f, 0x7f
-        };
-
-        DirectBuffer buffer = new UnsafeBuffer(bytes);
-        Http2SettingsFW fw = new Http2SettingsFW().wrap(buffer, 2, buffer.capacity());
-        assertEquals(17, fw.limit());
-        assertEquals(65535L, fw.initialWindowSize());
-    }
 
     @Test
     public void encode()
@@ -49,20 +31,19 @@ public class Http2SettingsFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        Http2SettingsFW fw = new Http2SettingsFW.Builder()
+        WindowUpdateFW fw = new WindowUpdateFW.Builder()
                 .wrap(buf, 1, buf.capacity())
-                .initialWindowSize(65535L)
-                .maxHeaderListSize(4096L)
+                .streamId(3)
+                .size(100)
                 .build();
 
-        assertEquals(12, fw.payloadLength());
+        assertEquals(4, fw.payloadLength());
         assertEquals(1, fw.offset());
-        assertEquals(22, fw.limit());
-        assertEquals(SETTINGS, fw.type());
+        assertEquals(14, fw.limit());
+        assertEquals(WINDOW_UPDATE, fw.type());
         assertEquals(0, fw.flags());
-        assertEquals(0, fw.streamId());
-        assertEquals(65535L, fw.initialWindowSize());
-        assertEquals(4096L, fw.maxHeaderListSize());
+        assertEquals(3, fw.streamId());
+        assertEquals(100, fw.size());
     }
 
 }

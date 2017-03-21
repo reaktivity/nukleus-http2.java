@@ -15,36 +15,26 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-public interface Http2Flags
+public class Http2Exception extends RuntimeException
 {
-    byte END_STREAM = 0x01;
-    byte ACK = 0x01;
-    byte END_HEADERS = 0x04;
-    byte PADDED = 0x08;
-    byte PRIORITY = 0x20;
-
-    static boolean padded(byte flags)
+    public Http2Exception()
     {
-        return (flags & PADDED) != 0;
+        super();
     }
 
-    static boolean endStream(byte flags)
+    public Http2Exception(String message)
     {
-        return (flags & END_STREAM) != 0;
+        super(message);
     }
 
-    static boolean endHeaders(byte flags)
+    public Http2Exception(String message, Throwable cause)
     {
-        return (flags & END_HEADERS) != 0;
+        super(message, cause);
     }
 
-    static boolean priority(byte flags)
+    public Http2Exception(Throwable cause)
     {
-        return (flags & PRIORITY) != 0;
-    }
-
-    static boolean ack(byte flags)
-    {
-        return (flags & ACK) != 0;
+        super(cause);
     }
 }
+
