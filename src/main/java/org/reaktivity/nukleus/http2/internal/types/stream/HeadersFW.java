@@ -22,7 +22,6 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.PADDED;
@@ -52,7 +51,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.HEADE
     +---------------------------------------------------------------+
 
  */
-public class HeadersFW extends Flyweight
+public class HeadersFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -62,36 +61,15 @@ public class HeadersFW extends Flyweight
 
     private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
 
-    public int payloadLength()
-    {
-        return Http2FrameFW.payloadLength(buffer(), offset());
-    }
-
+    @Override
     public FrameType type()
     {
-        //assert buffer().getByte(offset() + TYPE_OFFSET) == HEADERS.getType();
         return HEADERS;
-    }
-
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
-    // streamId != 0, caller to validate
-    public int streamId()
-    {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public boolean padded()
     {
         return Flags.padded(flags());
-    }
-
-    public boolean endStream()
-    {
-        return Flags.endStream(flags());
     }
 
     public boolean endHeaders()
@@ -141,15 +119,15 @@ public class HeadersFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public HeadersFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
+        int streamId = streamId();
+        if (streamId == 0)
+        {
+            throw new IllegalArgumentException(
+                    String.format("Invalid CONTINUATION frame stream-id=%d (must not be 0)", streamId));
+        }
         headerBlockRO.wrap(buffer(), dataOffset(), dataOffset() + dataLength());
 
         checkLimit(limit(), maxLimit);
@@ -204,19 +182,25 @@ public class HeadersFW extends Flyweight
 
         public Builder endStream()
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
+            byte flags = buffer().getByte(offset() + FLAGS_OFFSET);
+            flags |= END_STREAM;
+            buffer().putByte(offset() + FLAGS_OFFSET, flags);
             return this;
         }
 
         public Builder endHeaders()
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, END_HEADERS);
+            byte flags = buffer().getByte(offset() + FLAGS_OFFSET);
+            flags |= END_HEADERS;
+            buffer().putByte(offset() + FLAGS_OFFSET, flags);
             return this;
         }
 
         public Builder priority()
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, PRIORITY);
+            byte flags = buffer().getByte(offset() + FLAGS_OFFSET);
+            flags |= PRIORITY;
+            buffer().putByte(offset() + FLAGS_OFFSET, flags);
             return this;
         }
 

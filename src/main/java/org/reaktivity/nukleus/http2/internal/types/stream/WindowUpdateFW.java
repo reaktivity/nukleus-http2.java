@@ -39,7 +39,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDO
     +-+-------------------------------------------------------------+
 
  */
-public class WindowUpdateFW extends Flyweight
+public class WindowUpdateFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -47,24 +47,16 @@ public class WindowUpdateFW extends Flyweight
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
+    @Override
     public int payloadLength()
     {
         return 4;
     }
 
+    @Override
     public FrameType type()
     {
         return WINDOW_UPDATE;
-    }
-
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
-    public int streamId()
-    {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public int size()
@@ -73,23 +65,17 @@ public class WindowUpdateFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public WindowUpdateFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        FrameType type = Http2FrameFW.type(buffer, offset);
+        FrameType type = super.type();
         if (type != WINDOW_UPDATE)
         {
             throw new IllegalArgumentException(String.format("Invalid type=%s for WINDOW_UPDATE frame", type));
         }
 
-        int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+        int payloadLength = super.payloadLength();
         if (payloadLength != 4)
         {
             throw new IllegalArgumentException(String.format("Invalid WINDOW_UPDATE frame length=%d (must be 4)", payloadLength));

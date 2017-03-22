@@ -22,7 +22,6 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.util.function.Consumer;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTINGS;
 
@@ -46,7 +45,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTI
     +---------------------------------------------------------------+
 
  */
-public class SettingsFW extends Flyweight
+public class SettingsFW extends Http2FrameFW
 {
     private static final int HEADER_TABLE_SIZE = 1;
     private static final int ENABLE_PUSH = 2;
@@ -63,19 +62,10 @@ public class SettingsFW extends Flyweight
 
     private final ListFW<SettingFW> listFW = new ListFW<>(new SettingFW());
 
-    public int payloadLength()
-    {
-        return Http2FrameFW.payloadLength(buffer(), offset());
-    }
-
+    @Override
     public FrameType type()
     {
         return SETTINGS;
-    }
-
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
     public boolean ack()
@@ -83,9 +73,10 @@ public class SettingsFW extends Flyweight
         return Flags.ack(flags());
     }
 
+    @Override
     public int streamId()
     {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        return 0;
     }
 
     public long headerTableSize()
@@ -122,6 +113,7 @@ public class SettingsFW extends Flyweight
     {
         long[] value = new long[] { -1L };
 
+        // TODO https://github.com/reaktivity/nukleus-maven-plugin/issues/16
         listFW.forEach(x ->
         {
             if (x.id() == key)
@@ -133,29 +125,23 @@ public class SettingsFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public SettingsFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        int streamId = Http2FrameFW.streamId(buffer, offset);
+        int streamId = super.streamId();
         if (streamId != 0)
         {
             throw new IllegalArgumentException(String.format("Invalid SETTINGS frame stream-id=%d", streamId));
         }
 
-        FrameType type = Http2FrameFW.type(buffer, offset);
+        FrameType type = super.type();
         if (type != SETTINGS)
         {
             throw new IllegalArgumentException(String.format("Invalid SETTINGS frame type=%s", type));
         }
 
-        int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+        int payloadLength = super.payloadLength();
         if (payloadLength%6 != 0)
         {
             throw new IllegalArgumentException(String.format("Invalid SETTINGS frame length=%d", payloadLength));

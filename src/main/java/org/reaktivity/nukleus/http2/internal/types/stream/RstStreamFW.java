@@ -39,7 +39,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.RST_S
     +---------------------------------------------------------------+
 
  */
-public class RstStreamFW extends Flyweight
+public class RstStreamFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -47,24 +47,16 @@ public class RstStreamFW extends Flyweight
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
+    @Override
     public int payloadLength()
     {
         return 4;
     }
 
+    @Override
     public FrameType type()
     {
         return RST_STREAM;
-    }
-
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
-    public int streamId()
-    {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public int errorCode()
@@ -73,29 +65,23 @@ public class RstStreamFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public RstStreamFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        int streamId = Http2FrameFW.streamId(buffer, offset);
+        int streamId = super.streamId();
         if (streamId == 0)
         {
             throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame stream-id=%d (must not be 0)", streamId));
         }
 
-        FrameType type = Http2FrameFW.type(buffer, offset);
+        FrameType type = super.type();
         if (type != RST_STREAM)
         {
             throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame type=%s", type));
         }
 
-        int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+        int payloadLength = super.payloadLength();
         if (payloadLength != 4)
         {
             throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame length=%d (must be 4)", payloadLength));

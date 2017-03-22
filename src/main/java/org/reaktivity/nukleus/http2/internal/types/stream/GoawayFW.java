@@ -41,7 +41,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.GO_AW
     +---------------------------------------------------------------+
 
  */
-public class GoawayFW extends Flyweight
+public class GoawayFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -51,21 +51,13 @@ public class GoawayFW extends Flyweight
     private static final int ERROR_CODE_OFFSET = 13;
     private static final int PAYLOAD_OFFSET = 9;
 
-    public int payloadLength()
-    {
-        return Http2FrameFW.payloadLength(buffer(), offset());
-    }
-
+    @Override
     public FrameType type()
     {
         return GO_AWAY;
     }
 
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
+    @Override
     public int streamId()
     {
         return 0;
@@ -82,23 +74,17 @@ public class GoawayFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public GoawayFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        int streamId = Http2FrameFW.streamId(buffer, offset);
+        int streamId = super.streamId();
         if (streamId != 0)
         {
             throw new IllegalArgumentException(String.format("Invalid stream-id=%d for GOAWAY frame", streamId));
         }
 
-        FrameType type = Http2FrameFW.type(buffer, offset);
+        FrameType type = super.type();
         if (type != GO_AWAY)
         {
             throw new IllegalArgumentException(String.format("Invalid type=%s for GOAWAY frame", type));

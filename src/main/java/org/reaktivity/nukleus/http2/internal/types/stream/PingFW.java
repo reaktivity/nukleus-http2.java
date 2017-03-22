@@ -17,8 +17,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.nio.ByteOrder;
@@ -43,7 +41,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
     +---------------------------------------------------------------+
 
  */
-public class PingFW extends Flyweight
+public class PingFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -51,36 +49,22 @@ public class PingFW extends Flyweight
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
-
-    public int payloadOffset()
-    {
-        return offset() + PAYLOAD_OFFSET;
-    }
-
+    @Override
     public int payloadLength()
     {
         return 8;
     }
 
+    @Override
     public FrameType type()
     {
         return PING;
     }
 
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
+    @Override
     public int streamId()
     {
         return 0;
-    }
-
-    public DirectBuffer payload()
-    {
-        return payloadRO;
     }
 
     public boolean ack()
@@ -89,35 +73,27 @@ public class PingFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public PingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        int streamId = Http2FrameFW.streamId(buffer, offset);
+        int streamId = super.streamId();
         if (streamId != 0)
         {
             throw new IllegalArgumentException(String.format("Invalid PING frame stream-id=%d", streamId));
         }
 
-        FrameType type = Http2FrameFW.type(buffer, offset);
+        FrameType type = super.type();
         if (type != PING)
         {
             throw new IllegalArgumentException(String.format("Invalid PING frame type=%s", type));
         }
 
-        int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+        int payloadLength = super.payloadLength();
         if (payloadLength != 8)
         {
             throw new IllegalArgumentException(String.format("Invalid PING frame length=%d (must be 8)", payloadLength));
         }
-
-        payloadRO.wrap(buffer, payloadOffset(), payloadLength());
 
         checkLimit(limit(), maxLimit);
         return this;

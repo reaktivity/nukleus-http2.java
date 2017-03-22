@@ -58,6 +58,7 @@ import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
@@ -380,8 +381,9 @@ public final class SourceInputStreamFactory
         {
             assert limit - offset >= 3;
 
-            int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
-            return payloadLength + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
+            int length = (buffer.getByte(offset) & 0xFF) << 16;
+            length += (buffer.getShort(offset + 1, BIG_ENDIAN) & 0xFF_FF);
+            return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
         }
 
         /*

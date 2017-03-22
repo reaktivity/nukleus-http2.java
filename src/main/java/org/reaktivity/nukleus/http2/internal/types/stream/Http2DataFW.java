@@ -23,7 +23,7 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.nio.ByteOrder;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.DATA;
 
 /*
@@ -44,7 +44,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.DATA;
     +---------------------------------------------------------------+
 
  */
-public class Http2DataFW extends Flyweight
+public class Http2DataFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -54,38 +54,15 @@ public class Http2DataFW extends Flyweight
 
     private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
 
-    public int payloadLength()
-    {
-        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
-        return length;
-    }
-
+    @Override
     public FrameType type()
     {
-        //assert buffer().getByte(offset() + TYPE_OFFSET) == DATA.getType();
         return DATA;
-    }
-
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
-    public int streamId()
-    {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     private boolean padding()
     {
         return Flags.padded(flags());
-    }
-
-    private boolean endStream()
-    {
-        return Flags.endStream(flags());
     }
 
     public int dataOffset()
@@ -110,12 +87,6 @@ public class Http2DataFW extends Flyweight
     public DirectBuffer data()
     {
         return dataRO;
-    }
-
-    @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
     }
 
     @Override
@@ -166,7 +137,7 @@ public class Http2DataFW extends Flyweight
 
         public Builder endStream()
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, (byte) 1);
+            buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
             return this;
         }
 

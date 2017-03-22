@@ -22,7 +22,6 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import java.nio.ByteOrder;
 import java.util.function.Consumer;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.CONTINUATION;
 
@@ -41,7 +40,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.CONTI
     +---------------------------------------------------------------+
 
  */
-public class ContinuationFW extends Flyweight
+public class ContinuationFW extends Http2FrameFW
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
@@ -51,24 +50,10 @@ public class ContinuationFW extends Flyweight
 
     private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
 
-    public int payloadLength()
-    {
-        return Http2FrameFW.payloadLength(buffer(), offset());
-    }
-
+    @Override
     public FrameType type()
     {
         return CONTINUATION;
-    }
-
-    public byte flags()
-    {
-        return buffer().getByte(offset() + FLAGS_OFFSET);
-    }
-
-    public int streamId()
-    {
-        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     public boolean endHeaders()
@@ -82,24 +67,18 @@ public class ContinuationFW extends Flyweight
     }
 
     @Override
-    public int limit()
-    {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
-    }
-
-    @Override
     public ContinuationFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        int streamId = Http2FrameFW.streamId(buffer, offset);
+        int streamId = streamId();
         if (streamId == 0)
         {
             throw new IllegalArgumentException(
                     String.format("Invalid CONTINUATION frame stream-id=%d (must not be 0)", streamId));
         }
 
-        FrameType type = Http2FrameFW.type(buffer, offset);
+        FrameType type = super.type();
         if (type != CONTINUATION)
         {
             throw new IllegalArgumentException(String.format("Invalid CONTINUATION frame type=%s", type));

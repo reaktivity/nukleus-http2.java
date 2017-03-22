@@ -36,7 +36,7 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
     |                   Frame Payload (0...)                      ...
     +---------------------------------------------------------------+
  */
-public final class Http2FrameFW extends Flyweight
+public class Http2FrameFW extends Flyweight
 {
 
     private static final int LENGTH_OFFSET = 0;
@@ -49,36 +49,38 @@ public final class Http2FrameFW extends Flyweight
 
     public int payloadLength()
     {
-        return payloadLength(buffer(), offset());
+        int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
+        length += (buffer().getShort(offset() + LENGTH_OFFSET + 1, BIG_ENDIAN) & 0xFF_FF);
+        return length;
     }
 
     public FrameType type()
     {
-        return type(buffer(), offset());
+        return FrameType.get(buffer().getByte(offset() + TYPE_OFFSET));
     }
 
-    public byte flags()
+    public final byte flags()
     {
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
-    public boolean endStream()
+    public final boolean endStream()
     {
         return Flags.endStream(flags());
     }
 
     public int streamId()
     {
-        return streamId(buffer(), offset());
+        return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
-    public DirectBuffer payload()
+    public final DirectBuffer payload()
     {
         return payloadRO;
     }
 
     @Override
-    public int limit()
+    public final int limit()
     {
         return offset() + PAYLOAD_OFFSET + payloadLength();
     }
@@ -86,7 +88,16 @@ public final class Http2FrameFW extends Flyweight
     @Override
     public Http2FrameFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
+        if (maxLimit - offset < 9)
+        {
+            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough bytes for 9-octet header");
+        }
         super.wrap(buffer, offset, maxLimit);
+
+        if (maxLimit - offset < payloadLength() + 9)
+        {
+            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough payload bytes");
+        }
 
         payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength());
 
@@ -100,24 +111,6 @@ public final class Http2FrameFW extends Flyweight
     {
         return String.format("%s frame <length=%s, flags=%s, id=%s>",
                 type(), payloadLength(), flags(), streamId());
-    }
-
-    public static int payloadLength(DirectBuffer buffer, int offset)
-    {
-        int length = (buffer.getByte(offset + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer.getByte(offset + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer.getByte(offset + LENGTH_OFFSET + 2) & 0xFF;
-        return length;
-    }
-
-    static FrameType type(DirectBuffer buffer, int offset)
-    {
-        return FrameType.get(buffer.getByte(offset + TYPE_OFFSET));
-    }
-
-    static int streamId(DirectBuffer buffer, int offset)
-    {
-        return buffer.getInt(offset + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     static void putPayloadLength(MutableDirectBuffer buffer, int offset, int payloadLength)
