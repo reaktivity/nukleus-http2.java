@@ -112,7 +112,7 @@ public class Http2FrameFW extends Flyweight
                 type(), payloadLength(), flags(), streamId());
     }
 
-    protected static class Builder<B extends Flyweight.Builder<T>, T extends Http2FrameFW> extends Flyweight.Builder<T>
+    protected static class Builder<B extends Builder, T extends Http2FrameFW> extends Flyweight.Builder<T>
     {
         private final Http2FrameFW t;
 
