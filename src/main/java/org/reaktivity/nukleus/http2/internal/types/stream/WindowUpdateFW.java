@@ -86,13 +86,13 @@ public class WindowUpdateFW extends Flyweight
         FrameType type = Http2FrameFW.type(buffer, offset);
         if (type != WINDOW_UPDATE)
         {
-            throw new Http2Exception(String.format("Invalid type=%s for WINDOW_UPDATE frame", type));
+            throw new IllegalArgumentException(String.format("Invalid type=%s for WINDOW_UPDATE frame", type));
         }
 
         int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
         if (payloadLength != 4)
         {
-            throw new Http2Exception(String.format("Invalid WINDOW_UPDATE frame length=%d (must be 4)", payloadLength));
+            throw new IllegalArgumentException(String.format("Invalid WINDOW_UPDATE frame length=%d (must be 4)", payloadLength));
         }
 
         checkLimit(limit(), maxLimit);
@@ -121,7 +121,7 @@ public class WindowUpdateFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset, 4);
 
-            buffer.putByte(offset + TYPE_OFFSET, WINDOW_UPDATE.getType());
+            buffer.putByte(offset + TYPE_OFFSET, WINDOW_UPDATE.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 

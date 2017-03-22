@@ -112,7 +112,7 @@ public final class Http2FrameFW extends Flyweight
 
     static FrameType type(DirectBuffer buffer, int offset)
     {
-        return FrameType.from(buffer.getByte(offset + TYPE_OFFSET));
+        return FrameType.get(buffer.getByte(offset + TYPE_OFFSET));
     }
 
     static int streamId(DirectBuffer buffer, int offset)

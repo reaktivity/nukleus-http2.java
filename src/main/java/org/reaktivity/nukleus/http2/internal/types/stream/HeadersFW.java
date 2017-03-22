@@ -179,7 +179,7 @@ public class HeadersFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset, 0);
 
-            buffer.putByte(offset + TYPE_OFFSET, HEADERS.getType());
+            buffer.putByte(offset + TYPE_OFFSET, HEADERS.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 

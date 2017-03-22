@@ -31,19 +31,19 @@ public class WindowUpdateFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        WindowUpdateFW fw = new WindowUpdateFW.Builder()
-                .wrap(buf, 1, buf.capacity())
+        WindowUpdateFW window = new WindowUpdateFW.Builder()
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .streamId(3)
                 .size(100)
                 .build();
 
-        assertEquals(4, fw.payloadLength());
-        assertEquals(1, fw.offset());
-        assertEquals(14, fw.limit());
-        assertEquals(WINDOW_UPDATE, fw.type());
-        assertEquals(0, fw.flags());
-        assertEquals(3, fw.streamId());
-        assertEquals(100, fw.size());
+        assertEquals(4, window.payloadLength());
+        assertEquals(1, window.offset());
+        assertEquals(14, window.limit());
+        assertEquals(WINDOW_UPDATE, window.type());
+        assertEquals(0, window.flags());
+        assertEquals(3, window.streamId());
+        assertEquals(100, window.size());
     }
 
 }

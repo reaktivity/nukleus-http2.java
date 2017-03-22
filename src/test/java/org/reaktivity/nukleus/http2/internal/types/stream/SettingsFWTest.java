@@ -49,20 +49,20 @@ public class SettingsFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        SettingsFW fw = new SettingsFW.Builder()
-                .wrap(buf, 1, buf.capacity())
+        SettingsFW settings = new SettingsFW.Builder()
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .initialWindowSize(65535L)
                 .maxHeaderListSize(4096L)
                 .build();
 
-        assertEquals(12, fw.payloadLength());
-        assertEquals(1, fw.offset());
-        assertEquals(22, fw.limit());
-        assertEquals(SETTINGS, fw.type());
-        assertEquals(0, fw.flags());
-        assertEquals(0, fw.streamId());
-        assertEquals(65535L, fw.initialWindowSize());
-        assertEquals(4096L, fw.maxHeaderListSize());
+        assertEquals(12, settings.payloadLength());
+        assertEquals(1, settings.offset());
+        assertEquals(22, settings.limit());
+        assertEquals(SETTINGS, settings.type());
+        assertEquals(0, settings.flags());
+        assertEquals(0, settings.streamId());
+        assertEquals(65535L, settings.initialWindowSize());
+        assertEquals(4096L, settings.maxHeaderListSize());
     }
 
 }

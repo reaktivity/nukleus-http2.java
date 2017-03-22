@@ -28,19 +28,19 @@ public enum FrameType
     WINDOW_UPDATE(8),
     CONTINUATION(9);
 
-    private final byte type;
+    private final int type;
 
     FrameType(int type)
     {
-        this.type = (byte) type;
+        this.type = type;
     }
 
-    public byte getType()
+    public byte type()
     {
-        return type;
+        return (byte) type;
     }
 
-    public static FrameType from(byte type)
+    public static FrameType get(int type)
     {
         switch (type)
         {
@@ -54,7 +54,7 @@ public enum FrameType
             case 7 : return GO_AWAY;
             case 8 : return WINDOW_UPDATE;
             case 9 : return CONTINUATION;
+            default: return null;
         }
-        return null;
     }
 }

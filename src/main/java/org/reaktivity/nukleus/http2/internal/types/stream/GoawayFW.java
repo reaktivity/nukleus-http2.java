@@ -95,13 +95,13 @@ public class GoawayFW extends Flyweight
         int streamId = Http2FrameFW.streamId(buffer, offset);
         if (streamId != 0)
         {
-            throw new Http2Exception(String.format("Invalid stream-id=%d for GOAWAY frame", streamId));
+            throw new IllegalArgumentException(String.format("Invalid stream-id=%d for GOAWAY frame", streamId));
         }
 
         FrameType type = Http2FrameFW.type(buffer, offset);
         if (type != GO_AWAY)
         {
-            throw new Http2Exception(String.format("Invalid type=%s for GOAWAY frame", type));
+            throw new IllegalArgumentException(String.format("Invalid type=%s for GOAWAY frame", type));
         }
 
         checkLimit(limit(), maxLimit);
@@ -131,7 +131,7 @@ public class GoawayFW extends Flyweight
             // not including "Additional Debug Data"
             Http2FrameFW.putPayloadLength(buffer, offset, 8);
 
-            buffer.putByte(offset + TYPE_OFFSET, GO_AWAY.getType());
+            buffer.putByte(offset + TYPE_OFFSET, GO_AWAY.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 

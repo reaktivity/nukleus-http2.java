@@ -95,13 +95,14 @@ public class ContinuationFW extends Flyweight
         int streamId = Http2FrameFW.streamId(buffer, offset);
         if (streamId == 0)
         {
-            throw new Http2Exception(String.format("Invalid CONTINUATION frame stream-id=%d (must not be 0)", streamId));
+            throw new IllegalArgumentException(
+                    String.format("Invalid CONTINUATION frame stream-id=%d (must not be 0)", streamId));
         }
 
         FrameType type = Http2FrameFW.type(buffer, offset);
         if (type != CONTINUATION)
         {
-            throw new Http2Exception(String.format("Invalid CONTINUATION frame type=%s", type));
+            throw new IllegalArgumentException(String.format("Invalid CONTINUATION frame type=%s", type));
         }
 
         headerBlockRO.wrap(buffer(), offset() + PAYLOAD_OFFSET, offset() + PAYLOAD_OFFSET + payloadLength());
@@ -133,7 +134,7 @@ public class ContinuationFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset, 0);
 
-            buffer.putByte(offset + TYPE_OFFSET, CONTINUATION.getType());
+            buffer.putByte(offset + TYPE_OFFSET, CONTINUATION.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 

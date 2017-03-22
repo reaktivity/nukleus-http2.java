@@ -146,19 +146,19 @@ public class SettingsFW extends Flyweight
         int streamId = Http2FrameFW.streamId(buffer, offset);
         if (streamId != 0)
         {
-            throw new Http2Exception(String.format("Invalid SETTINGS frame stream-id=%d", streamId));
+            throw new IllegalArgumentException(String.format("Invalid SETTINGS frame stream-id=%d", streamId));
         }
 
         FrameType type = Http2FrameFW.type(buffer, offset);
         if (type != SETTINGS)
         {
-            throw new Http2Exception(String.format("Invalid SETTINGS frame type=%s", type));
+            throw new IllegalArgumentException(String.format("Invalid SETTINGS frame type=%s", type));
         }
 
         int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
         if (payloadLength%6 != 0)
         {
-            throw new Http2Exception(String.format("Invalid SETTINGS frame length=%d", payloadLength));
+            throw new IllegalArgumentException(String.format("Invalid SETTINGS frame length=%d", payloadLength));
         }
 
         listFW.wrap(buffer, offset + PAYLOAD_OFFSET, limit());
@@ -190,7 +190,7 @@ public class SettingsFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset, 0);
 
-            buffer().putByte(offset() + TYPE_OFFSET, SETTINGS.getType());
+            buffer().putByte(offset() + TYPE_OFFSET, SETTINGS.type());
 
             buffer().putByte(offset() + FLAGS_OFFSET, (byte) 0);
 

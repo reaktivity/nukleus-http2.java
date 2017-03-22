@@ -86,19 +86,19 @@ public class RstStreamFW extends Flyweight
         int streamId = Http2FrameFW.streamId(buffer, offset);
         if (streamId == 0)
         {
-            throw new Http2Exception(String.format("Invalid RST_STREAM frame stream-id=%d (must not be 0)", streamId));
+            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame stream-id=%d (must not be 0)", streamId));
         }
 
         FrameType type = Http2FrameFW.type(buffer, offset);
         if (type != RST_STREAM)
         {
-            throw new Http2Exception(String.format("Invalid RST_STREAM frame type=%s", type));
+            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame type=%s", type));
         }
 
         int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
         if (payloadLength != 4)
         {
-            throw new Http2Exception(String.format("Invalid RST_STREAM frame length=%d (must be 4)", payloadLength));
+            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame length=%d (must be 4)", payloadLength));
         }
         checkLimit(limit(), maxLimit);
         return this;
@@ -126,7 +126,7 @@ public class RstStreamFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset, 4);
 
-            buffer.putByte(offset + TYPE_OFFSET, RST_STREAM.getType());
+            buffer.putByte(offset + TYPE_OFFSET, RST_STREAM.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 

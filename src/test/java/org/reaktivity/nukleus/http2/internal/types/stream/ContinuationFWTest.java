@@ -37,7 +37,7 @@ public class ContinuationFWTest
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
         ContinuationFW fw = new ContinuationFW.Builder()
-                .wrap(buf, 1, buf.capacity())   // 1 to test offset
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .header(h -> h.indexed(2))      // :method: GET
                 .header(h -> h.indexed(6))      // :scheme: http
                 .header(h -> h.indexed(4))      // :path: /

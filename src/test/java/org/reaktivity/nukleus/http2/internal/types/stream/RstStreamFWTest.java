@@ -32,19 +32,19 @@ public class RstStreamFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        RstStreamFW fw = new RstStreamFW.Builder()
-                .wrap(buf, 1, buf.capacity())
+        RstStreamFW reset = new RstStreamFW.Builder()
+                .wrap(buf, 1, buf.capacity())       // non-zero offset
                 .streamId(3)
                 .errorCode(PROTOCOL_ERROR)
                 .build();
 
-        assertEquals(4, fw.payloadLength());
-        assertEquals(1, fw.offset());
-        assertEquals(14, fw.limit());
-        assertEquals(RST_STREAM, fw.type());
-        assertEquals(0, fw.flags());
-        assertEquals(3, fw.streamId());
-        ErrorCode errorCode = ErrorCode.from(fw.errorCode());
+        assertEquals(4, reset.payloadLength());
+        assertEquals(1, reset.offset());
+        assertEquals(14, reset.limit());
+        assertEquals(RST_STREAM, reset.type());
+        assertEquals(0, reset.flags());
+        assertEquals(3, reset.streamId());
+        ErrorCode errorCode = ErrorCode.from(reset.errorCode());
         assertEquals(PROTOCOL_ERROR, errorCode);
     }
 

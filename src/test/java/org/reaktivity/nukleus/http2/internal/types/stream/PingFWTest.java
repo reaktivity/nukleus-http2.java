@@ -34,19 +34,19 @@ public class PingFWTest
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
         DirectBuffer payload = new UnsafeBuffer(new byte[] {1, 2, 3, 4, 5, 6, 7, 8});
-        PingFW fw = new PingFW.Builder()
-                .wrap(buf, 1, buf.capacity())
+        PingFW ping = new PingFW.Builder()
+                .wrap(buf, 1, buf.capacity())       // non-zero offset
                 .ack()
                 .payload(payload, 0, payload.capacity())
                 .build();
 
-        assertEquals(8, fw.payloadLength());
-        assertEquals(1, fw.offset());
-        assertEquals(18, fw.limit());
-        assertEquals(PING, fw.type());
-        assertTrue(fw.ack());
-        assertEquals(0, fw.streamId());
-        assertEquals(payload, fw.payload());
+        assertEquals(8, ping.payloadLength());
+        assertEquals(1, ping.offset());
+        assertEquals(18, ping.limit());
+        assertEquals(PING, ping.type());
+        assertTrue(ping.ack());
+        assertEquals(0, ping.streamId());
+        assertEquals(payload, ping.payload());
     }
 
 }

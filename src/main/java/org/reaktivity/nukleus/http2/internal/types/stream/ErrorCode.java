@@ -57,7 +57,7 @@ public enum ErrorCode
             case 11 : return ENHANCE_YOUR_CALM;
             case 12 : return INADEQUATE_SECURITY;
             case 13 : return HTTP_1_1_REQUIRED;
+            default : return null;
         }
-        return null;
     }
 }

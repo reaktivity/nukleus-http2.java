@@ -47,7 +47,7 @@ public class HeadersFWTest
         };
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HeadersFW fw = new HeadersFW().wrap(buffer, 2, buffer.capacity());
+        HeadersFW fw = new HeadersFW().wrap(buffer, 2, buffer.capacity());  // non-zero offset
         assertEquals(26, fw.limit());
         assertTrue(fw.endStream());
         assertTrue(fw.endHeaders());
@@ -72,7 +72,7 @@ public class HeadersFWTest
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
         HeadersFW fw = new HeadersFW.Builder()
-                .wrap(buf, 1, buf.capacity())   // 1 to test offsets
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .header(h -> h.indexed(2))      // :method: GET
                 .header(h -> h.indexed(6))      // :scheme: http
                 .header(h -> h.indexed(4))      // :path: /

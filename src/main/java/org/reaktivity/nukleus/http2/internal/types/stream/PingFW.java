@@ -102,19 +102,19 @@ public class PingFW extends Flyweight
         int streamId = Http2FrameFW.streamId(buffer, offset);
         if (streamId != 0)
         {
-            throw new Http2Exception(String.format("Invalid PING frame stream-id=%d", streamId));
+            throw new IllegalArgumentException(String.format("Invalid PING frame stream-id=%d", streamId));
         }
 
         FrameType type = Http2FrameFW.type(buffer, offset);
         if (type != PING)
         {
-            throw new Http2Exception(String.format("Invalid PING frame type=%s", type));
+            throw new IllegalArgumentException(String.format("Invalid PING frame type=%s", type));
         }
 
         int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
         if (payloadLength != 8)
         {
-            throw new Http2Exception(String.format("Invalid PING frame length=%d (must be 8)", payloadLength));
+            throw new IllegalArgumentException(String.format("Invalid PING frame length=%d (must be 8)", payloadLength));
         }
 
         payloadRO.wrap(buffer, payloadOffset(), payloadLength());
@@ -145,7 +145,7 @@ public class PingFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset + LENGTH_OFFSET, 8);
 
-            buffer.putByte(offset + TYPE_OFFSET, PING.getType());
+            buffer.putByte(offset + TYPE_OFFSET, PING.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 

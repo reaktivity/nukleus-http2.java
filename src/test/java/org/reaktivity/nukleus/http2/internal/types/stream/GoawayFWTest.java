@@ -23,7 +23,7 @@ import static org.junit.Assert.assertEquals;
 import static org.reaktivity.nukleus.http2.internal.types.stream.ErrorCode.PROTOCOL_ERROR;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.GO_AWAY;
 
-public class GoAwayFWTest
+public class GoawayFWTest
 {
 
     @Test
@@ -32,20 +32,20 @@ public class GoAwayFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        GoawayFW fw = new GoawayFW.Builder()
-                .wrap(buf, 1, buf.capacity())
+        GoawayFW goaway = new GoawayFW.Builder()
+                .wrap(buf, 1, buf.capacity())       // non-zero offset
                 .lastStreamId(3)
                 .errorCode(PROTOCOL_ERROR)
                 .build();
 
-        assertEquals(8, fw.payloadLength());
-        assertEquals(1, fw.offset());
-        assertEquals(18, fw.limit());
-        assertEquals(GO_AWAY, fw.type());
-        assertEquals(0, fw.flags());
-        assertEquals(0, fw.streamId());
-        assertEquals(3, fw.lastStreamId());
-        ErrorCode errorCode = ErrorCode.from(fw.errorCode());
+        assertEquals(8, goaway.payloadLength());
+        assertEquals(1, goaway.offset());
+        assertEquals(18, goaway.limit());
+        assertEquals(GO_AWAY, goaway.type());
+        assertEquals(0, goaway.flags());
+        assertEquals(0, goaway.streamId());
+        assertEquals(3, goaway.lastStreamId());
+        ErrorCode errorCode = ErrorCode.from(goaway.errorCode());
         assertEquals(PROTOCOL_ERROR, errorCode);
     }
 

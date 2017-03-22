@@ -151,7 +151,7 @@ public class Http2DataFW extends Flyweight
 
             Http2FrameFW.putPayloadLength(buffer, offset, 0);
 
-            buffer.putByte(offset + TYPE_OFFSET, DATA.getType());
+            buffer.putByte(offset + TYPE_OFFSET, DATA.type());
 
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
 
