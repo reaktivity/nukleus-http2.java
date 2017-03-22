@@ -163,6 +163,11 @@ public class PingFW extends Flyweight
             return this;
         }
 
+        public PingFW.Builder payload(DirectBuffer payload)
+        {
+            return payload(payload, 0, payload.capacity());
+        }
+
         public PingFW.Builder payload(DirectBuffer payload, int offset, int length)
         {
             if (length != 8)

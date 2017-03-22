@@ -531,7 +531,7 @@ public final class SourceInputStreamFactory
             {
                 PingFW ping = pingRW.wrap(buffer, 0, buffer.capacity())
                                     .ack()
-                                    .payload(pingRO.buffer(), pingRO.payloadOffset(), pingRO.payloadLength())
+                                    .payload(pingRO.payload())
                                     .build();
                 replyTarget.doData(sourceOutputEstId,
                         ping.buffer(), ping.offset(), ping.sizeof());
