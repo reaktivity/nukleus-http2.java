@@ -735,13 +735,24 @@ public final class SourceInputStreamFactory
 
         private void inOpen()
         {
-            if (http2RO.type() == FrameType.DATA)
-            {
-                doData();
-            }
             if (http2RO.endStream())
             {
                 state = State.HALF_CLOSED_REMOTE;
+            }
+            switch (http2RO.type())
+            {
+                case HEADERS:
+                    doHeaders();
+                    break;
+                case DATA:
+                    doData();
+                    break;
+                case RST_STREAM:
+                    state = State.CLOSED;
+                    connection.http2Streams.remove(http2StreamId);
+                    break;
+                default:
+                    connection.error(ErrorCode.PROTOCOL_ERROR);
             }
         }
 
@@ -779,19 +790,16 @@ public final class SourceInputStreamFactory
 
         private void inIdle()
         {
-            if (!(http2RO.type() == FrameType.HEADERS || http2RO.type() == FrameType.PRIORITY))
+            switch (http2RO.type())
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            if (http2RO.type() == FrameType.HEADERS)
-            {
-                state = State.OPEN;
-                doHeaders();
-            }
-            else if (http2RO.type() == FrameType.PUSH_PROMISE)
-            {
-                state = State.RESERVED_REMOTE;
+                case HEADERS:
+                    state = State.OPEN;
+                    doHeaders();
+                    break;
+                case PRIORITY:
+                    break;
+                default:
+                    connection.error(ErrorCode.PROTOCOL_ERROR);
             }
         }
 
