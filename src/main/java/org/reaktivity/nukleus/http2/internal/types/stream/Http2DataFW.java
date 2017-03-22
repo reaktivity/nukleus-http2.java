@@ -19,9 +19,6 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import java.nio.ByteOrder;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.DATA;
@@ -46,10 +43,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.DATA;
  */
 public class Http2DataFW extends Http2FrameFW
 {
-    private static final int LENGTH_OFFSET = 0;
-    private static final int TYPE_OFFSET = 3;
+
     private static final int FLAGS_OFFSET = 4;
-    private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
     private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
@@ -108,7 +103,7 @@ public class Http2DataFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<Http2DataFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2DataFW>
     {
         public Builder()
         {
@@ -119,19 +114,6 @@ public class Http2DataFW extends Http2FrameFW
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
-
-            Http2FrameFW.putPayloadLength(buffer, offset, 0);
-
-            buffer.putByte(offset + TYPE_OFFSET, DATA.type());
-
-            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
-
-            return this;
-        }
-
-        public Builder streamId(int streamId)
-        {
-            buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, ByteOrder.BIG_ENDIAN);
             return this;
         }
 
@@ -149,11 +131,7 @@ public class Http2DataFW extends Http2FrameFW
         public Builder payload(DirectBuffer payload, int offset, int length)
         {
             buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
-
-            Http2FrameFW.putPayloadLength(buffer(), offset(), length);
-
-            super.limit(offset() + length + 9);
-
+            payloadLength(length);
             return this;
         }
     }

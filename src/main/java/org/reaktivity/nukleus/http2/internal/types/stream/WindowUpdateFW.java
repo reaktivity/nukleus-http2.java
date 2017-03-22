@@ -17,9 +17,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import java.nio.ByteOrder;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDOW_UPDATE;
@@ -41,10 +38,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDO
  */
 public class WindowUpdateFW extends Http2FrameFW
 {
-    private static final int LENGTH_OFFSET = 0;
-    private static final int TYPE_OFFSET = 3;
-    private static final int FLAGS_OFFSET = 4;
-    private static final int STREAM_ID_OFFSET = 5;
+
     private static final int PAYLOAD_OFFSET = 9;
 
     @Override
@@ -61,7 +55,7 @@ public class WindowUpdateFW extends Http2FrameFW
 
     public int size()
     {
-        return buffer().getInt(offset() + PAYLOAD_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        return payload().getInt(0, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
     @Override
@@ -92,7 +86,7 @@ public class WindowUpdateFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<WindowUpdateFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, WindowUpdateFW>
     {
 
         public Builder()
@@ -104,31 +98,18 @@ public class WindowUpdateFW extends Http2FrameFW
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
-
-            Http2FrameFW.putPayloadLength(buffer, offset, 4);
-
-            buffer.putByte(offset + TYPE_OFFSET, WINDOW_UPDATE.type());
-
-            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
-
-            buffer.putInt(offset + STREAM_ID_OFFSET, 0, ByteOrder.BIG_ENDIAN);
-
-            limit(offset + PAYLOAD_OFFSET + 4);
-
+            payloadLength(4);
             return this;
         }
 
-        public Builder streamId(int streamId)
+        public Builder size(int size)
         {
-            buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, ByteOrder.BIG_ENDIAN);
-            return this;
-        }
+            if (size < 1)
+            {
+                throw new IllegalArgumentException(String.format("Invalid WINDOW_UPDATE Size Incremnt = %d (> 0)", size));
+            }
 
-        public WindowUpdateFW.Builder size(int size)
-        {
-            assert size > 0;
-
-            buffer().putInt(offset() + PAYLOAD_OFFSET, size & 0x7F_FF_FF_FF, ByteOrder.BIG_ENDIAN);
+            buffer().putInt(offset() + PAYLOAD_OFFSET, size & 0x7F_FF_FF_FF, BIG_ENDIAN);
             return this;
         }
 

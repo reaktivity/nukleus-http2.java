@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.util.function.Consumer;
@@ -54,10 +53,7 @@ public class SettingsFW extends Http2FrameFW
     private static final int MAX_FRAME_SIZE = 5;
     private static final int MAX_HEADER_LIST_SIZE = 6;
 
-    private static final int LENGTH_OFFSET = 0;
-    private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
-    private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
     private final ListFW<SettingFW> listFW = new ListFW<>(new SettingFW());
@@ -159,7 +155,7 @@ public class SettingsFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<SettingsFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, SettingsFW>
     {
         private final ListFW.Builder<SettingFW.Builder, SettingFW> settingsRW =
                 new ListFW.Builder<>(new SettingFW.Builder(), new SettingFW());
@@ -173,17 +169,6 @@ public class SettingsFW extends Http2FrameFW
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
-
-            Http2FrameFW.putPayloadLength(buffer, offset, 0);
-
-            buffer().putByte(offset() + TYPE_OFFSET, SETTINGS.type());
-
-            buffer().putByte(offset() + FLAGS_OFFSET, (byte) 0);
-
-            buffer().putInt(offset() + STREAM_ID_OFFSET, 0);
-
-            super.limit(offset() + PAYLOAD_OFFSET);
-
             settingsRW.wrap(buffer, offset + PAYLOAD_OFFSET, maxLimit);
             return this;
         }
@@ -234,8 +219,7 @@ public class SettingsFW extends Http2FrameFW
         {
             settingsRW.item(mutator);
             int length = settingsRW.limit() - offset() - PAYLOAD_OFFSET;
-            Http2FrameFW.putPayloadLength(buffer(), offset(), length);
-            limit(settingsRW.limit());
+            payloadLength(length);
             return this;
         }
 

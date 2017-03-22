@@ -17,9 +17,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import java.nio.ByteOrder;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
@@ -43,10 +40,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
  */
 public class PingFW extends Http2FrameFW
 {
-    private static final int LENGTH_OFFSET = 0;
-    private static final int TYPE_OFFSET = 3;
+
     private static final int FLAGS_OFFSET = 4;
-    private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
 
     @Override
@@ -106,7 +101,7 @@ public class PingFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Flyweight.Builder<PingFW>
+    public static final class Builder extends Http2FrameFW.Builder<PingFW.Builder, PingFW>
     {
 
         public Builder()
@@ -118,24 +113,13 @@ public class PingFW extends Http2FrameFW
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
-
-            Http2FrameFW.putPayloadLength(buffer, offset + LENGTH_OFFSET, 8);
-
-            buffer.putByte(offset + TYPE_OFFSET, PING.type());
-
-            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
-
-            buffer.putInt(offset + STREAM_ID_OFFSET, 0, ByteOrder.BIG_ENDIAN);
-
-            limit(offset + PAYLOAD_OFFSET + 8);
-
+            payloadLength(8);
             return this;
         }
 
         public Builder ack()
         {
             buffer().putByte(offset() + FLAGS_OFFSET, ACK);
-
             return this;
         }
 

@@ -38,7 +38,6 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
  */
 public class Http2FrameFW extends Flyweight
 {
-
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
@@ -113,10 +112,49 @@ public class Http2FrameFW extends Flyweight
                 type(), payloadLength(), flags(), streamId());
     }
 
-    static void putPayloadLength(MutableDirectBuffer buffer, int offset, int payloadLength)
+    protected static class Builder<B extends Flyweight.Builder<T>, T extends Http2FrameFW> extends Flyweight.Builder<T>
     {
-        buffer.putShort(offset + LENGTH_OFFSET, (short) ((payloadLength & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
-        buffer.putByte(offset + LENGTH_OFFSET + 2, (byte) (payloadLength & 0x00_00_00_FF));
+        private final Http2FrameFW t;
+
+        public Builder(T t)
+        {
+            super(t);
+            this.t = t;
+        }
+
+        @Override
+        public B wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        {
+            super.wrap(buffer, offset, maxLimit);
+
+            payloadLength(0);
+
+            buffer.putByte(offset + TYPE_OFFSET, t.type().type());
+
+            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
+
+            buffer.putInt(offset + STREAM_ID_OFFSET, 0, BIG_ENDIAN);
+
+            limit(offset + PAYLOAD_OFFSET);
+
+            return (B) this;
+        }
+
+        public final B streamId(int streamId)
+        {
+            buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, BIG_ENDIAN);
+            return (B) this;
+        }
+
+        protected final B payloadLength(int length)
+        {
+            buffer().putShort(offset() + LENGTH_OFFSET, (short) ((length & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
+            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) (length & 0x00_00_00_FF));
+
+            limit(offset() + PAYLOAD_OFFSET + length);
+            return (B) this;
+        }
+
     }
 
 }
