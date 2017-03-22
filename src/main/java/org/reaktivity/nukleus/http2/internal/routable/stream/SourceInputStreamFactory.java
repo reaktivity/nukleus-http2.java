@@ -380,10 +380,8 @@ public final class SourceInputStreamFactory
         {
             assert limit - offset >= 3;
 
-            int length = (buffer.getByte(offset) & 0xFF) << 16;
-            length += (buffer.getByte(offset + 1) & 0xFF) << 8;
-            length += buffer.getByte(offset + 2) & 0xFF;
-            return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
+            int payloadLength = Http2FrameFW.payloadLength(buffer, offset);
+            return payloadLength + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
         }
 
         /*

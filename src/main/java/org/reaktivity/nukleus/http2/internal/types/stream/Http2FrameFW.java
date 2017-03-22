@@ -102,7 +102,7 @@ public final class Http2FrameFW extends Flyweight
                 type(), payloadLength(), flags(), streamId());
     }
 
-    static int payloadLength(DirectBuffer buffer, int offset)
+    public static int payloadLength(DirectBuffer buffer, int offset)
     {
         int length = (buffer.getByte(offset + LENGTH_OFFSET) & 0xFF) << 16;
         length += (buffer.getByte(offset + LENGTH_OFFSET + 1) & 0xFF) << 8;
