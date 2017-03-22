@@ -127,15 +127,10 @@ public class Http2FrameFW extends Flyweight
         {
             super.wrap(buffer, offset, maxLimit);
 
-            payloadLength(0);
-
             buffer.putByte(offset + TYPE_OFFSET, t.type().type());
-
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
-
             buffer.putInt(offset + STREAM_ID_OFFSET, 0, BIG_ENDIAN);
-
-            limit(offset + PAYLOAD_OFFSET);
+            payloadLength(0);
 
             return (B) this;
         }
