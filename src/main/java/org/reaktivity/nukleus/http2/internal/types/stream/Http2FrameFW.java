@@ -114,12 +114,12 @@ public class Http2FrameFW extends Flyweight
 
     protected static class Builder<B extends Builder, T extends Http2FrameFW> extends Flyweight.Builder<T>
     {
-        private final Http2FrameFW t;
+        private final Http2FrameFW frame;
 
-        public Builder(T t)
+        public Builder(T frame)
         {
-            super(t);
-            this.t = t;
+            super(frame);
+            this.frame = frame;
         }
 
         @Override
@@ -127,7 +127,7 @@ public class Http2FrameFW extends Flyweight
         {
             super.wrap(buffer, offset, maxLimit);
 
-            buffer.putByte(offset + TYPE_OFFSET, t.type().type());
+            buffer.putByte(offset + TYPE_OFFSET, frame.type().type());
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
             buffer.putInt(offset + STREAM_ID_OFFSET, 0, BIG_ENDIAN);
             payloadLength(0);

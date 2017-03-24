@@ -141,7 +141,8 @@ public class Http2ServerBM
 
         String str = "source/streams/http2#http2";
         Path path = configuration.directory().resolve(str);
-        while (!Files.exists(path)) {
+        while (!Files.exists(path))
+        {
             Thread.yield();
         }
         this.sourceOutputEstStreams = controller.streams("http2", "source");
@@ -149,7 +150,8 @@ public class Http2ServerBM
         createRequestData();
     }
 
-    private void writeBegin() {
+    private void writeBegin()
+    {
         final AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
 
         BeginFW begin = new BeginFW.Builder()
@@ -161,7 +163,8 @@ public class Http2ServerBM
         sourceInputStreams.writeStreams(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
-    private void writePreface() {
+    private void writePreface()
+    {
         String preface =
                 "PRI * HTTP/2.0\r\n" +
                 "\r\n" +
