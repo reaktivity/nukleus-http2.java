@@ -371,7 +371,7 @@ public final class SourceInputStreamFactory
                                             .maxConcurrentStreams(100)
                                             .build();
 
-            replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
+            replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.sizeof());
 
 
             return prefaceRO.limit();

@@ -418,7 +418,8 @@ public final class TargetOutputEstablishedStreamFactory
     // Map http1.1 header to http2 header field
     private void mapHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
     {
-        http2HeadersRW.header(hfBuilder -> {
+        http2HeadersRW.header(hfBuilder ->
+        {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
