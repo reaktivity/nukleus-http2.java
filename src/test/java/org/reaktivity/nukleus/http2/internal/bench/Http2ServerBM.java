@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.bench;
 
 import org.agrona.DirectBuffer;
+import org.agrona.LangUtil;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.MessageHandler;
@@ -52,6 +53,8 @@ import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.reaktor.Reaktor;
 import org.reaktivity.reaktor.matchers.NukleusMatcher;
 
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -61,6 +64,7 @@ import java.util.Random;
 
 import static java.nio.ByteBuffer.allocateDirect;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.FileVisitOption.FOLLOW_LINKS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.agrona.BitUtil.SIZE_OF_INT;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
@@ -87,6 +91,17 @@ public class Http2ServerBM
 
         NukleusMatcher matchNukleus = "http2"::equals;
         this.configuration = new Configuration(properties);
+
+        try
+        {
+            Files.walk(configuration.directory(), FOLLOW_LINKS)
+                 .map(Path::toFile)
+                 .forEach(File::delete);
+        }
+        catch (IOException ex)
+        {
+            LangUtil.rethrowUnchecked(ex);
+        }
 
         this.reaktor = Reaktor.builder()
                               .config(configuration)
