@@ -38,9 +38,9 @@ public class SettingsFWTest
         };
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        SettingsFW fw = new SettingsFW().wrap(buffer, 2, buffer.capacity());
-        assertEquals(17, fw.limit());
-        assertEquals(65535L, fw.initialWindowSize());
+        SettingsFW settings = new SettingsFW().wrap(buffer, 2, buffer.capacity());
+        assertEquals(17, settings.limit());
+        assertEquals(65535L, settings.initialWindowSize());
     }
 
     @Test
