@@ -53,9 +53,9 @@ public class Http2FrameFW extends Flyweight
         return length;
     }
 
-    public FrameType type()
+    public Http2FrameType type()
     {
-        return FrameType.get(buffer().getByte(offset() + TYPE_OFFSET));
+        return Http2FrameType.get(buffer().getByte(offset() + TYPE_OFFSET));
     }
 
     public final byte flags()
@@ -65,7 +65,7 @@ public class Http2FrameFW extends Flyweight
 
     public final boolean endStream()
     {
-        return Flags.endStream(flags());
+        return Http2Flags.endStream(flags());
     }
 
     public int streamId()

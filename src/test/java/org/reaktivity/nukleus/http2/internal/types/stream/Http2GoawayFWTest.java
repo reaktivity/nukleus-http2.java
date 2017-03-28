@@ -15,16 +15,15 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
-import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode.PROTOCOL_ERROR;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
 
-public class PingFWTest
+public class Http2GoawayFWTest
 {
 
     @Test
@@ -33,20 +32,21 @@ public class PingFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        DirectBuffer payload = new UnsafeBuffer(new byte[] {1, 2, 3, 4, 5, 6, 7, 8});
-        PingFW ping = new PingFW.Builder()
+        Http2GoawayFW goaway = new Http2GoawayFW.Builder()
                 .wrap(buf, 1, buf.capacity())       // non-zero offset
-                .ack()
-                .payload(payload, 0, payload.capacity())
+                .lastStreamId(3)
+                .errorCode(PROTOCOL_ERROR)
                 .build();
 
-        assertEquals(8, ping.payloadLength());
-        assertEquals(1, ping.offset());
-        assertEquals(18, ping.limit());
-        assertEquals(PING, ping.type());
-        assertTrue(ping.ack());
-        assertEquals(0, ping.streamId());
-        assertEquals(payload, ping.payload());
+        assertEquals(8, goaway.payloadLength());
+        assertEquals(1, goaway.offset());
+        assertEquals(18, goaway.limit());
+        assertEquals(GO_AWAY, goaway.type());
+        assertEquals(0, goaway.flags());
+        assertEquals(0, goaway.streamId());
+        assertEquals(3, goaway.lastStreamId());
+        Http2ErrorCode errorCode = Http2ErrorCode.from(goaway.errorCode());
+        assertEquals(PROTOCOL_ERROR, errorCode);
     }
 
 }

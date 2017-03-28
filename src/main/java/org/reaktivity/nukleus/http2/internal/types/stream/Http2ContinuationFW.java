@@ -18,12 +18,14 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.RST_STREAM;
+import java.util.function.Consumer;
+
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.CONTINUATION;
 
 /*
 
-    Flyweight for HTTP2 RST_STREAM frame
+    Flyweight for HTTP2 CONTINUATION frame
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -32,53 +34,53 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.RST_S
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
     +=+=============+===============================================+
-    |                        Error Code (32)                        |
+    |                   Header Block Fragment (*)                 ...
     +---------------------------------------------------------------+
 
  */
-public class RstStreamFW extends Http2FrameFW
+public class Http2ContinuationFW extends Http2FrameFW
 {
+    private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
+    private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
+
     @Override
-    public int payloadLength()
+    public Http2FrameType type()
     {
-        return 4;
+        return CONTINUATION;
+    }
+
+    public boolean endHeaders()
+    {
+        return Http2Flags.endHeaders(flags());
+    }
+
+    public void forEach(Consumer<HpackHeaderFieldFW> headerField)
+    {
+        headerBlockRO.forEach(headerField);
     }
 
     @Override
-    public FrameType type()
-    {
-        return RST_STREAM;
-    }
-
-    public int errorCode()
-    {
-        return buffer().getInt(offset() + PAYLOAD_OFFSET, BIG_ENDIAN);
-    }
-
-    @Override
-    public RstStreamFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2ContinuationFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        int streamId = super.streamId();
+        int streamId = streamId();
         if (streamId == 0)
         {
-            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame stream-id=%d (must not be 0)", streamId));
+            throw new IllegalArgumentException(
+                    String.format("Invalid CONTINUATION frame stream-id=%d (must not be 0)", streamId));
         }
 
-        FrameType type = super.type();
-        if (type != RST_STREAM)
+        Http2FrameType type = super.type();
+        if (type != CONTINUATION)
         {
-            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame type=%s", type));
+            throw new IllegalArgumentException(String.format("Invalid CONTINUATION frame type=%s", type));
         }
 
-        int payloadLength = super.payloadLength();
-        if (payloadLength != 4)
-        {
-            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame length=%d (must be 4)", payloadLength));
-        }
+        headerBlockRO.wrap(buffer(), offset() + PAYLOAD_OFFSET, offset() + PAYLOAD_OFFSET + payloadLength());
+
         checkLimit(limit(), maxLimit);
         return this;
     }
@@ -90,25 +92,34 @@ public class RstStreamFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, RstStreamFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2ContinuationFW>
     {
+        private final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
         public Builder()
         {
-            super(new RstStreamFW());
+            super(new Http2ContinuationFW());
         }
 
         @Override
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
-            payloadLength(4);
+            blockRW.wrap(buffer, offset + PAYLOAD_OFFSET, maxLimit);
             return this;
         }
 
-        public Builder errorCode(ErrorCode errorCode)
+        public Builder endHeaders()
         {
-            buffer().putInt(offset() + PAYLOAD_OFFSET, errorCode.errorCode, BIG_ENDIAN);
+            buffer().putByte(offset() + FLAGS_OFFSET, END_HEADERS);
+            return this;
+        }
+
+        public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator)
+        {
+            blockRW.header(mutator);
+            int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
+            payloadLength(length);
             return this;
         }
 

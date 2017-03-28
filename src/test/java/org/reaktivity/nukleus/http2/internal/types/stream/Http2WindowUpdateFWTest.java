@@ -20,10 +20,9 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.ErrorCode.PROTOCOL_ERROR;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.GO_AWAY;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
-public class GoawayFWTest
+public class Http2WindowUpdateFWTest
 {
 
     @Test
@@ -32,21 +31,19 @@ public class GoawayFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        GoawayFW goaway = new GoawayFW.Builder()
-                .wrap(buf, 1, buf.capacity())       // non-zero offset
-                .lastStreamId(3)
-                .errorCode(PROTOCOL_ERROR)
+        Http2WindowUpdateFW window = new Http2WindowUpdateFW.Builder()
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
+                .streamId(3)
+                .size(100)
                 .build();
 
-        assertEquals(8, goaway.payloadLength());
-        assertEquals(1, goaway.offset());
-        assertEquals(18, goaway.limit());
-        assertEquals(GO_AWAY, goaway.type());
-        assertEquals(0, goaway.flags());
-        assertEquals(0, goaway.streamId());
-        assertEquals(3, goaway.lastStreamId());
-        ErrorCode errorCode = ErrorCode.from(goaway.errorCode());
-        assertEquals(PROTOCOL_ERROR, errorCode);
+        assertEquals(4, window.payloadLength());
+        assertEquals(1, window.offset());
+        assertEquals(14, window.limit());
+        assertEquals(WINDOW_UPDATE, window.type());
+        assertEquals(0, window.flags());
+        assertEquals(3, window.streamId());
+        assertEquals(100, window.size());
     }
 
 }

@@ -19,11 +19,11 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.GO_AWAY;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
 
 /*
 
-    Flyweight for HTTP2 GOAWAY frame
+    Flyweight for HTTP2 RST_STREAM frame
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -32,58 +32,53 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.GO_AW
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
     +=+=============+===============================================+
-    |R|                  Last-Stream-ID (31)                        |
-    +-+-------------------------------------------------------------+
-    |                      Error Code (32)                          |
-    +---------------------------------------------------------------+
-    |                  Additional Debug Data (*)                    |
+    |                        Error Code (32)                        |
     +---------------------------------------------------------------+
 
  */
-public class GoawayFW extends Http2FrameFW
+public class Http2RstStreamFW extends Http2FrameFW
 {
-    private static final int LAST_STREAM_ID_OFFSET = 9;
-    private static final int ERROR_CODE_OFFSET = 13;
+    private static final int PAYLOAD_OFFSET = 9;
 
     @Override
-    public FrameType type()
+    public int payloadLength()
     {
-        return GO_AWAY;
+        return 4;
     }
 
     @Override
-    public int streamId()
+    public Http2FrameType type()
     {
-        return 0;
-    }
-
-    public int lastStreamId()
-    {
-        return buffer().getInt(offset() + LAST_STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        return RST_STREAM;
     }
 
     public int errorCode()
     {
-        return buffer().getInt(offset() + ERROR_CODE_OFFSET, BIG_ENDIAN);
+        return buffer().getInt(offset() + PAYLOAD_OFFSET, BIG_ENDIAN);
     }
 
     @Override
-    public GoawayFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2RstStreamFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
         int streamId = super.streamId();
-        if (streamId != 0)
+        if (streamId == 0)
         {
-            throw new IllegalArgumentException(String.format("Invalid stream-id=%d for GOAWAY frame", streamId));
+            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame stream-id=%d (must not be 0)", streamId));
         }
 
-        FrameType type = super.type();
-        if (type != GO_AWAY)
+        Http2FrameType type = super.type();
+        if (type != RST_STREAM)
         {
-            throw new IllegalArgumentException(String.format("Invalid type=%s for GOAWAY frame", type));
+            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame type=%s", type));
         }
 
+        int payloadLength = super.payloadLength();
+        if (payloadLength != 4)
+        {
+            throw new IllegalArgumentException(String.format("Invalid RST_STREAM frame length=%d (must be 4)", payloadLength));
+        }
         checkLimit(limit(), maxLimit);
         return this;
     }
@@ -95,34 +90,25 @@ public class GoawayFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, GoawayFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2RstStreamFW>
     {
 
         public Builder()
         {
-            super(new GoawayFW());
+            super(new Http2RstStreamFW());
         }
 
         @Override
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
-
-            // not including "Additional Debug Data"
-            payloadLength(8);
-
+            payloadLength(4);
             return this;
         }
 
-        public Builder lastStreamId(int lastStreamId)
+        public Builder errorCode(Http2ErrorCode errorCode)
         {
-            buffer().putInt(offset() + LAST_STREAM_ID_OFFSET, lastStreamId, BIG_ENDIAN);
-            return this;
-        }
-
-        public Builder errorCode(ErrorCode error)
-        {
-            buffer().putInt(offset() + ERROR_CODE_OFFSET, error.errorCode, BIG_ENDIAN);
+            buffer().putInt(offset() + PAYLOAD_OFFSET, errorCode.errorCode, BIG_ENDIAN);
             return this;
         }
 

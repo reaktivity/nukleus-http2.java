@@ -46,9 +46,9 @@ import org.reaktivity.nukleus.http2.internal.HttpStreams;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.SettingsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.reaktor.Reaktor;
 import org.reaktivity.reaktor.matchers.NukleusMatcher;
@@ -199,7 +199,7 @@ public class Http2ServerBM
     private void writeSettings()
     {
         AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
-        SettingsFW settings = new SettingsFW.Builder()
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
                 .wrap(buf, 0, buf.capacity())
                 .maxConcurrentStreams(100)
                 .build();
@@ -217,7 +217,7 @@ public class Http2ServerBM
     private void writeSettingsAck()
     {
         AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
-        SettingsFW settings = new SettingsFW.Builder()
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
                 .wrap(buf, 0, buf.capacity())
                 .ack()
                 .build();
@@ -235,7 +235,7 @@ public class Http2ServerBM
     private boolean writeRequestHeaders()
     {
         AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
-        HeadersFW headers = new HeadersFW.Builder()
+        Http2HeadersFW headers = new Http2HeadersFW.Builder()
                 .wrap(buf, 0, buf.capacity())
                 .header(h -> h.indexed(2))      // :method: GET
                 .header(h -> h.indexed(6))      // :scheme: http

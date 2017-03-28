@@ -15,7 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-public enum ErrorCode
+public enum Http2ErrorCode
 {
     NO_ERROR(0),
     PROTOCOL_ERROR(1),
@@ -34,12 +34,12 @@ public enum ErrorCode
 
     public final int errorCode;
 
-    ErrorCode(int errorCode)
+    Http2ErrorCode(int errorCode)
     {
         this.errorCode = errorCode;
     }
 
-    static ErrorCode from(int errorCode)
+    static Http2ErrorCode from(int errorCode)
     {
         switch (errorCode)
         {

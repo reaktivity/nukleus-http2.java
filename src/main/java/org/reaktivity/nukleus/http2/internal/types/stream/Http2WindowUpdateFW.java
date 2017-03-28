@@ -19,7 +19,7 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDOW_UPDATE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
 /*
 
@@ -36,7 +36,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDO
     +-+-------------------------------------------------------------+
 
  */
-public class WindowUpdateFW extends Http2FrameFW
+public class Http2WindowUpdateFW extends Http2FrameFW
 {
 
     private static final int PAYLOAD_OFFSET = 9;
@@ -48,7 +48,7 @@ public class WindowUpdateFW extends Http2FrameFW
     }
 
     @Override
-    public FrameType type()
+    public Http2FrameType type()
     {
         return WINDOW_UPDATE;
     }
@@ -59,11 +59,11 @@ public class WindowUpdateFW extends Http2FrameFW
     }
 
     @Override
-    public WindowUpdateFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2WindowUpdateFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        FrameType type = super.type();
+        Http2FrameType type = super.type();
         if (type != WINDOW_UPDATE)
         {
             throw new IllegalArgumentException(String.format("Invalid type=%s for WINDOW_UPDATE frame", type));
@@ -86,12 +86,12 @@ public class WindowUpdateFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, WindowUpdateFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2WindowUpdateFW>
     {
 
         public Builder()
         {
-            super(new WindowUpdateFW());
+            super(new Http2WindowUpdateFW());
         }
 
         @Override

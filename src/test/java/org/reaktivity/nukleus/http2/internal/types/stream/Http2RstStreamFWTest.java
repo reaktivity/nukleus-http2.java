@@ -20,9 +20,10 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.WINDOW_UPDATE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode.PROTOCOL_ERROR;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
 
-public class WindowUpdateFWTest
+public class Http2RstStreamFWTest
 {
 
     @Test
@@ -31,19 +32,20 @@ public class WindowUpdateFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        WindowUpdateFW window = new WindowUpdateFW.Builder()
-                .wrap(buf, 1, buf.capacity())   // non-zero offset
+        Http2RstStreamFW reset = new Http2RstStreamFW.Builder()
+                .wrap(buf, 1, buf.capacity())       // non-zero offset
                 .streamId(3)
-                .size(100)
+                .errorCode(PROTOCOL_ERROR)
                 .build();
 
-        assertEquals(4, window.payloadLength());
-        assertEquals(1, window.offset());
-        assertEquals(14, window.limit());
-        assertEquals(WINDOW_UPDATE, window.type());
-        assertEquals(0, window.flags());
-        assertEquals(3, window.streamId());
-        assertEquals(100, window.size());
+        assertEquals(4, reset.payloadLength());
+        assertEquals(1, reset.offset());
+        assertEquals(14, reset.limit());
+        assertEquals(RST_STREAM, reset.type());
+        assertEquals(0, reset.flags());
+        assertEquals(3, reset.streamId());
+        Http2ErrorCode errorCode = Http2ErrorCode.from(reset.errorCode());
+        assertEquals(PROTOCOL_ERROR, errorCode);
     }
 
 }

@@ -38,14 +38,14 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.FrameType;
-import org.reaktivity.nukleus.http2.internal.types.stream.GoawayFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HeadersFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.PingFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.PrefaceFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.SettingsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
@@ -63,7 +63,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.PrefaceFW.PRI_REQUEST;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 public final class SourceInputStreamFactory
 {
@@ -77,16 +77,16 @@ public final class SourceInputStreamFactory
     private final WindowFW windowRO = new WindowFW();
     private final ResetFW resetRO = new ResetFW();
 
-    private final PrefaceFW prefaceRO = new PrefaceFW();
+    private final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
     private final Http2FrameFW http2RO = new Http2FrameFW();
-    private final SettingsFW settingsRO = new SettingsFW();
+    private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
-    private final HeadersFW headersRO = new HeadersFW();
-    private final PingFW pingRO = new PingFW();
+    private final Http2HeadersFW headersRO = new Http2HeadersFW();
+    private final Http2PingFW pingRO = new Http2PingFW();
 
-    private final SettingsFW.Builder settingsRW = new SettingsFW.Builder();
-    private final PingFW.Builder pingRW = new PingFW.Builder();
-    private final GoawayFW.Builder goawayRW = new GoawayFW.Builder();
+    private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
+    private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
+    private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
 
     private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> headersRW =
             new ListFW.Builder<>(new HttpHeaderFW.Builder(), new HttpHeaderFW());
@@ -367,9 +367,9 @@ public final class SourceInputStreamFactory
             // TODO: replace with connection pool (end)
 
             AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
-            SettingsFW settings = settingsRW.wrap(payload, 0, 2048)
-                                            .maxConcurrentStreams(100)
-                                            .build();
+            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048)
+                                                 .maxConcurrentStreams(100)
+                                                 .build();
 
             replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.sizeof());
 
@@ -466,18 +466,18 @@ public final class SourceInputStreamFactory
 
             int nextOffset = offset + http2RO.sizeof();
 
-            FrameType frameType = http2RO.type();
+            Http2FrameType http2FrameType = http2RO.type();
 
-            if (frameType == null)
+            if (http2FrameType == null)
             {
                 return nextOffset;               // Ignore and discard unknown frame
             }
-            if (frameType == FrameType.SETTINGS)
+            if (http2FrameType == Http2FrameType.SETTINGS)
             {
                 doSettings(http2RO);
                 return nextOffset;
             }
-            else if (frameType == FrameType.PING)
+            else if (http2FrameType == Http2FrameType.PING)
             {
                 doPing();
                 return nextOffset;
@@ -504,9 +504,9 @@ public final class SourceInputStreamFactory
             settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
             if (!settingsRO.ack())
             {
-                SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
-                                                .ack()
-                                                .build();
+                Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
+                                                     .ack()
+                                                     .build();
                 replyTarget.doData(sourceOutputEstId,
                         settings.buffer(), settings.offset(), settings.limit());
             }
@@ -517,22 +517,22 @@ public final class SourceInputStreamFactory
         {
             if (http2RO.streamId() != 0)
             {
-                error(ErrorCode.PROTOCOL_ERROR);
+                error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
             if (http2RO.payloadLength() != 8)
             {
-                error(ErrorCode.FRAME_SIZE_ERROR);
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
                 return;
             }
             pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
 
             if (!pingRO.ack())
             {
-                PingFW ping = pingRW.wrap(buffer, 0, buffer.capacity())
-                                    .ack()
-                                    .payload(pingRO.payload())
-                                    .build();
+                Http2PingFW ping = pingRW.wrap(buffer, 0, buffer.capacity())
+                                         .ack()
+                                         .payload(pingRO.payload())
+                                         .build();
                 replyTarget.doData(sourceOutputEstId,
                         ping.buffer(), ping.offset(), ping.sizeof());
             }
@@ -637,12 +637,12 @@ public final class SourceInputStreamFactory
             source.doReset(sourceId);
         }
 
-        void error(ErrorCode errorCode)
+        void error(Http2ErrorCode errorCode)
         {
-            GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
-                                        .lastStreamId(lastStreamId)
-                                        .errorCode(errorCode)
-                                        .build();
+            Http2GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
+                                             .lastStreamId(lastStreamId)
+                                             .errorCode(errorCode)
+                                             .build();
             replyTarget.doData(sourceOutputEstId,
                     goawayRO.buffer(), goawayRO.offset(), goawayRO.sizeof());
 
@@ -713,13 +713,13 @@ public final class SourceInputStreamFactory
 
         private void inHalfClosedRemote()
         {
-            if (!(http2RO.type() == FrameType.WINDOW_UPDATE || http2RO.type() == FrameType.PRIORITY
-                    || http2RO.type() == FrameType.RST_STREAM))
+            if (!(http2RO.type() == Http2FrameType.WINDOW_UPDATE || http2RO.type() == Http2FrameType.PRIORITY
+                    || http2RO.type() == Http2FrameType.RST_STREAM))
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-            if (http2RO.type() == FrameType.RST_STREAM)
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
             {
                 state = State.CLOSED;
             }
@@ -727,7 +727,7 @@ public final class SourceInputStreamFactory
 
         private void inHalfClosedLocal()
         {
-            if (http2RO.endStream() || http2RO.type() == FrameType.RST_STREAM)
+            if (http2RO.endStream() || http2RO.type() == Http2FrameType.RST_STREAM)
             {
                 state = State.CLOSED;
             }
@@ -752,23 +752,23 @@ public final class SourceInputStreamFactory
                     connection.http2Streams.remove(http2StreamId);
                     break;
                 default:
-                    connection.error(ErrorCode.PROTOCOL_ERROR);
+                    connection.error(Http2ErrorCode.PROTOCOL_ERROR);
             }
         }
 
         private void inReservedRemote()
         {
-            if (!(http2RO.type() == FrameType.HEADERS || http2RO.type() == FrameType.RST_STREAM
-                    || http2RO.type() == FrameType.PRIORITY))
+            if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.RST_STREAM
+                    || http2RO.type() == Http2FrameType.PRIORITY))
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-            if (http2RO.type() == FrameType.RST_STREAM)
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
             {
                 state = State.CLOSED;
             }
-            else if (http2RO.type() == FrameType.HEADERS)
+            else if (http2RO.type() == Http2FrameType.HEADERS)
             {
                 state = State.HALF_CLOSED_LOCAL;
             }
@@ -776,13 +776,13 @@ public final class SourceInputStreamFactory
 
         private void inReservedLocal()
         {
-            if (!(http2RO.type() == FrameType.RST_STREAM || http2RO.type() == FrameType.PRIORITY
-                    || http2RO.type() == FrameType.WINDOW_UPDATE))
+            if (!(http2RO.type() == Http2FrameType.RST_STREAM || http2RO.type() == Http2FrameType.PRIORITY
+                    || http2RO.type() == Http2FrameType.WINDOW_UPDATE))
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-            if (http2RO.type() == FrameType.RST_STREAM)
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
             {
                 state = State.CLOSED;
             }
@@ -799,7 +799,7 @@ public final class SourceInputStreamFactory
                 case PRIORITY:
                     break;
                 default:
-                    connection.error(ErrorCode.PROTOCOL_ERROR);
+                    connection.error(Http2ErrorCode.PROTOCOL_ERROR);
             }
         }
 
@@ -828,7 +828,7 @@ public final class SourceInputStreamFactory
         {
             if (state == State.IDLE)
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
         }
@@ -837,7 +837,7 @@ public final class SourceInputStreamFactory
         {
             if (state == State.IDLE)
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
         }
@@ -846,7 +846,7 @@ public final class SourceInputStreamFactory
         {
             if (state == State.IDLE)
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
         }
@@ -855,7 +855,7 @@ public final class SourceInputStreamFactory
         {
             if (state == State.IDLE)
             {
-                connection.error(ErrorCode.PROTOCOL_ERROR);
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
             if (route == null)

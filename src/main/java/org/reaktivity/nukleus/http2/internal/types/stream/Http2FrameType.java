@@ -15,7 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-public enum FrameType
+public enum Http2FrameType
 {
     DATA(0),
     HEADERS(1),
@@ -30,7 +30,7 @@ public enum FrameType
 
     private final int type;
 
-    FrameType(int type)
+    Http2FrameType(int type)
     {
         this.type = type;
     }
@@ -40,7 +40,7 @@ public enum FrameType
         return (byte) type;
     }
 
-    public static FrameType get(int type)
+    public static Http2FrameType get(int type)
     {
         switch (type)
         {

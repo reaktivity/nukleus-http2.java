@@ -21,9 +21,9 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
-public class SettingsFWTest
+public class Http2SettingsFWTest
 {
 
     @Test
@@ -38,7 +38,7 @@ public class SettingsFWTest
         };
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        SettingsFW settings = new SettingsFW().wrap(buffer, 2, buffer.capacity());
+        Http2SettingsFW settings = new Http2SettingsFW().wrap(buffer, 2, buffer.capacity());
         assertEquals(17, settings.limit());
         assertEquals(65535L, settings.initialWindowSize());
     }
@@ -49,7 +49,7 @@ public class SettingsFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        SettingsFW settings = new SettingsFW.Builder()
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
                 .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .initialWindowSize(65535L)
                 .maxHeaderListSize(4096L)

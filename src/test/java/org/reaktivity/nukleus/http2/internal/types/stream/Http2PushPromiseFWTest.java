@@ -24,10 +24,10 @@ import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PUSH_PROMISE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
-public class PushPromiseFWTest
+public class Http2PushPromiseFWTest
 {
 
     @Test
@@ -36,7 +36,7 @@ public class PushPromiseFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        PushPromiseFW push = new PushPromiseFW.Builder()
+        Http2PushPromiseFW push = new Http2PushPromiseFW.Builder()
                 .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .streamId(1)
                 .promisedStreamId(2)

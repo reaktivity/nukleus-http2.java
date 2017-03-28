@@ -20,11 +20,11 @@ import org.agrona.MutableDirectBuffer;
 
 import java.util.function.Consumer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_HEADERS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_STREAM;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.PADDED;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.PRIORITY;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PADDED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PRIORITY;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
 
 /*
 
@@ -49,7 +49,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.HEADE
     +---------------------------------------------------------------+
 
  */
-public class HeadersFW extends Http2FrameFW
+public class Http2HeadersFW extends Http2FrameFW
 {
 
     private static final int FLAGS_OFFSET = 4;
@@ -58,24 +58,24 @@ public class HeadersFW extends Http2FrameFW
     private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
 
     @Override
-    public FrameType type()
+    public Http2FrameType type()
     {
         return HEADERS;
     }
 
     public boolean padded()
     {
-        return Flags.padded(flags());
+        return Http2Flags.padded(flags());
     }
 
     public boolean endHeaders()
     {
-        return Flags.endHeaders(flags());
+        return Http2Flags.endHeaders(flags());
     }
 
     public boolean priority()
     {
-        return Flags.priority(flags());
+        return Http2Flags.priority(flags());
     }
 
     private int dataOffset()
@@ -115,7 +115,7 @@ public class HeadersFW extends Http2FrameFW
     }
 
     @Override
-    public HeadersFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2HeadersFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
         int streamId = streamId();
@@ -137,13 +137,13 @@ public class HeadersFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, HeadersFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2HeadersFW>
     {
         private final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
         public Builder()
         {
-            super(new HeadersFW());
+            super(new Http2HeadersFW());
         }
 
         @Override

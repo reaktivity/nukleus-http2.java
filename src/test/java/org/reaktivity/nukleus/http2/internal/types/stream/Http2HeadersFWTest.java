@@ -27,9 +27,9 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
 
-public class HeadersFWTest
+public class Http2HeadersFWTest
 {
 
     @Test
@@ -47,7 +47,7 @@ public class HeadersFWTest
         };
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HeadersFW fw = new HeadersFW().wrap(buffer, 2, buffer.capacity());  // non-zero offset
+        Http2HeadersFW fw = new Http2HeadersFW().wrap(buffer, 2, buffer.capacity());  // non-zero offset
         assertEquals(26, fw.limit());
         assertTrue(fw.endStream());
         assertTrue(fw.endHeaders());
@@ -71,7 +71,7 @@ public class HeadersFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        HeadersFW fw = new HeadersFW.Builder()
+        Http2HeadersFW fw = new Http2HeadersFW.Builder()
                 .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .header(h -> h.indexed(2))      // :method: GET
                 .header(h -> h.indexed(6))      // :scheme: http

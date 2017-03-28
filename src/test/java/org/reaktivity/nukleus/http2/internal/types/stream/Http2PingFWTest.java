@@ -15,15 +15,16 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
+import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.ErrorCode.PROTOCOL_ERROR;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.RST_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
 
-public class RstStreamFWTest
+public class Http2PingFWTest
 {
 
     @Test
@@ -32,20 +33,20 @@ public class RstStreamFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        RstStreamFW reset = new RstStreamFW.Builder()
+        DirectBuffer payload = new UnsafeBuffer(new byte[] {1, 2, 3, 4, 5, 6, 7, 8});
+        Http2PingFW ping = new Http2PingFW.Builder()
                 .wrap(buf, 1, buf.capacity())       // non-zero offset
-                .streamId(3)
-                .errorCode(PROTOCOL_ERROR)
+                .ack()
+                .payload(payload, 0, payload.capacity())
                 .build();
 
-        assertEquals(4, reset.payloadLength());
-        assertEquals(1, reset.offset());
-        assertEquals(14, reset.limit());
-        assertEquals(RST_STREAM, reset.type());
-        assertEquals(0, reset.flags());
-        assertEquals(3, reset.streamId());
-        ErrorCode errorCode = ErrorCode.from(reset.errorCode());
-        assertEquals(PROTOCOL_ERROR, errorCode);
+        assertEquals(8, ping.payloadLength());
+        assertEquals(1, ping.offset());
+        assertEquals(18, ping.limit());
+        assertEquals(PING, ping.type());
+        assertTrue(ping.ack());
+        assertEquals(0, ping.streamId());
+        assertEquals(payload, ping.payload());
     }
 
 }

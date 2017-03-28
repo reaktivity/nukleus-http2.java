@@ -20,8 +20,8 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_STREAM;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.DATA;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 
 /*
     Flyweight for HTTP2 DATA frame
@@ -50,14 +50,14 @@ public class Http2DataFW extends Http2FrameFW
     private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
 
     @Override
-    public FrameType type()
+    public Http2FrameType type()
     {
         return DATA;
     }
 
     private boolean padding()
     {
-        return Flags.padded(flags());
+        return Http2Flags.padded(flags());
     }
 
     public int dataOffset()

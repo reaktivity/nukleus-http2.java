@@ -21,8 +21,8 @@ import org.agrona.MutableDirectBuffer;
 import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.END_HEADERS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PUSH_PROMISE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
 
 /*
 
@@ -45,7 +45,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PUSH_
     +---------------------------------------------------------------+
 
  */
-public class PushPromiseFW extends Http2FrameFW
+public class Http2PushPromiseFW extends Http2FrameFW
 {
 
     private static final int FLAGS_OFFSET = 4;
@@ -54,19 +54,19 @@ public class PushPromiseFW extends Http2FrameFW
     private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
 
     @Override
-    public FrameType type()
+    public Http2FrameType type()
     {
         return PUSH_PROMISE;
     }
 
     public boolean padded()
     {
-        return Flags.padded(flags());
+        return Http2Flags.padded(flags());
     }
 
     public boolean endHeaders()
     {
-        return Flags.endHeaders(flags());
+        return Http2Flags.endHeaders(flags());
     }
 
     public int promisedStreamId()
@@ -98,7 +98,7 @@ public class PushPromiseFW extends Http2FrameFW
     }
 
     @Override
-    public PushPromiseFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2PushPromiseFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
         int streamId = streamId();
@@ -120,13 +120,13 @@ public class PushPromiseFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, PushPromiseFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2PushPromiseFW>
     {
         private final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
         public Builder()
         {
-            super(new PushPromiseFW());
+            super(new Http2PushPromiseFW());
         }
 
         @Override

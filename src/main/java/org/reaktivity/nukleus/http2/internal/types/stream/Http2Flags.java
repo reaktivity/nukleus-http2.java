@@ -15,7 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-public interface Flags
+public interface Http2Flags
 {
     byte END_STREAM = 0x01;
     byte ACK = 0x01;

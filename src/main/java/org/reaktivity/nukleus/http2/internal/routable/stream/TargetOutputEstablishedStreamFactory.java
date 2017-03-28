@@ -32,7 +32,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -61,7 +61,7 @@ public final class TargetOutputEstablishedStreamFactory
     private final HttpBeginExFW beginExRO = new HttpBeginExFW();
 
     private final Http2DataFW.Builder dataRW = new Http2DataFW.Builder();
-    private final HeadersFW.Builder http2HeadersRW = new HeadersFW.Builder();
+    private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
 
     private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
@@ -244,7 +244,7 @@ public final class TargetOutputEstablishedStreamFactory
                     beginEx.headers().forEach(httpHeader -> mapHeader(hpackContext, httpHeader));
                 }
 
-                HeadersFW http2HeadersRO = http2HeadersRW.build();
+                Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
 
                 target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
                         http2HeadersRO.limit());

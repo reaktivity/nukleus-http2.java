@@ -21,8 +21,8 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.util.function.Consumer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.ACK;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
 /*
     Flyweight for HTTP2 SETTINGS frame
@@ -44,7 +44,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.SETTI
     +---------------------------------------------------------------+
 
  */
-public class SettingsFW extends Http2FrameFW
+public class Http2SettingsFW extends Http2FrameFW
 {
     private static final int HEADER_TABLE_SIZE = 1;
     private static final int ENABLE_PUSH = 2;
@@ -56,17 +56,17 @@ public class SettingsFW extends Http2FrameFW
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final ListFW<SettingFW> listFW = new ListFW<>(new SettingFW());
+    private final ListFW<Http2SettingFW> listFW = new ListFW<>(new Http2SettingFW());
 
     @Override
-    public FrameType type()
+    public Http2FrameType type()
     {
         return SETTINGS;
     }
 
     public boolean ack()
     {
-        return Flags.ack(flags());
+        return Http2Flags.ack(flags());
     }
 
     @Override
@@ -121,7 +121,7 @@ public class SettingsFW extends Http2FrameFW
     }
 
     @Override
-    public SettingsFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2SettingsFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
@@ -131,7 +131,7 @@ public class SettingsFW extends Http2FrameFW
             throw new IllegalArgumentException(String.format("Invalid SETTINGS frame stream-id=%d", streamId));
         }
 
-        FrameType type = super.type();
+        Http2FrameType type = super.type();
         if (type != SETTINGS)
         {
             throw new IllegalArgumentException(String.format("Invalid SETTINGS frame type=%s", type));
@@ -155,14 +155,14 @@ public class SettingsFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, SettingsFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2SettingsFW>
     {
-        private final ListFW.Builder<SettingFW.Builder, SettingFW> settingsRW =
-                new ListFW.Builder<>(new SettingFW.Builder(), new SettingFW());
+        private final ListFW.Builder<Http2SettingFW.Builder, Http2SettingFW> settingsRW =
+                new ListFW.Builder<>(new Http2SettingFW.Builder(), new Http2SettingFW());
 
         public Builder()
         {
-            super(new SettingsFW());
+            super(new Http2SettingsFW());
         }
 
         @Override
@@ -215,7 +215,7 @@ public class SettingsFW extends Http2FrameFW
             return this;
         }
 
-        private Builder addSetting(Consumer<SettingFW.Builder> mutator)
+        private Builder addSetting(Consumer<Http2SettingFW.Builder> mutator)
         {
             settingsRW.item(mutator);
             int length = settingsRW.limit() - offset() - PAYLOAD_OFFSET;

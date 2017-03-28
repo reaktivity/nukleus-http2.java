@@ -18,8 +18,8 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.Flags.ACK;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
 
 /*
 
@@ -38,7 +38,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.PING;
     +---------------------------------------------------------------+
 
  */
-public class PingFW extends Http2FrameFW
+public class Http2PingFW extends Http2FrameFW
 {
 
     private static final int FLAGS_OFFSET = 4;
@@ -51,7 +51,7 @@ public class PingFW extends Http2FrameFW
     }
 
     @Override
-    public FrameType type()
+    public Http2FrameType type()
     {
         return PING;
     }
@@ -64,11 +64,11 @@ public class PingFW extends Http2FrameFW
 
     public boolean ack()
     {
-        return Flags.ack(flags());
+        return Http2Flags.ack(flags());
     }
 
     @Override
-    public PingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2PingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
@@ -78,7 +78,7 @@ public class PingFW extends Http2FrameFW
             throw new IllegalArgumentException(String.format("Invalid PING frame stream-id=%d", streamId));
         }
 
-        FrameType type = super.type();
+        Http2FrameType type = super.type();
         if (type != PING)
         {
             throw new IllegalArgumentException(String.format("Invalid PING frame type=%s", type));
@@ -101,12 +101,12 @@ public class PingFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<PingFW.Builder, PingFW>
+    public static final class Builder extends Http2FrameFW.Builder<Http2PingFW.Builder, Http2PingFW>
     {
 
         public Builder()
         {
-            super(new PingFW());
+            super(new Http2PingFW());
         }
 
         @Override
@@ -123,12 +123,12 @@ public class PingFW extends Http2FrameFW
             return this;
         }
 
-        public PingFW.Builder payload(DirectBuffer payload)
+        public Http2PingFW.Builder payload(DirectBuffer payload)
         {
             return payload(payload, 0, payload.capacity());
         }
 
-        public PingFW.Builder payload(DirectBuffer payload, int offset, int length)
+        public Http2PingFW.Builder payload(DirectBuffer payload, int offset, int length)
         {
             if (length != 8)
             {

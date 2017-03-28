@@ -25,9 +25,9 @@ import java.util.Map;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.FrameType.CONTINUATION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.CONTINUATION;
 
-public class ContinuationFWTest
+public class Http2ContinuationFWTest
 {
 
     @Test
@@ -36,7 +36,7 @@ public class ContinuationFWTest
         byte[] bytes = new byte[100];
         MutableDirectBuffer buf = new UnsafeBuffer(bytes);
 
-        ContinuationFW fw = new ContinuationFW.Builder()
+        Http2ContinuationFW fw = new Http2ContinuationFW.Builder()
                 .wrap(buf, 1, buf.capacity())   // non-zero offset
                 .header(h -> h.indexed(2))      // :method: GET
                 .header(h -> h.indexed(6))      // :scheme: http
