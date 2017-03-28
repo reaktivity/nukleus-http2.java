@@ -16,10 +16,12 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import static org.junit.Assert.assertEquals;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
 public class Http2SettingsFWTest
 {
@@ -36,9 +38,31 @@ public class Http2SettingsFWTest
         };
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        Http2SettingsFW fw = new Http2SettingsFW().wrap(buffer, 2, buffer.capacity());
-        assertEquals(17, fw.limit());
-        assertEquals(65535L, fw.initialWindowSize());
+        Http2SettingsFW settings = new Http2SettingsFW().wrap(buffer, 2, buffer.capacity());
+        assertEquals(17, settings.limit());
+        assertEquals(65535L, settings.initialWindowSize());
+    }
+
+    @Test
+    public void encode()
+    {
+        byte[] bytes = new byte[100];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
+                .initialWindowSize(65535L)
+                .maxHeaderListSize(4096L)
+                .build();
+
+        assertEquals(12, settings.payloadLength());
+        assertEquals(1, settings.offset());
+        assertEquals(22, settings.limit());
+        assertEquals(SETTINGS, settings.type());
+        assertEquals(0, settings.flags());
+        assertEquals(0, settings.streamId());
+        assertEquals(65535L, settings.initialWindowSize());
+        assertEquals(4096L, settings.maxHeaderListSize());
     }
 
 }

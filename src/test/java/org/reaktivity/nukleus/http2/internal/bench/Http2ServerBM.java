@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.bench;
 
+import org.agrona.DirectBuffer;
 import org.agrona.LangUtil;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
@@ -45,25 +46,31 @@ import org.reaktivity.nukleus.http2.internal.HttpStreams;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
-import org.reaktivity.reaktor.internal.Reaktor;
+import org.reaktivity.reaktor.Reaktor;
+import org.reaktivity.reaktor.matchers.NukleusMatcher;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
 
 import static java.nio.ByteBuffer.allocateDirect;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.FileVisitOption.FOLLOW_LINKS;
-import static java.util.Collections.emptyMap;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.agrona.BitUtil.SIZE_OF_INT;
 import static org.agrona.BitUtil.SIZE_OF_LONG;
 import static org.reaktivity.nukleus.Configuration.DIRECTORY_PROPERTY_NAME;
 import static org.reaktivity.nukleus.Configuration.STREAMS_BUFFER_CAPACITY_PROPERTY_NAME;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
@@ -73,15 +80,17 @@ import static org.reaktivity.nukleus.Configuration.STREAMS_BUFFER_CAPACITY_PROPE
 @OutputTimeUnit(SECONDS)
 public class Http2ServerBM
 {
-    private final Configuration configuration;
     private final Reaktor reaktor;
+    private final Http2Controller controller;
+    private final Configuration configuration;
 
     {
         Properties properties = new Properties();
         properties.setProperty(DIRECTORY_PROPERTY_NAME, "target/nukleus-benchmarks");
         properties.setProperty(STREAMS_BUFFER_CAPACITY_PROPERTY_NAME, Long.toString(1024L * 1024L * 16L));
 
-        configuration = new Configuration(properties);
+        NukleusMatcher matchNukleus = "http2"::equals;
+        this.configuration = new Configuration(properties);
 
         try
         {
@@ -94,15 +103,27 @@ public class Http2ServerBM
             LangUtil.rethrowUnchecked(ex);
         }
 
-        reaktor = Reaktor.launch(configuration, n -> "http".equals(n), Http2Controller.class::isAssignableFrom);
+        this.reaktor = Reaktor.builder()
+                              .config(configuration)
+                              .discover(matchNukleus)
+                              .discover(Http2Controller.class::isAssignableFrom)
+                              .errorHandler(ex -> ex.printStackTrace(System.err))
+                              .build();
+
+        this.controller = reaktor.controller(Http2Controller.class);
     }
 
     private final BeginFW beginRO = new BeginFW();
     private final DataFW dataRO = new DataFW();
-
-    private final BeginFW.Builder beginRW = new BeginFW.Builder();
-    private final DataFW.Builder dataRW = new DataFW.Builder();
     private final WindowFW.Builder windowRW = new WindowFW.Builder();
+    private DataFW requestDataRO;
+
+    private final Map<String, String> headers = new HashMap<>();
+    {
+        headers.put(":authority", "localhost:8080");
+    }
+
+    private final Random random = new Random();
 
     private HttpStreams sourceInputStreams;
     private HttpStreams sourceOutputEstStreams;
@@ -110,54 +131,155 @@ public class Http2ServerBM
     private MutableDirectBuffer throttleBuffer;
 
     private long sourceInputRef;
-    private long targetInputRef;
 
     private long sourceInputId;
-    private DataFW data;
 
     private MessageHandler sourceOutputEstHandler;
 
     @Setup(Level.Trial)
     public void reinit() throws Exception
     {
-        final Random random = new Random();
-        final Http2Controller controller = reaktor.controller(Http2Controller.class);
-
-        this.targetInputRef = random.nextLong();
-        this.sourceInputRef = controller.routeInputNew("source", 0L, "target", targetInputRef, emptyMap()).get();
+        reaktor.start();
+        this.sourceInputRef = controller.routeInputNew("source", 0L, "http2", 0L, headers).get();
 
         this.sourceInputStreams = controller.streams("source");
-        this.sourceOutputEstStreams = controller.streams("http", "target");
-
+        // Handshake streams (not used yet)
+        //this.sourceOutputEstStreams = controller.streams("source", "source");
         this.sourceInputId = random.nextLong();
-        this.sourceOutputEstHandler = this::processBegin;
+        this.throttleBuffer = new UnsafeBuffer(allocateDirect(SIZE_OF_LONG + SIZE_OF_INT));
 
+        writeBegin();
+        writePreface();
+        writeSettings();
+        writeSettingsAck();
+        writeRequestHeaders();
+
+        String str = "source/streams/http2#http2";
+        Path path = configuration.directory().resolve(str);
+        while (!Files.exists(path))
+        {
+            Thread.yield();
+        }
+        this.sourceOutputEstStreams = controller.streams("http2", "source");
+        this.sourceOutputEstHandler = this::processBegin;
+        createRequestData();
+    }
+
+    private void writeBegin()
+    {
         final AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
 
-        BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+        BeginFW begin = new BeginFW.Builder()
+                .wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(sourceInputId)
                 .referenceId(sourceInputRef)
                 .correlationId(random.nextLong())
-                .extension(e -> e.reset())
+                .build();
+        sourceInputStreams.writeStreams(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
+    }
+
+    private void writePreface()
+    {
+        String preface =
+                "PRI * HTTP/2.0\r\n" +
+                "\r\n" +
+                "SM\r\n" +
+                "\r\n";
+        byte[] prefaceBytes = preface.getBytes(UTF_8);
+        AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
+        DataFW prefaceData = new DataFW.Builder()
+                .wrap(writeBuffer, 0, writeBuffer.capacity())
+                .streamId(sourceInputId)
+                .payload(p -> p.set(prefaceBytes))
+                .build();
+        sourceInputStreams.writeStreams(prefaceData.typeId(),
+                prefaceData.buffer(), prefaceData.offset(), prefaceData.sizeof());
+    }
+
+    private void writeSettings()
+    {
+        AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
+                .wrap(buf, 0, buf.capacity())
+                .maxConcurrentStreams(100)
                 .build();
 
-        this.sourceInputStreams.writeStreams(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
+        AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
+        DataFW settingsData = new DataFW.Builder()
+                .wrap(writeBuffer, 0, writeBuffer.capacity())
+                .streamId(sourceInputId)
+                .payload(p -> p.set(settings.buffer(), settings.offset(), settings.sizeof()))
+                .build();
+        sourceInputStreams.writeStreams(settingsData.typeId(),
+                settingsData.buffer(), settingsData.offset(), settingsData.sizeof());
+    }
 
-        String payload =
-                "POST / HTTP/1.1\r\n" +
-                "Host: localhost:8080\r\n" +
-                "Content-Length:12\r\n" +
-                "\r\n" +
-                "Hello, world";
-        byte[] sendArray = payload.getBytes(StandardCharsets.UTF_8);
+    private void writeSettingsAck()
+    {
+        AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
+                .wrap(buf, 0, buf.capacity())
+                .ack()
+                .build();
 
-        this.data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                          .streamId(sourceInputId)
-                          .payload(p -> p.set(sendArray))
-                          .extension(e -> e.reset())
-                          .build();
+        AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
+        DataFW settingsAckData = new DataFW.Builder()
+                .wrap(writeBuffer, 0, writeBuffer.capacity())
+                .streamId(sourceInputId)
+                .payload(p -> p.set(settings.buffer(), settings.offset(), settings.sizeof()))
+                .build();
+        sourceInputStreams.writeStreams(settingsAckData.typeId(),
+                settingsAckData.buffer(), settingsAckData.offset(), settingsAckData.sizeof());
+    }
 
-        this.throttleBuffer = new UnsafeBuffer(allocateDirect(SIZE_OF_LONG + SIZE_OF_INT));
+    private boolean writeRequestHeaders()
+    {
+        AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
+        Http2HeadersFW headers = new Http2HeadersFW.Builder()
+                .wrap(buf, 0, buf.capacity())
+                .header(h -> h.indexed(2))      // :method: GET
+                .header(h -> h.indexed(6))      // :scheme: http
+                .header(h -> h.indexed(4))      // :path: /
+                .header(h -> h.literal(l -> l.type(WITHOUT_INDEXING).name(1).value("localhost:8080")))
+                .endHeaders()
+                .streamId(3)
+                .build();
+
+        AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
+        DataFW headersData = new DataFW.Builder()
+                .wrap(writeBuffer, 0, writeBuffer.capacity())
+                .streamId(sourceInputId)
+                .payload(p -> p.set(buf, 0, headers.sizeof()))
+                .build();
+        return sourceInputStreams.writeStreams(headersData.typeId(),
+                headersData.buffer(), headersData.offset(), headersData.sizeof());
+    }
+
+    private void createRequestData()
+    {
+        AtomicBuffer buf = new UnsafeBuffer(new byte[256]);
+
+        String str = "Hello, world!";
+        DirectBuffer strBuf = new UnsafeBuffer(str.getBytes(UTF_8));
+        Http2DataFW http2Data = new Http2DataFW.Builder()
+                .wrap(buf, 0, buf.capacity())
+                .streamId(3)
+                .payload(strBuf)
+                //.endStream()      since sending multiple HTTP2 DATA frames
+                .build();
+
+        AtomicBuffer writeBuffer = new UnsafeBuffer(new byte[256]);
+        requestDataRO = new DataFW.Builder()
+                .wrap(writeBuffer, 0, writeBuffer.capacity())
+                .streamId(sourceInputId)
+                .payload(p -> p.set(buf, 0, http2Data.sizeof()))
+                .build();
+    }
+
+    private boolean writeRequestData()
+    {
+        return sourceInputStreams.writeStreams(requestDataRO.typeId(),
+                requestDataRO.buffer(), requestDataRO.offset(), requestDataRO.sizeof());
     }
 
     @TearDown(Level.Trial)
@@ -165,22 +287,23 @@ public class Http2ServerBM
     {
         Http2Controller controller = reaktor.controller(Http2Controller.class);
 
-        controller.unrouteInputNew("source", sourceInputRef, "target", targetInputRef, null).get();
+        controller.unrouteInputNew("source", sourceInputRef, "http2", 0L, headers).get();
 
         this.sourceInputStreams.close();
         this.sourceInputStreams = null;
 
         this.sourceOutputEstStreams.close();
         this.sourceOutputEstStreams = null;
+
+        reaktor.close();
     }
 
     @Benchmark
     @Group("throughput")
-    @GroupThreads(1)
+    @GroupThreads
     public void writer(Control control) throws Exception
     {
-        while (!control.stopMeasurement &&
-               !sourceInputStreams.writeStreams(data.typeId(), data.buffer(), 0, data.limit()))
+        while (!control.stopMeasurement && !writeRequestData())
         {
             Thread.yield();
         }
@@ -194,7 +317,7 @@ public class Http2ServerBM
 
     @Benchmark
     @Group("throughput")
-    @GroupThreads(1)
+    @GroupThreads
     public void reader(Control control) throws Exception
     {
         while (!control.stopMeasurement &&
@@ -204,20 +327,12 @@ public class Http2ServerBM
         }
     }
 
-    private void handleSourceOutputEst(
-        int msgTypeId,
-        MutableDirectBuffer buffer,
-        int index,
-        int length)
+    private void handleSourceOutputEst(int msgTypeId, MutableDirectBuffer buffer, int index, int length)
     {
         sourceOutputEstHandler.onMessage(msgTypeId, buffer, index, length);
     }
 
-    private void processBegin(
-        int msgTypeId,
-        MutableDirectBuffer buffer,
-        int index,
-        int length)
+    private void processBegin(int msgTypeId, MutableDirectBuffer buffer, int index, int length)
     {
         beginRO.wrap(buffer, index, index + length);
         final long streamId = beginRO.streamId();
@@ -226,25 +341,20 @@ public class Http2ServerBM
         this.sourceOutputEstHandler = this::processData;
     }
 
-    private void processData(
-        int msgTypeId,
-        MutableDirectBuffer buffer,
-        int index,
-        int length)
+    private void processData(int msgTypeId, MutableDirectBuffer buffer, int index, int length)
     {
         dataRO.wrap(buffer, index, index + length);
-        final long streamId = dataRO.streamId();
-        final OctetsFW payload = dataRO.payload();
+        long streamId = dataRO.streamId();
+        OctetsFW payload = dataRO.payload();
 
-        final int update = payload.sizeof();
+        int update = payload.sizeof();
         doWindow(streamId, update);
     }
 
-    private void doWindow(
-        final long streamId,
-        final int update)
+    private void doWindow(long streamId, int update)
     {
-        final WindowFW window = windowRW.wrap(throttleBuffer, 0, throttleBuffer.capacity())
+        WindowFW window = windowRW
+                .wrap(throttleBuffer, 0, throttleBuffer.capacity())
                 .streamId(streamId)
                 .update(update)
                 .build();

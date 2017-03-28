@@ -152,7 +152,8 @@ public class HpackContext
         for (int i = 0; i < STATIC_TABLE.length; i++)
         {
             String[] field = STATIC_TABLE[i];
-            table.add(new HeaderField(field[0], field[1]));
+            String value = field[1] == null ? "" : field[1];
+            table.add(new HeaderField(field[0], value));
         }
     }
 

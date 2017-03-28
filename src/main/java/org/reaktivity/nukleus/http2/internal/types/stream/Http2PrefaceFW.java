@@ -26,9 +26,12 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 public class Http2PrefaceFW extends Flyweight
 {
 
-    private static final byte[] PRI_REQUEST =
-            { 'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n',
-                    'S', 'M', '\r', '\n', '\r', '\n' };
+    public static final byte[] PRI_REQUEST =
+    {
+            'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n',
+                    'S', 'M', '\r', '\n', '\r', '\n'
+    };
+    private static final DirectBuffer PREFACE = new UnsafeBuffer(PRI_REQUEST);
 
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
@@ -36,6 +39,11 @@ public class Http2PrefaceFW extends Flyweight
     public int limit()
     {
         return offset() + PRI_REQUEST.length;
+    }
+
+    public boolean matches()
+    {
+        return PREFACE.equals(payloadRO);
     }
 
     @Override

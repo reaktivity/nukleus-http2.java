@@ -17,14 +17,13 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
 
 /*
-    Flyweight for HTTP2 DATA frame
+
+    Flyweight for HTTP2 PING frame
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -33,66 +32,65 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
     +=+=============+===============================================+
-    |Pad Length? (8)|
-    +---------------+-----------------------------------------------+
-    |                            Data (*)                         ...
-    +---------------------------------------------------------------+
-    |                           Padding (*)                       ...
+    |                                                               |
+    |                      Opaque Data (64)                         |
+    |                                                               |
     +---------------------------------------------------------------+
 
  */
-public class Http2DataFW extends Http2FrameFW
+public class Http2PingFW extends Http2FrameFW
 {
 
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
+    @Override
+    public int payloadLength()
+    {
+        return 8;
+    }
 
     @Override
     public Http2FrameType type()
     {
-        return DATA;
-    }
-
-    private boolean padding()
-    {
-        return Http2Flags.padded(flags());
-    }
-
-    public int dataOffset()
-    {
-        int payloadOffset = offset() + PAYLOAD_OFFSET;
-        return  padding() ? payloadOffset + 1 : payloadOffset;
-    }
-
-    public int dataLength()
-    {
-        if (padding())
-        {
-            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
-            return payloadLength() - paddingLength - 1;
-        }
-        else
-        {
-            return payloadLength();
-        }
-    }
-
-    public DirectBuffer data()
-    {
-        return dataRO;
+        return PING;
     }
 
     @Override
-    public Http2DataFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public int streamId()
+    {
+        return 0;
+    }
+
+    public boolean ack()
+    {
+        return Http2Flags.ack(flags());
+    }
+
+    @Override
+    public Http2PingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        dataRO.wrap(buffer, dataOffset(), dataLength());
+        int streamId = super.streamId();
+        if (streamId != 0)
+        {
+            throw new IllegalArgumentException(String.format("Invalid PING frame stream-id=%d", streamId));
+        }
+
+        Http2FrameType type = super.type();
+        if (type != PING)
+        {
+            throw new IllegalArgumentException(String.format("Invalid PING frame type=%s", type));
+        }
+
+        int payloadLength = super.payloadLength();
+        if (payloadLength != 8)
+        {
+            throw new IllegalArgumentException(String.format("Invalid PING frame length=%d (must be 8)", payloadLength));
+        }
 
         checkLimit(limit(), maxLimit);
-
         return this;
     }
 
@@ -103,37 +101,44 @@ public class Http2DataFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2DataFW>
+    public static final class Builder extends Http2FrameFW.Builder<Http2PingFW.Builder, Http2PingFW>
     {
+
         public Builder()
         {
-            super(new Http2DataFW());
+            super(new Http2PingFW());
         }
 
         @Override
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
+            payloadLength(8);
             return this;
         }
 
-        public Builder endStream()
+        public Builder ack()
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
+            buffer().putByte(offset() + FLAGS_OFFSET, ACK);
             return this;
         }
 
-        public Builder payload(DirectBuffer buffer)
+        public Http2PingFW.Builder payload(DirectBuffer payload)
         {
-            return payload(buffer, 0, buffer.capacity());
+            return payload(payload, 0, payload.capacity());
         }
 
-        public Builder payload(DirectBuffer payload, int offset, int length)
+        public Http2PingFW.Builder payload(DirectBuffer payload, int offset, int length)
         {
-            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
-            payloadLength(length);
+            if (length != 8)
+            {
+                throw new IllegalArgumentException(String.format("Invalid PING frame length = %d (must be 8)", length));
+            }
+
+            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, 8);
             return this;
         }
+
     }
 }
 

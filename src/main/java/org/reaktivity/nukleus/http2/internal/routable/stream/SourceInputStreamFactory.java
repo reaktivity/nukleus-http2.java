@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.agrona.collections.Int2ObjectHashMap;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -37,8 +38,12 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
@@ -53,10 +58,12 @@ import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 public final class SourceInputStreamFactory
 {
@@ -75,8 +82,11 @@ public final class SourceInputStreamFactory
     private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
     private final Http2HeadersFW headersRO = new Http2HeadersFW();
+    private final Http2PingFW pingRO = new Http2PingFW();
 
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
+    private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
+    private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
 
     private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> headersRW =
             new ListFW.Builder<>(new HttpHeaderFW.Builder(), new HttpHeaderFW());
@@ -86,6 +96,19 @@ public final class SourceInputStreamFactory
     private final LongSupplier supplyStreamId;
     private final Target replyTarget;
     private final LongObjectBiConsumer<Correlation> correlateNew;
+
+    private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);
+
+    enum State
+    {
+        IDLE,
+        RESERVED_LOCAL,
+        RESERVED_REMOTE,
+        OPEN,
+        HALF_CLOSED_LOCAL,
+        HALF_CLOSED_REMOTE,
+        CLOSED
+    }
 
     public SourceInputStreamFactory(
         Source source,
@@ -106,23 +129,28 @@ public final class SourceInputStreamFactory
         return new SourceInputStream()::handleStream;
     }
 
-    private final class SourceInputStream
+    final class SourceInputStream
     {
         private MessageHandler streamState;
-        private MessageHandler throttleState;
+        MessageHandler throttleState;
         private DecoderState decoderState;
 
-        private long sourceId;
+        long sourceId;
+        int lastStreamId;
 
         private Target target;
         private long targetId;      // TODO multiple targetId since multiplexing
-        private long sourceRef;
+        long sourceRef;
         private long correlationId;
         private int window;
         private int contentRemaining;
         private int sourceUpdateDeferred;
-        private final long sourceOutputEstId;
-        private final HpackContext hpackContext;
+        final long sourceOutputEstId;
+        final HpackContext hpackContext;
+        private final Int2ObjectHashMap<Http2Stream> http2Streams;
+
+        private final AtomicBuffer slab = new UnsafeBuffer(new byte[4096]);
+        private int slabLength = 0;
 
         @Override
         public String toString()
@@ -137,6 +165,7 @@ public final class SourceInputStreamFactory
             this.throttleState = this::throttleSkipNextWindow;
             sourceOutputEstId = supplyStreamId.getAsLong();
             hpackContext = new HpackContext();
+            http2Streams = new Int2ObjectHashMap<>();
         }
 
         private void handleStream(
@@ -227,7 +256,7 @@ public final class SourceInputStreamFactory
             processUnexpected(streamId);
         }
 
-        private void processUnexpected(
+        void processUnexpected(
             long streamId)
         {
             source.doReset(streamId);
@@ -314,15 +343,23 @@ public final class SourceInputStreamFactory
             decoderState = (b, o, l) -> o;
 
             source.removeStream(streamId);
-            target.removeThrottle(targetId);
+            //target.removeThrottle(targetId);
         }
 
 
         private int decodePreface(final DirectBuffer buffer, final int offset, final int limit)
         {
-            prefaceRO.wrap(buffer, offset, limit);
-            this.decoderState = this::decodeHttp2Frames;
-            source.doWindow(sourceId, limit - offset);
+            if (!prefaceAvailable(buffer, offset, limit))
+            {
+                return limit;
+            }
+            if (!prefaceRO.matches())
+            {
+                processUnexpected(sourceId);
+                return limit;
+            }
+            this.decoderState = this::decodeHttp2Frame;
+            source.doWindow(sourceId, prefaceRO.sizeof());
 
             // TODO: replace with connection pool (start)
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
@@ -330,84 +367,178 @@ public final class SourceInputStreamFactory
             // TODO: replace with connection pool (end)
 
             AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
-            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).maxConcurrentStreams(100).build();
+            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048)
+                                                 .maxConcurrentStreams(100)
+                                                 .build();
 
-            replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
+            replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.sizeof());
 
 
             return prefaceRO.limit();
         }
 
-        private int decodeHttp2Frames(final DirectBuffer buffer, final int offset, final int limit)
+        private int http2FrameLength(DirectBuffer buffer, final int offset, int limit)
         {
-            int nextOffset = offset;
+            assert limit - offset >= 3;
 
-            for (; nextOffset < limit; nextOffset = http2RO.limit())
+            int length = (buffer.getByte(offset) & 0xFF) << 16;
+            length += (buffer.getShort(offset + 1, BIG_ENDIAN) & 0xFF_FF);
+            return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
+        }
+
+        /*
+         * Assembles a complete HTTP2 client preface and the flyweight is wrapped with the
+         * buffer (it could be given buffer or slab)
+         *
+         * @return true if a complete HTTP2 frame is assembled
+         *         false otherwise
+         */
+        private boolean prefaceAvailable(DirectBuffer buffer, int offset, int limit)
+        {
+            int available = limit - offset;
+
+            if (slabLength > 0 && slabLength+available >= PRI_REQUEST.length)
             {
+                slab.putBytes(slabLength, buffer, offset, PRI_REQUEST.length-slabLength);
+                prefaceRO.wrap(slab, 0, PRI_REQUEST.length);
+                slabLength = 0;
+                return true;
+            }
+            else if (available >= PRI_REQUEST.length)
+            {
+                prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
+                return true;
+            }
 
-                assert limit - nextOffset >= 3;
+            slab.putBytes(slabLength, buffer, offset, available);
+            slabLength += available;
+            return false;
+        }
 
-                http2RO.wrap(buffer, nextOffset, limit);
-                switch (http2RO.type())
+        /*
+         * Assembles a complete HTTP2 frame and the flyweight is wrapped with the
+         * buffer (it could be given buffer or slab)
+         *
+         * @return true if a complete HTTP2 frame is assembled
+         *         false otherwise
+         */
+        // TODO check slab capacity
+        private boolean http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
+        {
+            int available = limit - offset;
+
+            if (slabLength > 0 && slabLength+available >= 3)
+            {
+                if (slabLength < 3)
                 {
-                    case DATA:
-                        //target.doData(targetId, payload, offset, limit - offset);
-                        break;
-                    case HEADERS:
-
-                        headersRO.wrap(buffer, nextOffset, limit);
-
-                        final long newTargetId = supplyStreamId.getAsLong();
-                        final long targetCorrelationId = newTargetId;
-                        final Correlation correlation = new Correlation(correlationId, sourceOutputEstId,
-                                http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
-
-                        correlateNew.accept(targetCorrelationId, correlation);
-                        // TODO avoid iterating over headers twice
-                        Map<String, String> headersMap = new HashMap<>();
-                        headersRO.forEach(hf -> decodeHeaderField(hpackContext, headersMap, hf));
-                        final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
-                        final Route route = optional.get();
-                        final Target newTarget = route.target();
-                        final long targetRef = route.targetRef();
-
-                        newTarget.doHttpBegin(newTargetId, targetRef, targetCorrelationId,
-                                hs -> headersRO.forEach(hf -> decodeHeaderField(hpackContext, hs, hf)));
-                        newTarget.addThrottle(newTargetId, this::handleThrottle);
-
-                        // no content
-                        newTarget.doHttpEnd(newTargetId);
-                        source.doWindow(sourceId, limit - offset);
-                        this.throttleState = this::throttleSkipNextWindow;
-
-                        break;
-                    case PRIORITY:
-                        break;
-                    case RST_STREAM:
-                        break;
-                    case SETTINGS:
-                        AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
-                        Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048).ack().build();
-                        //long newTargetId = dataRO.streamId();
-                        replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.limit());
-                        break;
-                    case PUSH_PROMISE:
-                        break;
-                    case PING:
-                        break;
-                    case GO_AWAY:
-                        break;
-                    case WINDOW_UPDATE:
-                        break;
-                    case CONTINUATION:
-                        break;
+                    slab.putBytes(slabLength, buffer, offset, 3-slabLength);
+                }
+                int length = http2FrameLength(slab, 0, 3);
+                if (slabLength+available >= length)
+                {
+                    slab.putBytes(slabLength, buffer, offset, length-slabLength);
+                    http2RO.wrap(slab, 0, length);
+                    slabLength = 0;
+                    return true;
+                }
+            }
+            else if (available >= 3)
+            {
+                int length = http2FrameLength(buffer, offset, limit);
+                if (available >= length)
+                {
+                    http2RO.wrap(buffer, offset, offset + length);
+                    return true;
                 }
             }
 
+            slab.putBytes(slabLength, buffer, offset, available);
+            slabLength += available;
+            return false;
+        }
+
+        private int decodeHttp2Frame(final DirectBuffer buffer, final int offset, final int limit)
+        {
+            if (!http2FrameAvailable(buffer, offset, limit))
+            {
+                return limit;
+            }
+
+            int nextOffset = offset + http2RO.sizeof();
+
+            Http2FrameType http2FrameType = http2RO.type();
+
+            if (http2FrameType == null)
+            {
+                return nextOffset;               // Ignore and discard unknown frame
+            }
+            if (http2FrameType == Http2FrameType.SETTINGS)
+            {
+                doSettings(http2RO);
+                return nextOffset;
+            }
+            else if (http2FrameType == Http2FrameType.PING)
+            {
+                doPing();
+                return nextOffset;
+            }
+            int streamId = lastStreamId = http2RO.streamId();
+            Http2Stream http2Stream = http2Streams.get(streamId);
+            if (http2Stream == null)
+            {
+                long targetId = supplyStreamId.getAsLong();
+                http2Stream = new Http2Stream(this, streamId, targetId);
+                http2Streams.put(streamId, http2Stream);
+
+                final Correlation correlation = new Correlation(correlationId, sourceOutputEstId,
+                        http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
+
+                correlateNew.accept(targetId, correlation);
+            }
+            http2Stream.onFrame();
             return nextOffset;
         }
 
-        private Optional<Route> resolveTarget(
+        private void doSettings(Http2FrameFW http2RO)
+        {
+            settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            if (!settingsRO.ack())
+            {
+                Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
+                                                     .ack()
+                                                     .build();
+                replyTarget.doData(sourceOutputEstId,
+                        settings.buffer(), settings.offset(), settings.limit());
+            }
+            // TODO when ack flag is true
+        }
+
+        private void doPing()
+        {
+            if (http2RO.streamId() != 0)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.payloadLength() != 8)
+            {
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
+            }
+            pingRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            if (!pingRO.ack())
+            {
+                Http2PingFW ping = pingRW.wrap(buffer, 0, buffer.capacity())
+                                         .ack()
+                                         .payload(pingRO.payload())
+                                         .build();
+                replyTarget.doData(sourceOutputEstId,
+                        ping.buffer(), ping.offset(), ping.sizeof());
+            }
+        }
+
+        Optional<Route> resolveTarget(
             long sourceRef,
             Map<String, String> headers)
         {
@@ -417,7 +548,7 @@ public final class SourceInputStreamFactory
             return routes.stream().filter(predicate).findFirst();
         }
 
-        private void handleThrottle(
+        void handleThrottle(
             int msgTypeId,
             MutableDirectBuffer buffer,
             int index,
@@ -426,7 +557,7 @@ public final class SourceInputStreamFactory
             throttleState.onMessage(msgTypeId, buffer, index, length);
         }
 
-        private void throttleSkipNextWindow(
+        void throttleSkipNextWindow(
             int msgTypeId,
             DirectBuffer buffer,
             int index,
@@ -505,6 +636,18 @@ public final class SourceInputStreamFactory
 
             source.doReset(sourceId);
         }
+
+        void error(Http2ErrorCode errorCode)
+        {
+            Http2GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
+                                             .lastStreamId(lastStreamId)
+                                             .errorCode(errorCode)
+                                             .build();
+            replyTarget.doData(sourceOutputEstId,
+                    goawayRO.buffer(), goawayRO.offset(), goawayRO.sizeof());
+
+            replyTarget.doEnd(sourceOutputEstId);
+        }
     }
 
     private static int framing(
@@ -520,132 +663,339 @@ public final class SourceInputStreamFactory
         int decode(DirectBuffer buffer, int offset, int length);
     }
 
-    private void decodeHeaderField(HpackContext context, ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
-                HpackHeaderFieldFW hf)
+    class Http2Stream
     {
+        private final SourceInputStream connection;
+        private final int http2StreamId;
+        private final long targetId;
+        private Route route;
+        private State state;
 
-        HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
-        switch (headerFieldType)
+        Http2Stream(SourceInputStream connection, int http2StreamId, long targetId)
         {
-            case INDEXED : {
-                int index = hf.index();
-                DirectBuffer nameBuffer = context.nameBuffer(index);
-                DirectBuffer valueBuffer = context.valueBuffer(index);
-                builder.item(i -> i.representation((byte) 0)
-                                   .name(nameBuffer, 0, nameBuffer.capacity())
-                                   .value(valueBuffer, 0, valueBuffer.capacity()));
-            }
-            break;
-
-            case LITERAL :
-                HpackLiteralHeaderFieldFW literalRO = hf.literal();
-                switch (literalRO.nameType())
-                {
-                    case INDEXED:
-                    {
-                        int index = literalRO.nameIndex();
-                        DirectBuffer nameBuffer = context.nameBuffer(index);
-
-                        HpackStringFW valueRO = literalRO.valueLiteral();
-                        DirectBuffer valuePayload = valueRO.payload();
-                        if (valueRO.huffman())
-                        {
-                            String value = HpackHuffman.decode(valuePayload);
-                            valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
-                        }
-                        DirectBuffer valueBuffer = valuePayload;
-                        builder.item(i -> i.representation((byte) 0)
-                                           .name(nameBuffer, 0, nameBuffer.capacity())
-                                           .value(valueBuffer, 0, valueBuffer.capacity()));
-                    }
-                    break;
-                    case NEW:
-                    {
-                        HpackStringFW nameRO = literalRO.nameLiteral();
-                        DirectBuffer namePayload = nameRO.payload();
-                        if (nameRO.huffman())
-                        {
-                            String name = HpackHuffman.decode(namePayload);
-                            namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
-                        }
-                        DirectBuffer nameBuffer = namePayload;
-
-                        HpackStringFW valueRO = literalRO.valueLiteral();
-                        DirectBuffer valuePayload = valueRO.payload();
-                        if (valueRO.huffman())
-                        {
-                            String value = HpackHuffman.decode(valuePayload);
-                            valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
-                        }
-                        DirectBuffer valueBuffer = valuePayload;
-                        builder.item(i -> i.representation((byte) 0)
-                                           .name(nameBuffer, 0, nameBuffer.capacity())
-                                           .value(valueBuffer, 0, valueBuffer.capacity()));
-
-                        if (literalRO.literalType() == INCREMENTAL_INDEXING)
-                        {
-                            context.add(nameBuffer, valueBuffer);
-                        }
-                    }
-                    break;
-                }
-                break;
-
-            case UPDATE:
-                break;
+            this.connection = connection;
+            this.http2StreamId = http2StreamId;
+            this.targetId = targetId;
+            this.state = State.IDLE;
         }
-    }
 
-    private void decodeHeaderField(HpackContext context, Map<String, String> headersMap, HpackHeaderFieldFW hf)
-    {
-        HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
-        switch (headerFieldType)
+        void onFrame()
         {
-            case INDEXED :
+            switch (state)
             {
-                int index = hf.index();
-                headersMap.put(context.name(index), context.value(index));
+                case IDLE:
+                    inIdle();
+                    break;
+                case RESERVED_LOCAL:
+                    inReservedLocal();
+                    break;
+                case RESERVED_REMOTE:
+                    inReservedRemote();
+                    break;
+                case OPEN:
+                    inOpen();
+                    break;
+                case HALF_CLOSED_LOCAL:
+                    inHalfClosedLocal();
+                    break;
+                case HALF_CLOSED_REMOTE:
+                    inHalfClosedRemote();
+                    break;
+                case CLOSED:
+                    inClosed();
+                    break;
             }
-            break;
+        }
 
-            case LITERAL :
-                HpackLiteralHeaderFieldFW literalRO = hf.literal();
-                switch (literalRO.nameType())
+        private void inClosed()
+        {
+        }
+
+        private void inHalfClosedRemote()
+        {
+            if (!(http2RO.type() == Http2FrameType.WINDOW_UPDATE || http2RO.type() == Http2FrameType.PRIORITY
+                    || http2RO.type() == Http2FrameType.RST_STREAM))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+        }
+
+        private void inHalfClosedLocal()
+        {
+            if (http2RO.endStream() || http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+        }
+
+        private void inOpen()
+        {
+            if (http2RO.endStream())
+            {
+                state = State.HALF_CLOSED_REMOTE;
+            }
+            switch (http2RO.type())
+            {
+                case HEADERS:
+                    doHeaders();
+                    break;
+                case DATA:
+                    doData();
+                    break;
+                case RST_STREAM:
+                    state = State.CLOSED;
+                    connection.http2Streams.remove(http2StreamId);
+                    break;
+                default:
+                    connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            }
+        }
+
+        private void inReservedRemote()
+        {
+            if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.RST_STREAM
+                    || http2RO.type() == Http2FrameType.PRIORITY))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+            else if (http2RO.type() == Http2FrameType.HEADERS)
+            {
+                state = State.HALF_CLOSED_LOCAL;
+            }
+        }
+
+        private void inReservedLocal()
+        {
+            if (!(http2RO.type() == Http2FrameType.RST_STREAM || http2RO.type() == Http2FrameType.PRIORITY
+                    || http2RO.type() == Http2FrameType.WINDOW_UPDATE))
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.type() == Http2FrameType.RST_STREAM)
+            {
+                state = State.CLOSED;
+            }
+        }
+
+        private void inIdle()
+        {
+            switch (http2RO.type())
+            {
+                case HEADERS:
+                    state = State.OPEN;
+                    doHeaders();
+                    break;
+                case PRIORITY:
+                    break;
+                default:
+                    connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+            }
+        }
+
+        private void doHeaders()
+        {
+            headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            // TODO avoid iterating over headers twice
+            Map<String, String> headersMap = new HashMap<>();
+            headersRO.forEach(h -> decodeHeaderField(connection.hpackContext, headersMap, h));
+            final Optional<Route> optional = connection.resolveTarget(connection.sourceRef, headersMap);
+            route = optional.get();
+            Target newTarget = route.target();
+            final long targetRef = route.targetRef();
+
+            newTarget.doHttpBegin(targetId, targetRef, targetId,
+                    hs -> headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, hs, hf)));
+            newTarget.addThrottle(targetId, connection::handleThrottle);
+
+            source.doWindow(connection.sourceId, http2RO.sizeof());
+            connection.throttleState = connection::throttleSkipNextWindow;
+            state = State.OPEN;
+        }
+
+        private void doRst()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+
+        private void doWindow()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+
+        private void doContinuation()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+
+        private void doData()
+        {
+            if (state == State.IDLE)
+            {
+                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (route == null)
+            {
+                connection.processUnexpected(connection.sourceId);
+                return;
+            }
+            Target newTarget = route.target();
+            Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
+
+        }
+
+        private void decodeHeaderField(HpackContext context, ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
+                                       HpackHeaderFieldFW hf)
+        {
+
+            HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
+            switch (headerFieldType)
+            {
+                case INDEXED :
                 {
-                    case INDEXED:
-                    {
-                        int index = literalRO.nameIndex();
-                        String name = context.name(index);
-
-                        HpackStringFW valueRO = literalRO.valueLiteral();
-                        DirectBuffer valuePayload = valueRO.payload();
-                        String value = valueRO.huffman()
-                                ? HpackHuffman.decode(valuePayload)
-                                : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
-                        headersMap.put(name, value);
-                    }
-                    break;
-                    case NEW: {
-                        HpackStringFW nameRO = literalRO.nameLiteral();
-                        DirectBuffer namePayload = nameRO.payload();
-                        String name = nameRO.huffman()
-                                ? HpackHuffman.decode(namePayload)
-                                : namePayload.getStringWithoutLengthUtf8(0, namePayload.capacity());
-
-                        HpackStringFW valueRO = literalRO.valueLiteral();
-                        DirectBuffer valuePayload = valueRO.payload();
-                        String value = valueRO.huffman()
-                                ? HpackHuffman.decode(valuePayload)
-                                : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
-                        headersMap.put(name, value);
-                    }
-                    break;
+                    int index = hf.index();
+                    DirectBuffer nameBuffer = context.nameBuffer(index);
+                    DirectBuffer valueBuffer = context.valueBuffer(index);
+                    builder.item(i -> i.representation((byte) 0)
+                                       .name(nameBuffer, 0, nameBuffer.capacity())
+                                       .value(valueBuffer, 0, valueBuffer.capacity()));
                 }
                 break;
 
-            case UPDATE:
+                case LITERAL :
+                    HpackLiteralHeaderFieldFW literalRO = hf.literal();
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
+                            int index = literalRO.nameIndex();
+                            DirectBuffer nameBuffer = context.nameBuffer(index);
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            if (valueRO.huffman())
+                            {
+                                String value = HpackHuffman.decode(valuePayload);
+                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                            }
+                            DirectBuffer valueBuffer = valuePayload;
+                            builder.item(i -> i.representation((byte) 0)
+                                               .name(nameBuffer, 0, nameBuffer.capacity())
+                                               .value(valueBuffer, 0, valueBuffer.capacity()));
+                        }
+                        break;
+                        case NEW:
+                        {
+                            HpackStringFW nameRO = literalRO.nameLiteral();
+                            DirectBuffer namePayload = nameRO.payload();
+                            if (nameRO.huffman())
+                            {
+                                String name = HpackHuffman.decode(namePayload);
+                                namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
+                            }
+                            DirectBuffer nameBuffer = namePayload;
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            if (valueRO.huffman())
+                            {
+                                String value = HpackHuffman.decode(valuePayload);
+                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                            }
+                            DirectBuffer valueBuffer = valuePayload;
+                            builder.item(i -> i.representation((byte) 0)
+                                               .name(nameBuffer, 0, nameBuffer.capacity())
+                                               .value(valueBuffer, 0, valueBuffer.capacity()));
+
+                            if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                            {
+                                context.add(nameBuffer, valueBuffer);
+                            }
+                        }
+                        break;
+                    }
+                    break;
+
+                case UPDATE:
+                    break;
+            }
+        }
+
+        private void decodeHeaderField(HpackContext context, Map<String, String> headersMap, HpackHeaderFieldFW hf)
+        {
+            HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
+            switch (headerFieldType)
+            {
+                case INDEXED :
+                {
+                    int index = hf.index();
+                    headersMap.put(context.name(index), context.value(index));
+                }
                 break;
+
+                case LITERAL :
+                    HpackLiteralHeaderFieldFW literalRO = hf.literal();
+                    switch (literalRO.nameType())
+                    {
+                        case INDEXED:
+                        {
+                            int index = literalRO.nameIndex();
+                            String name = context.name(index);
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            String value = valueRO.huffman()
+                                    ? HpackHuffman.decode(valuePayload)
+                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            headersMap.put(name, value);
+                        }
+                        break;
+                        case NEW: {
+                            HpackStringFW nameRO = literalRO.nameLiteral();
+                            DirectBuffer namePayload = nameRO.payload();
+                            String name = nameRO.huffman()
+                                    ? HpackHuffman.decode(namePayload)
+                                    : namePayload.getStringWithoutLengthUtf8(0, namePayload.capacity());
+
+                            HpackStringFW valueRO = literalRO.valueLiteral();
+                            DirectBuffer valuePayload = valueRO.payload();
+                            String value = valueRO.huffman()
+                                    ? HpackHuffman.decode(valuePayload)
+                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            headersMap.put(name, value);
+                        }
+                        break;
+                    }
+                    break;
+
+                case UPDATE:
+                    break;
+            }
         }
     }
-
 }

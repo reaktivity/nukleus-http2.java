@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
@@ -35,9 +36,8 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
     |                   Frame Payload (0...)                      ...
     +---------------------------------------------------------------+
  */
-public final class Http2FrameFW extends Flyweight
+public class Http2FrameFW extends Flyweight
 {
-
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
@@ -49,34 +49,37 @@ public final class Http2FrameFW extends Flyweight
     public int payloadLength()
     {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getByte(offset() + LENGTH_OFFSET + 1) & 0xFF) << 8;
-        length += buffer().getByte(offset() + LENGTH_OFFSET + 2) & 0xFF;
+        length += (buffer().getShort(offset() + LENGTH_OFFSET + 1, BIG_ENDIAN) & 0xFF_FF);
         return length;
     }
 
     public Http2FrameType type()
     {
-        return Http2FrameType.from(buffer().getByte(offset() + TYPE_OFFSET));
+        return Http2FrameType.get(buffer().getByte(offset() + TYPE_OFFSET));
     }
 
-    public byte flags()
+    public final byte flags()
     {
         return buffer().getByte(offset() + FLAGS_OFFSET);
     }
 
+    public final boolean endStream()
+    {
+        return Http2Flags.endStream(flags());
+    }
+
     public int streamId()
     {
-        // Most significant bit is reserved and is ignored when receiving
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
-    public DirectBuffer payload()
+    public final DirectBuffer payload()
     {
         return payloadRO;
     }
 
     @Override
-    public int limit()
+    public final int limit()
     {
         return offset() + PAYLOAD_OFFSET + payloadLength();
     }
@@ -84,7 +87,16 @@ public final class Http2FrameFW extends Flyweight
     @Override
     public Http2FrameFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
+        if (maxLimit - offset < 9)
+        {
+            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough bytes for 9-octet header");
+        }
         super.wrap(buffer, offset, maxLimit);
+
+        if (maxLimit - offset < payloadLength() + 9)
+        {
+            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough payload bytes");
+        }
 
         payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength());
 
@@ -98,6 +110,46 @@ public final class Http2FrameFW extends Flyweight
     {
         return String.format("%s frame <length=%s, flags=%s, id=%s>",
                 type(), payloadLength(), flags(), streamId());
+    }
+
+    protected static class Builder<B extends Builder, T extends Http2FrameFW> extends Flyweight.Builder<T>
+    {
+        private final Http2FrameFW frame;
+
+        public Builder(T frame)
+        {
+            super(frame);
+            this.frame = frame;
+        }
+
+        @Override
+        public B wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        {
+            super.wrap(buffer, offset, maxLimit);
+
+            buffer.putByte(offset + TYPE_OFFSET, frame.type().type());
+            buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
+            buffer.putInt(offset + STREAM_ID_OFFSET, 0, BIG_ENDIAN);
+            payloadLength(0);
+
+            return (B) this;
+        }
+
+        public final B streamId(int streamId)
+        {
+            buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, BIG_ENDIAN);
+            return (B) this;
+        }
+
+        protected final B payloadLength(int length)
+        {
+            buffer().putShort(offset() + LENGTH_OFFSET, (short) ((length & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
+            buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) (length & 0x00_00_00_FF));
+
+            limit(offset() + PAYLOAD_OFFSET + length);
+            return (B) this;
+        }
+
     }
 
 }

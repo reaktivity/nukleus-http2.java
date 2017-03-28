@@ -17,14 +17,13 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
+import static java.nio.ByteOrder.BIG_ENDIAN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
 
 /*
-    Flyweight for HTTP2 DATA frame
+
+    Flyweight for HTTP2 GOAWAY frame
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -33,66 +32,59 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
     +=+=============+===============================================+
-    |Pad Length? (8)|
-    +---------------+-----------------------------------------------+
-    |                            Data (*)                         ...
+    |R|                  Last-Stream-ID (31)                        |
+    +-+-------------------------------------------------------------+
+    |                      Error Code (32)                          |
     +---------------------------------------------------------------+
-    |                           Padding (*)                       ...
+    |                  Additional Debug Data (*)                    |
     +---------------------------------------------------------------+
 
  */
-public class Http2DataFW extends Http2FrameFW
+public class Http2GoawayFW extends Http2FrameFW
 {
-
-    private static final int FLAGS_OFFSET = 4;
-    private static final int PAYLOAD_OFFSET = 9;
-
-    private final AtomicBuffer dataRO = new UnsafeBuffer(new byte[0]);
+    private static final int LAST_STREAM_ID_OFFSET = 9;
+    private static final int ERROR_CODE_OFFSET = 13;
 
     @Override
     public Http2FrameType type()
     {
-        return DATA;
-    }
-
-    private boolean padding()
-    {
-        return Http2Flags.padded(flags());
-    }
-
-    public int dataOffset()
-    {
-        int payloadOffset = offset() + PAYLOAD_OFFSET;
-        return  padding() ? payloadOffset + 1 : payloadOffset;
-    }
-
-    public int dataLength()
-    {
-        if (padding())
-        {
-            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
-            return payloadLength() - paddingLength - 1;
-        }
-        else
-        {
-            return payloadLength();
-        }
-    }
-
-    public DirectBuffer data()
-    {
-        return dataRO;
+        return GO_AWAY;
     }
 
     @Override
-    public Http2DataFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public int streamId()
+    {
+        return 0;
+    }
+
+    public int lastStreamId()
+    {
+        return buffer().getInt(offset() + LAST_STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+    }
+
+    public int errorCode()
+    {
+        return buffer().getInt(offset() + ERROR_CODE_OFFSET, BIG_ENDIAN);
+    }
+
+    @Override
+    public Http2GoawayFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        dataRO.wrap(buffer, dataOffset(), dataLength());
+        int streamId = super.streamId();
+        if (streamId != 0)
+        {
+            throw new IllegalArgumentException(String.format("Invalid stream-id=%d for GOAWAY frame", streamId));
+        }
+
+        Http2FrameType type = super.type();
+        if (type != GO_AWAY)
+        {
+            throw new IllegalArgumentException(String.format("Invalid type=%s for GOAWAY frame", type));
+        }
 
         checkLimit(limit(), maxLimit);
-
         return this;
     }
 
@@ -103,37 +95,37 @@ public class Http2DataFW extends Http2FrameFW
                 type(), payloadLength(), type(), flags(), streamId());
     }
 
-    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2DataFW>
+    public static final class Builder extends Http2FrameFW.Builder<Builder, Http2GoawayFW>
     {
+
         public Builder()
         {
-            super(new Http2DataFW());
+            super(new Http2GoawayFW());
         }
 
         @Override
         public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
+
+            // not including "Additional Debug Data"
+            payloadLength(8);
+
             return this;
         }
 
-        public Builder endStream()
+        public Builder lastStreamId(int lastStreamId)
         {
-            buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
+            buffer().putInt(offset() + LAST_STREAM_ID_OFFSET, lastStreamId, BIG_ENDIAN);
             return this;
         }
 
-        public Builder payload(DirectBuffer buffer)
+        public Builder errorCode(Http2ErrorCode error)
         {
-            return payload(buffer, 0, buffer.capacity());
-        }
-
-        public Builder payload(DirectBuffer payload, int offset, int length)
-        {
-            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
-            payloadLength(length);
+            buffer().putInt(offset() + ERROR_CODE_OFFSET, error.errorCode, BIG_ENDIAN);
             return this;
         }
+
     }
 }
 
