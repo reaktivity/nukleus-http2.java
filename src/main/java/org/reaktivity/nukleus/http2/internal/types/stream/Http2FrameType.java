@@ -28,19 +28,19 @@ public enum Http2FrameType
     WINDOW_UPDATE(8),
     CONTINUATION(9);
 
-    private final int type;
+    private final byte type;
 
     Http2FrameType(int type)
     {
-        this.type = type;
+        this.type = (byte) type;
     }
 
     public byte type()
     {
-        return (byte) type;
+        return type;
     }
 
-    public static Http2FrameType get(int type)
+    public static Http2FrameType get(byte type)
     {
         switch (type)
         {
