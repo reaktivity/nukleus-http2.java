@@ -129,7 +129,7 @@ public final class SourceInputStreamFactory
         return new SourceInputStream()::handleStream;
     }
 
-    final class SourceInputStream
+    public final class SourceInputStream
     {
         private MessageHandler streamState;
         MessageHandler throttleState;
@@ -490,7 +490,7 @@ public final class SourceInputStreamFactory
                 http2Stream = new Http2Stream(this, streamId, targetId);
                 http2Streams.put(streamId, http2Stream);
 
-                final Correlation correlation = new Correlation(correlationId, sourceOutputEstId,
+                final Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this,
                         http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
 
                 correlateNew.accept(targetId, correlation);
@@ -647,6 +647,23 @@ public final class SourceInputStreamFactory
                     goawayRO.buffer(), goawayRO.offset(), goawayRO.sizeof());
 
             replyTarget.doEnd(sourceOutputEstId);
+        }
+
+        public void doPromisedRequest(int http2StreamId, Map<String, String> headersMap)
+        {
+
+            Optional<Route> optional = resolveTarget(sourceRef, headersMap);
+            Route route = optional.get();
+            Target newTarget = route.target();
+            long targetRef = route.targetRef();
+            long targetId = supplyStreamId.getAsLong();
+            newTarget.doHttpBegin(targetId, targetRef, targetId,
+                    hs -> headersMap.forEach((k, v) -> hs.item(i -> i.representation((byte) 0).name(k).value(v))));
+            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this,
+                    http2StreamId, source.routableName(), OUTPUT_ESTABLISHED);
+
+            correlateNew.accept(targetId, correlation);
+            newTarget.addThrottle(targetId, this::handleThrottle);
         }
     }
 
