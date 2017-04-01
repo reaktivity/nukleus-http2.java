@@ -146,6 +146,6 @@ public final class Router extends Nukleus.Composite
         String sourceName)
     {
         return include(new Routable(context, conductor, sourceName,
-                                    correlations::put, correlations::get, correlations::remove));
+                                    correlations::put, correlations::remove, correlations::get));
     }
 }
