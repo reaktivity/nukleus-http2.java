@@ -76,8 +76,11 @@ public final class TargetOutputEstablishedStreamFactory
     private final Function<String, Target> supplyTarget;
     private final LongFunction<Correlation> correlateEstablished;
 
-    public TargetOutputEstablishedStreamFactory(Source source, Function<String, Target> supplyTarget,
-        LongSupplier supplyStreamId, LongFunction<Correlation> correlateEstablished)
+    public TargetOutputEstablishedStreamFactory(
+        Source source,
+        Function<String, Target> supplyTarget,
+        LongSupplier supplyStreamId,
+        LongFunction<Correlation> correlateEstablished)
     {
         this.source = source;
         this.supplyTarget = supplyTarget;
@@ -118,12 +121,20 @@ public final class TargetOutputEstablishedStreamFactory
             this.streamState = this::beforeBegin;
         }
 
-        private void handleStream(int msgTypeId, MutableDirectBuffer buffer, int index, int length)
+        private void handleStream(
+            int msgTypeId,
+            MutableDirectBuffer buffer,
+            int index,
+            int length)
         {
             streamState.onMessage(msgTypeId, buffer, index, length);
         }
 
-        private void beforeBegin(int msgTypeId, DirectBuffer buffer, int index, int length)
+        private void beforeBegin(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             if (msgTypeId == BeginFW.TYPE_ID)
             {
@@ -135,7 +146,11 @@ public final class TargetOutputEstablishedStreamFactory
             }
         }
 
-        private void afterBeginOrData(int msgTypeId, DirectBuffer buffer, int index, int length)
+        private void afterBeginOrData(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
@@ -151,12 +166,20 @@ public final class TargetOutputEstablishedStreamFactory
             }
         }
 
-        private void afterEnd(int msgTypeId, DirectBuffer buffer, int index, int length)
+        private void afterEnd(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             processUnexpected(buffer, index, length);
         }
 
-        private void afterRejectOrReset(int msgTypeId, MutableDirectBuffer buffer, int index, int length)
+        private void afterRejectOrReset(
+            int msgTypeId,
+            MutableDirectBuffer buffer,
+            int index,
+            int length)
         {
             if (msgTypeId == DataFW.TYPE_ID)
             {
@@ -176,7 +199,10 @@ public final class TargetOutputEstablishedStreamFactory
             }
         }
 
-        private void processUnexpected(DirectBuffer buffer, int index, int length)
+        private void processUnexpected(
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             frameRO.wrap(buffer, index, index + length);
 
@@ -187,7 +213,10 @@ public final class TargetOutputEstablishedStreamFactory
             this.streamState = this::afterRejectOrReset;
         }
 
-        private void processBegin(DirectBuffer buffer, int index, int length)
+        private void processBegin(
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             beginRO.wrap(buffer, index, index + length);
 
@@ -234,7 +263,10 @@ public final class TargetOutputEstablishedStreamFactory
             }
         }
 
-        private void processData(DirectBuffer buffer, int index, int length)
+        private void processData(
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             dataRO.wrap(buffer, index, index + length);
 
@@ -278,7 +310,10 @@ public final class TargetOutputEstablishedStreamFactory
             }
         }
 
-        private void processEnd(DirectBuffer buffer, int index, int length)
+        private void processEnd(
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             endRO.wrap(buffer, index, index + length);
 
@@ -286,7 +321,11 @@ public final class TargetOutputEstablishedStreamFactory
             source.removeStream(sourceId);
         }
 
-        private void handleThrottle(int msgTypeId, DirectBuffer buffer, int index, int length)
+        private void handleThrottle(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
@@ -302,14 +341,20 @@ public final class TargetOutputEstablishedStreamFactory
             }
         }
 
-        private void processWindow(DirectBuffer buffer, int index, int length)
+        private void processWindow(
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             windowRO.wrap(buffer, index, index + length);
 
             source.doWindow(sourceId, windowRO.update());
         }
 
-        private void processReset(DirectBuffer buffer, int index, int length)
+        private void processReset(
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             resetRO.wrap(buffer, index, index + length);
 
@@ -318,18 +363,24 @@ public final class TargetOutputEstablishedStreamFactory
     }
 
     // Map http1.1 header to http2 header field in HEADERS request
-    private void mapHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
+    private void mapHeader(
+        HpackContext hpackContext,
+        HttpHeaderFW httpHeader)
     {
         http2HeadersRW.header(mapConsumer(hpackContext, httpHeader));
     }
 
     // Map http1.1 header to http2 header field in PUSH_PROMISE request
-    private void mapPushHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
+    private void mapPushHeader(
+        HpackContext hpackContext,
+        HttpHeaderFW httpHeader)
     {
         pushPromiseRW.header(mapConsumer(hpackContext, httpHeader));
     }
 
-    private Consumer<HpackHeaderFieldFW.Builder> mapConsumer(HpackContext hpackContext, HttpHeaderFW httpHeader)
+    private Consumer<HpackHeaderFieldFW.Builder> mapConsumer(
+        HpackContext hpackContext,
+        HttpHeaderFW httpHeader)
     {
         return builder ->
         {
@@ -354,7 +405,9 @@ public final class TargetOutputEstablishedStreamFactory
 
     // Building Literal representation of header field
     // TODO dynamic table, huffman, never indexed
-    private void buildLiteral(HpackLiteralHeaderFieldFW.Builder builder, HpackContext hpackContext)
+    private void buildLiteral(
+        HpackLiteralHeaderFieldFW.Builder builder,
+        HpackContext hpackContext)
     {
         int nameIndex = hpackContext.index(nameRO);
         builder.type(WITHOUT_INDEXING);
