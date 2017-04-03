@@ -129,7 +129,7 @@ public final class SourceInputStreamFactory
         return new SourceInputStream()::handleStream;
     }
 
-    public final class SourceInputStream
+    private final class SourceInputStream implements Http2Session
     {
         private MessageHandler streamState;
         MessageHandler throttleState;

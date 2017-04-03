@@ -107,7 +107,7 @@ public final class TargetOutputEstablishedStreamFactory
         private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
         private final HpackContext hpackContext = new HpackContext();
         private int promisedStreamId;
-        private SourceInputStreamFactory.SourceInputStream sourceInputStream;
+        private Http2Session session;
 
         @Override
         public String toString()
@@ -236,7 +236,7 @@ public final class TargetOutputEstablishedStreamFactory
                 this.sourceId = newSourceId;
                 this.target = newTarget;
                 this.http2StreamId = correlation.http2StreamId();
-                this.sourceInputStream = correlation.sourceInputStream();
+                this.session = correlation.http2Session();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
 
@@ -294,7 +294,7 @@ public final class TargetOutputEstablishedStreamFactory
                 target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
                 // TODO create and add Http2Stream for promised stream
 
-                sourceInputStream.doPromisedRequest(promisedStreamId, promisedHeaders);
+                session.doPromisedRequest(promisedStreamId, promisedHeaders);
 
             }
             if (payload.sizeof() > 0)
