@@ -28,6 +28,7 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -54,6 +55,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -137,17 +139,16 @@ public final class SourceInputStreamFactory
 
         long sourceId;
         int lastStreamId;
-
-        private Target target;
-        private long targetId;      // TODO multiple targetId since multiplexing
         long sourceRef;
         private long correlationId;
         private int window;
-        private int contentRemaining;
         private int sourceUpdateDeferred;
         final long sourceOutputEstId;
-        final HpackContext hpackContext;
+        private final HpackContext decodeContext;
+        private final HpackContext encodeContext;
+
         private final Int2ObjectHashMap<Http2Stream> http2Streams;
+        private int lastPromisedStreamId = 0;
 
         private final AtomicBuffer slab = new UnsafeBuffer(new byte[4096]);
         private int slabLength = 0;
@@ -155,8 +156,8 @@ public final class SourceInputStreamFactory
         @Override
         public String toString()
         {
-            return String.format("%s[source=%s, sourceId=%016x, window=%d, targetId=%016x]",
-                    getClass().getSimpleName(), source.routableName(), sourceId, window, targetId);
+            return String.format("%s[source=%s, sourceId=%016x, window=%d]",
+                    getClass().getSimpleName(), source.routableName(), sourceId, window);
         }
 
         private SourceInputStream()
@@ -164,7 +165,8 @@ public final class SourceInputStreamFactory
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
             sourceOutputEstId = supplyStreamId.getAsLong();
-            hpackContext = new HpackContext();
+            decodeContext = new HpackContext();
+            encodeContext = new HpackContext();
             http2Streams = new Int2ObjectHashMap<>();
         }
 
@@ -491,7 +493,7 @@ public final class SourceInputStreamFactory
                 http2Streams.put(streamId, http2Stream);
 
                 final Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                        http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
+                        http2RO.streamId(), encodeContext, promisedStreamIds(), source.routableName(), OUTPUT_ESTABLISHED);
 
                 correlateNew.accept(targetId, correlation);
             }
@@ -649,23 +651,44 @@ public final class SourceInputStreamFactory
             replyTarget.doEnd(sourceOutputEstId);
         }
 
-        private void doPromisedRequest(int http2StreamId, Map<String, String> headersMap)
+        private IntSupplier promisedStreamIds()
         {
+            return () ->
+            {
+                lastPromisedStreamId += 2;
+                return lastPromisedStreamId;
+            };
+        };
+
+        private void doPromisedRequest(int http2StreamId, ListFW<HttpHeaderFW> headers)
+        {
+            Map<String, String> headersMap = new HashMap<>();
+            headers.forEach(
+                    httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
             Optional<Route> optional = resolveTarget(sourceRef, headersMap);
             Route route = optional.get();
             Target newTarget = route.target();
             long targetRef = route.targetRef();
             long targetId = supplyStreamId.getAsLong();
             newTarget.doHttpBegin(targetId, targetRef, targetId,
-                    hs -> headersMap.forEach((k, v) -> hs.item(i -> i.representation((byte) 0).name(k).value(v))));
+                    hs -> headers.forEach(h -> hs.item(builder -> mapHeader(h, builder))));
             Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                    http2StreamId, source.routableName(), OUTPUT_ESTABLISHED);
+                    http2StreamId, encodeContext, promisedStreamIds(), source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
             newTarget.addThrottle(targetId, this::handleThrottle);
 
             Http2Stream http2Stream = new Http2Stream(this, http2StreamId, targetId, State.HALF_CLOSED_REMOTE);
             http2Streams.put(http2StreamId, http2Stream);
+        }
+
+        private void mapHeader(HttpHeaderFW h, HttpHeaderFW.Builder builder)
+        {
+            StringFW name = h.name();
+            StringFW value = h.value();
+            builder.representation((byte) 0)
+                   .name(name.buffer(), name.offset()+1, name.sizeof()-1)
+                   .value(value.buffer(), value.offset()+1, value.sizeof()-1);
         }
     }
 
@@ -828,14 +851,14 @@ public final class SourceInputStreamFactory
 
             // TODO avoid iterating over headers twice
             Map<String, String> headersMap = new HashMap<>();
-            headersRO.forEach(h -> decodeHeaderField(connection.hpackContext, headersMap, h));
+            headersRO.forEach(h -> decodeHeaderField(connection.decodeContext, headersMap, h));
             final Optional<Route> optional = connection.resolveTarget(connection.sourceRef, headersMap);
             route = optional.get();
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
 
             newTarget.doHttpBegin(targetId, targetRef, targetId,
-                    hs -> headersRO.forEach(hf -> decodeHeaderField(connection.hpackContext, hs, hf)));
+                    hs -> headersRO.forEach(hf -> decodeHeaderField(connection.decodeContext, hs, hf)));
             newTarget.addThrottle(targetId, connection::handleThrottle);
 
             source.doWindow(connection.sourceId, http2RO.sizeof());

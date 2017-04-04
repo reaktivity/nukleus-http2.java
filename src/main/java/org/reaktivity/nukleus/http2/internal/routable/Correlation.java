@@ -18,24 +18,32 @@ package org.reaktivity.nukleus.http2.internal.routable;
 import static java.util.Objects.requireNonNull;
 
 import java.util.Objects;
+import java.util.function.IntSupplier;
 
-import org.reaktivity.nukleus.http2.internal.routable.stream.PushHandler;
+import org.reaktivity.nukleus.http2.internal.routable.stream.IntObjectBiConsumer;
 import org.reaktivity.nukleus.http2.internal.router.RouteKind;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 
 public class Correlation
 {
     private final String source;
-    private final PushHandler pushHandler;
+    private final IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
     private final long id;
     private final int http2StreamId;
+    private final IntSupplier promisedStreamIds;
     private final RouteKind established;
     private final long sourceOutputEstId;
+    private final HpackContext encodeContext;
 
     public Correlation(
         long id,
         long sourceOutputEstId,
-        PushHandler pushHandler,
+        IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler,
         int http2StreamId,
+        HpackContext encodeContext,
+        IntSupplier promisedStreamIds,
         String source,
         RouteKind established)
     {
@@ -43,6 +51,8 @@ public class Correlation
         this.sourceOutputEstId = sourceOutputEstId;
         this.pushHandler = pushHandler;
         this.http2StreamId = http2StreamId;
+        this.encodeContext = encodeContext;
+        this.promisedStreamIds = promisedStreamIds;
         this.source = requireNonNull(source, "source");
         this.established = requireNonNull(established, "established");
     }
@@ -72,9 +82,19 @@ public class Correlation
         return established;
     }
 
-    public PushHandler pushHandler()
+    public IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler()
     {
         return pushHandler;
+    }
+
+    public HpackContext encodeContext()
+    {
+        return encodeContext;
+    }
+
+    public IntSupplier promisedStreamIds()
+    {
+        return promisedStreamIds;
     }
 
     @Override

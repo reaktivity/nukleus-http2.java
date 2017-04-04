@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
@@ -40,10 +41,9 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
@@ -105,9 +105,9 @@ public final class TargetOutputEstablishedStreamFactory
         private int window;
         // TODO size ??
         private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
-        private final HpackContext hpackContext = new HpackContext();
-        private int promisedStreamId;
-        private PushHandler pushHandler;
+        private HpackContext encodeContext;
+        private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
+        private IntSupplier promisedStreamIds;
 
         @Override
         public String toString()
@@ -232,11 +232,13 @@ public final class TargetOutputEstablishedStreamFactory
                 Target newTarget = supplyTarget.apply(correlation.source());
                 sourceOutputEstId = correlation.getSourceOutputEstId();
                 long sourceCorrelationId = correlation.id();
+                promisedStreamIds = correlation.promisedStreamIds();
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
                 this.http2StreamId = correlation.http2StreamId();
                 this.pushHandler = correlation.pushHandler();
+                this.encodeContext = correlation.encodeContext();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
                 HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
@@ -244,7 +246,7 @@ public final class TargetOutputEstablishedStreamFactory
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
                         .endHeaders()
-                        .set(beginEx.headers(), mapHeader(hpackContext))
+                        .set(beginEx.headers(), mapHeader())
                         .build();
 
                 target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
@@ -272,25 +274,20 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (extension.sizeof() > 0)
             {
+                int promisedStreamId = promisedStreamIds.getAsInt();
                 Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                promisedStreamId += 2;
                 Http2PushPromiseFW pushPromise = pushPromiseRW
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
                         .promisedStreamId(promisedStreamId)
                         .endHeaders()
-                        .set(dataEx.headers(), mapHeader(hpackContext))
+                        .set(dataEx.headers(), mapHeader())
                         .build();
 
                 // TODO remove the following and throttle based on HTTP2_WINDOW update
                 target.addThrottle(sourceOutputEstId, this::handleThrottle);
                 target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
-
-                Map<String, String> promisedHeaders = new HashMap<>();
-                dataEx.headers().forEach(
-                        httpHeader -> promisedHeaders.put(httpHeader.name().asString(), httpHeader.value().asString()));
-                pushHandler.doPromisedRequest(promisedStreamId, promisedHeaders);
-
+                pushHandler.accept(promisedStreamId, dataEx.headers());
             }
             if (payload.sizeof() > 0)
             {
@@ -355,49 +352,51 @@ public final class TargetOutputEstablishedStreamFactory
 
             source.doReset(sourceId);
         }
-    }
 
-    // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
-    private BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader(HpackContext hpackContext)
-    {
-        return (httpHeader, builder) ->
+        // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
+        private BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader()
         {
-            StringFW name = httpHeader.name();
-            StringFW value = httpHeader.value();
-            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
-            valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
-
-            int index = hpackContext.index(nameRO, valueRO);
-            if (index != -1)
+            return (httpHeader, builder) ->
             {
-                // Indexed
-                builder.indexed(index);
+                StringFW name = httpHeader.name();
+                StringFW value = httpHeader.value();
+                nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+                valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+
+                int index = encodeContext.index(nameRO, valueRO);
+                if (index != -1)
+                {
+                    // Indexed
+                    builder.indexed(index);
+                }
+                else
+                {
+                    // Literal
+                    builder.literal(literalBuilder -> buildLiteral(literalBuilder, encodeContext));
+                }
+                return builder.build();
+            };
+        }
+
+        // Building Literal representation of header field
+        // TODO dynamic table, huffman, never indexed
+        private void buildLiteral(
+                HpackLiteralHeaderFieldFW.Builder builder,
+                HpackContext hpackContext)
+        {
+            int nameIndex = hpackContext.index(nameRO);
+            builder.type(WITHOUT_INDEXING);
+            if (nameIndex != -1)
+            {
+                builder.name(nameIndex);
             }
             else
             {
-                // Literal
-                builder.literal(literalBuilder -> buildLiteral(literalBuilder, hpackContext));
+                builder.name(nameRO, 0, nameRO.capacity());
             }
-            return builder.build();
-        };
+            builder.value(valueRO, 0, valueRO.capacity());
+        }
     }
 
-    // Building Literal representation of header field
-    // TODO dynamic table, huffman, never indexed
-    private void buildLiteral(
-        HpackLiteralHeaderFieldFW.Builder builder,
-        HpackContext hpackContext)
-    {
-        int nameIndex = hpackContext.index(nameRO);
-        builder.type(WITHOUT_INDEXING);
-        if (nameIndex != -1)
-        {
-            builder.name(nameIndex);
-        }
-        else
-        {
-            builder.name(nameRO, 0, nameRO.capacity());
-        }
-        builder.value(valueRO, 0, valueRO.capacity());
-    }
+
 }

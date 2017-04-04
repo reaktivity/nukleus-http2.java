@@ -15,9 +15,29 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import java.util.Map;
+import java.util.Objects;
+import java.util.function.BiConsumer;
 
-public interface PushHandler
+@FunctionalInterface
+public interface IntObjectBiConsumer<T> extends BiConsumer<Integer, T>
 {
-    void doPromisedRequest(int http2StreamId, Map<String, String> headersMap);
+    void accept(int value, T t);
+
+    @Override
+    default void accept(Integer value, T t)
+    {
+        this.accept(value.intValue(), t);
+    }
+
+    default IntObjectBiConsumer<T> andThen(
+            IntObjectBiConsumer<? super T> after)
+    {
+        Objects.requireNonNull(after);
+
+        return (l, r) ->
+        {
+            accept(l, r);
+            after.accept(l, r);
+        };
+    }
 }
