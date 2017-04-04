@@ -44,6 +44,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
@@ -106,8 +107,8 @@ public final class TargetOutputEstablishedStreamFactory
         // TODO size ??
         private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
         private final HpackContext hpackContext = new HpackContext();
-        private int promisedStreamId;
         private PushHandler pushHandler;
+        private IntSupplier promisedStreamIds;
 
         @Override
         public String toString()
@@ -232,6 +233,7 @@ public final class TargetOutputEstablishedStreamFactory
                 Target newTarget = supplyTarget.apply(correlation.source());
                 sourceOutputEstId = correlation.getSourceOutputEstId();
                 long sourceCorrelationId = correlation.id();
+                promisedStreamIds = correlation.promisedStreamIds();
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
@@ -272,8 +274,8 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (extension.sizeof() > 0)
             {
+                int promisedStreamId = promisedStreamIds.getAsInt();
                 Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                promisedStreamId += 2;
                 Http2PushPromiseFW pushPromise = pushPromiseRW
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)

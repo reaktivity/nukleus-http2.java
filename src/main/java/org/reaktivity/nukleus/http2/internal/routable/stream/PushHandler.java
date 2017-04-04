@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import java.util.Map;
 
+@FunctionalInterface
 public interface PushHandler
 {
     void doPromisedRequest(int http2StreamId, Map<String, String> headersMap);

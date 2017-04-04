@@ -54,6 +54,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -148,6 +149,11 @@ public final class SourceInputStreamFactory
         final long sourceOutputEstId;
         final HpackContext hpackContext;
         private final Int2ObjectHashMap<Http2Stream> http2Streams;
+        private int lastPromisedStreamId = 0;
+        private final IntSupplier promisedStreamIds = () -> {
+            lastPromisedStreamId += 2;
+            return lastPromisedStreamId;
+        };
 
         private final AtomicBuffer slab = new UnsafeBuffer(new byte[4096]);
         private int slabLength = 0;
@@ -491,7 +497,7 @@ public final class SourceInputStreamFactory
                 http2Streams.put(streamId, http2Stream);
 
                 final Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                        http2RO.streamId(), source.routableName(), OUTPUT_ESTABLISHED);
+                        http2RO.streamId(), promisedStreamIds, source.routableName(), OUTPUT_ESTABLISHED);
 
                 correlateNew.accept(targetId, correlation);
             }
@@ -659,7 +665,7 @@ public final class SourceInputStreamFactory
             newTarget.doHttpBegin(targetId, targetRef, targetId,
                     hs -> headersMap.forEach((k, v) -> hs.item(i -> i.representation((byte) 0).name(k).value(v))));
             Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                    http2StreamId, source.routableName(), OUTPUT_ESTABLISHED);
+                    http2StreamId, promisedStreamIds, source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
             newTarget.addThrottle(targetId, this::handleThrottle);
