@@ -18,8 +18,10 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /*
@@ -73,6 +75,14 @@ public class HpackHeaderBlockFW extends Flyweight
         {
             headersRW.item(mutator);
             super.limit(headersRW.limit());
+            return this;
+        }
+
+        public Builder set(
+                ListFW<HttpHeaderFW> headers,
+                BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
+        {
+            headers.forEach(h -> header(builder -> mapper.apply(h, builder)));
             return this;
         }
 

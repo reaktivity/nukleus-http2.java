@@ -42,7 +42,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.function.Consumer;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
@@ -239,18 +239,13 @@ public final class TargetOutputEstablishedStreamFactory
                 this.session = correlation.http2Session();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-
-                http2HeadersRW
+                HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
+                Http2HeadersFW http2HeadersRO = http2HeadersRW
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
-                        .endHeaders();
-                if (extension.sizeof() > 0)
-                {
-                    HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    beginEx.headers().forEach(httpHeader -> mapHeader(hpackContext, httpHeader));
-                }
-
-                Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
+                        .endHeaders()
+                        .set(beginEx.headers(), mapHeader(hpackContext))
+                        .build();
 
                 target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
                         http2HeadersRO.limit());
@@ -279,21 +274,22 @@ public final class TargetOutputEstablishedStreamFactory
             {
                 Http2DataExFW dataEx = extension.get(dataExRO::wrap);
                 promisedStreamId += 2;
-                pushPromiseRW
+                Http2PushPromiseFW pushPromise = pushPromiseRW
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
                         .promisedStreamId(promisedStreamId)
-                        .endHeaders();
-                dataEx.headers().forEach(httpHeader -> mapPushHeader(hpackContext, httpHeader));
-                Map<String, String> promisedHeaders = new HashMap<>();
-                dataEx.headers().forEach(
-                        httpHeader -> promisedHeaders.put(httpHeader.name().asString(), httpHeader.value().asString()));
-                Http2PushPromiseFW pushPromise = pushPromiseRW.build();
+                        .endHeaders()
+                        .set(dataEx.headers(), mapHeader(hpackContext))
+                        .build();
+
                 // TODO remove the following and throttle based on HTTP2_WINDOW update
                 target.addThrottle(sourceOutputEstId, this::handleThrottle);
                 target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
                 // TODO create and add Http2Stream for promised stream
 
+                Map<String, String> promisedHeaders = new HashMap<>();
+                dataEx.headers().forEach(
+                        httpHeader -> promisedHeaders.put(httpHeader.name().asString(), httpHeader.value().asString()));
                 session.doPromisedRequest(promisedStreamId, promisedHeaders);
 
             }
@@ -362,27 +358,10 @@ public final class TargetOutputEstablishedStreamFactory
         }
     }
 
-    // Map http1.1 header to http2 header field in HEADERS request
-    private void mapHeader(
-        HpackContext hpackContext,
-        HttpHeaderFW httpHeader)
+    // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
+    private BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader(HpackContext hpackContext)
     {
-        http2HeadersRW.header(mapConsumer(hpackContext, httpHeader));
-    }
-
-    // Map http1.1 header to http2 header field in PUSH_PROMISE request
-    private void mapPushHeader(
-        HpackContext hpackContext,
-        HttpHeaderFW httpHeader)
-    {
-        pushPromiseRW.header(mapConsumer(hpackContext, httpHeader));
-    }
-
-    private Consumer<HpackHeaderFieldFW.Builder> mapConsumer(
-        HpackContext hpackContext,
-        HttpHeaderFW httpHeader)
-    {
-        return builder ->
+        return (httpHeader, builder) ->
         {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
@@ -400,6 +379,7 @@ public final class TargetOutputEstablishedStreamFactory
                 // Literal
                 builder.literal(literalBuilder -> buildLiteral(literalBuilder, hpackContext));
             }
+            return builder.build();
         };
     }
 

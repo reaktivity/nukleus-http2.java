@@ -17,7 +17,10 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
@@ -156,6 +159,16 @@ public class Http2PushPromiseFW extends Http2FrameFW
         public Builder header(Consumer<HpackHeaderFieldFW.Builder> mutator)
         {
             blockRW.header(mutator);
+            int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
+            payloadLength(length);
+            return this;
+        }
+
+        public Builder set(
+                ListFW<HttpHeaderFW> listRO,
+                BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
+        {
+            blockRW.set(listRO, mapper);
             int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
             payloadLength(length);
             return this;
