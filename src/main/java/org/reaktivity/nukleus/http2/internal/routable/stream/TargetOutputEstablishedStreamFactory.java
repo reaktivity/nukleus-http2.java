@@ -107,7 +107,7 @@ public final class TargetOutputEstablishedStreamFactory
         private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
         private final HpackContext hpackContext = new HpackContext();
         private int promisedStreamId;
-        private Http2Session session;
+        private PushHandler pushHandler;
 
         @Override
         public String toString()
@@ -236,7 +236,7 @@ public final class TargetOutputEstablishedStreamFactory
                 this.sourceId = newSourceId;
                 this.target = newTarget;
                 this.http2StreamId = correlation.http2StreamId();
-                this.session = correlation.http2Session();
+                this.pushHandler = correlation.pushHandler();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
                 HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
@@ -285,12 +285,11 @@ public final class TargetOutputEstablishedStreamFactory
                 // TODO remove the following and throttle based on HTTP2_WINDOW update
                 target.addThrottle(sourceOutputEstId, this::handleThrottle);
                 target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
-                // TODO create and add Http2Stream for promised stream
 
                 Map<String, String> promisedHeaders = new HashMap<>();
                 dataEx.headers().forEach(
                         httpHeader -> promisedHeaders.put(httpHeader.name().asString(), httpHeader.value().asString()));
-                session.doPromisedRequest(promisedStreamId, promisedHeaders);
+                pushHandler.doPromisedRequest(promisedStreamId, promisedHeaders);
 
             }
             if (payload.sizeof() > 0)

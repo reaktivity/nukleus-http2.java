@@ -19,13 +19,13 @@ import static java.util.Objects.requireNonNull;
 
 import java.util.Objects;
 
-import org.reaktivity.nukleus.http2.internal.routable.stream.Http2Session;
+import org.reaktivity.nukleus.http2.internal.routable.stream.PushHandler;
 import org.reaktivity.nukleus.http2.internal.router.RouteKind;
 
 public class Correlation
 {
     private final String source;
-    private final Http2Session http2Session;
+    private final PushHandler pushHandler;
     private final long id;
     private final int http2StreamId;
     private final RouteKind established;
@@ -34,14 +34,14 @@ public class Correlation
     public Correlation(
         long id,
         long sourceOutputEstId,
-        Http2Session sourceInputStream,
+        PushHandler pushHandler,
         int http2StreamId,
         String source,
         RouteKind established)
     {
         this.id = id;
         this.sourceOutputEstId = sourceOutputEstId;
-        this.http2Session = sourceInputStream;
+        this.pushHandler = pushHandler;
         this.http2StreamId = http2StreamId;
         this.source = requireNonNull(source, "source");
         this.established = requireNonNull(established, "established");
@@ -72,9 +72,9 @@ public class Correlation
         return established;
     }
 
-    public Http2Session http2Session()
+    public PushHandler pushHandler()
     {
-        return http2Session;
+        return pushHandler;
     }
 
     @Override
