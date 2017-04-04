@@ -695,7 +695,7 @@ public final class SourceInputStreamFactory
             this.connection = connection;
             this.http2StreamId = http2StreamId;
             this.targetId = targetId;
-            this.state = State.IDLE;
+            this.state = state;
         }
 
         void onFrame()
