@@ -55,7 +55,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -493,7 +492,7 @@ public final class SourceInputStreamFactory
                 http2Streams.put(streamId, http2Stream);
 
                 final Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                        http2RO.streamId(), encodeContext, promisedStreamIds(), source.routableName(), OUTPUT_ESTABLISHED);
+                        http2RO.streamId(), encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
 
                 correlateNew.accept(targetId, correlation);
             }
@@ -651,13 +650,10 @@ public final class SourceInputStreamFactory
             replyTarget.doEnd(sourceOutputEstId);
         }
 
-        private IntSupplier promisedStreamIds()
+        private int nextPromisedId()
         {
-            return () ->
-            {
-                lastPromisedStreamId += 2;
-                return lastPromisedStreamId;
-            };
+            lastPromisedStreamId += 2;
+            return lastPromisedStreamId;
         };
 
         private void doPromisedRequest(int http2StreamId, ListFW<HttpHeaderFW> headers)
@@ -673,7 +669,7 @@ public final class SourceInputStreamFactory
             newTarget.doHttpBegin(targetId, targetRef, targetId,
                     hs -> headers.forEach(h -> hs.item(builder -> mapHeader(h, builder))));
             Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                    http2StreamId, encodeContext, promisedStreamIds(), source.routableName(), OUTPUT_ESTABLISHED);
+                    http2StreamId, encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
             newTarget.addThrottle(targetId, this::handleThrottle);
