@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
@@ -30,16 +31,19 @@ import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
-import java.util.Collections;
-import java.util.Map;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
@@ -47,7 +51,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 public final class TargetOutputEstablishedStreamFactory
 {
-    private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
 
     private final FrameFW frameRO = new FrameFW();
 
@@ -59,9 +62,11 @@ public final class TargetOutputEstablishedStreamFactory
     private final ResetFW resetRO = new ResetFW();
 
     private final HttpBeginExFW beginExRO = new HttpBeginExFW();
+    private final Http2DataExFW dataExRO = new Http2DataExFW();
 
     private final Http2DataFW.Builder dataRW = new Http2DataFW.Builder();
     private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
+    private final Http2PushPromiseFW.Builder pushPromiseRW = new Http2PushPromiseFW.Builder();
 
     private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
@@ -90,7 +95,6 @@ public final class TargetOutputEstablishedStreamFactory
     private final class TargetOutputEstablishedStream
     {
         private MessageHandler streamState;
-        private MessageHandler throttleState;
 
         private long sourceId;
 
@@ -101,7 +105,9 @@ public final class TargetOutputEstablishedStreamFactory
         private int window;
         // TODO size ??
         private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
-        private final HpackContext hpackContext = new HpackContext();
+        private HpackContext encodeContext;
+        private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
+        private IntSupplier promisedStreamIds;
 
         @Override
         public String toString()
@@ -113,7 +119,6 @@ public final class TargetOutputEstablishedStreamFactory
         private TargetOutputEstablishedStream()
         {
             this.streamState = this::beforeBegin;
-            this.throttleState = this::throttleSkipNextWindow;
         }
 
         private void handleStream(
@@ -179,14 +184,14 @@ public final class TargetOutputEstablishedStreamFactory
             if (msgTypeId == DataFW.TYPE_ID)
             {
                 dataRO.wrap(buffer, index, index + length);
-                final long streamId = dataRO.streamId();
+                long streamId = dataRO.streamId();
 
                 source.doWindow(streamId, length);
             }
             else if (msgTypeId == EndFW.TYPE_ID)
             {
                 endRO.wrap(buffer, index, index + length);
-                final long streamId = endRO.streamId();
+                long streamId = endRO.streamId();
 
                 source.removeStream(streamId);
 
@@ -201,7 +206,7 @@ public final class TargetOutputEstablishedStreamFactory
         {
             frameRO.wrap(buffer, index, index + length);
 
-            final long streamId = frameRO.streamId();
+            long streamId = frameRO.streamId();
 
             source.doReset(streamId);
 
@@ -224,33 +229,30 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (sourceRef == 0L && correlation != null)
             {
-                final Target newTarget = supplyTarget.apply(correlation.source());
+                Target newTarget = supplyTarget.apply(correlation.source());
                 sourceOutputEstId = correlation.getSourceOutputEstId();
-                final long sourceCorrelationId = correlation.id();
+                long sourceCorrelationId = correlation.id();
+                promisedStreamIds = correlation.promisedStreamIds();
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
                 this.http2StreamId = correlation.http2StreamId();
+                this.pushHandler = correlation.pushHandler();
+                this.encodeContext = correlation.encodeContext();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-
-                http2HeadersRW
+                HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
+                Http2HeadersFW http2HeadersRO = http2HeadersRW
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
-                        .endHeaders();
-                if (extension.sizeof() > 0)
-                {
-                    final HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    beginEx.headers().forEach(httpHeader -> mapHeader(hpackContext, httpHeader));
-                }
-
-                Http2HeadersFW http2HeadersRO = http2HeadersRW.build();
+                        .endHeaders()
+                        .set(beginEx.headers(), this::mapHeader)
+                        .build();
 
                 target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
                         http2HeadersRO.limit());
 
                 this.streamState = this::afterBeginOrData;
-                this.throttleState = this::throttleNextThenSkipWindow;
             }
             else
             {
@@ -263,26 +265,40 @@ public final class TargetOutputEstablishedStreamFactory
             int index,
             int length)
         {
-
             dataRO.wrap(buffer, index, index + length);
 
             window -= dataRO.length();
 
-            if (window < 0)
+            OctetsFW extension = dataRO.extension();
+            OctetsFW payload = dataRO.payload();
+
+            if (extension.sizeof() > 0)
             {
-                processUnexpected(buffer, index, length);
+                int promisedStreamId = promisedStreamIds.getAsInt();
+                Http2DataExFW dataEx = extension.get(dataExRO::wrap);
+                Http2PushPromiseFW pushPromise = pushPromiseRW
+                        .wrap(writeBuffer, 0, writeBuffer.capacity())
+                        .streamId(http2StreamId)
+                        .promisedStreamId(promisedStreamId)
+                        .endHeaders()
+                        .set(dataEx.headers(), this::mapHeader)
+                        .build();
+
+                // TODO remove the following and throttle based on HTTP2_WINDOW update
+                target.addThrottle(sourceOutputEstId, this::handleThrottle);
+                target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
+                pushHandler.accept(promisedStreamId, dataEx.headers());
             }
-            else
+            if (payload.sizeof() > 0)
             {
-                final OctetsFW payload = dataRO.payload();
                 Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                               .streamId(http2StreamId)
-                                              .endStream()
+                                              .endStream()      // TODO there may be multiple DATA frames
                                               .payload(payload.buffer(), payload.offset(), payload.sizeof())
                                               .build();
+                // TODO remove the following and throttle based on HTTP2_WINDOW update
+                target.addThrottle(sourceOutputEstId, this::handleThrottle);
                 target.doData(sourceOutputEstId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
-                // TODO revisit throttle
-                source.doWindow(sourceId, length);
             }
         }
 
@@ -299,109 +315,32 @@ public final class TargetOutputEstablishedStreamFactory
 
         private void handleThrottle(
             int msgTypeId,
-            MutableDirectBuffer buffer,
-            int index,
-            int length)
-        {
-            throttleState.onMessage(msgTypeId, buffer, index, length);
-        }
-
-        private void throttleNextThenSkipWindow(
-            int msgTypeId,
             DirectBuffer buffer,
             int index,
             int length)
         {
             switch (msgTypeId)
             {
-            case WindowFW.TYPE_ID:
-                processNextThenSkipWindow(buffer, index, length);
-                break;
-            case ResetFW.TYPE_ID:
-                processReset(buffer, index, length);
-                break;
-            default:
-                // ignore
-                break;
+                case WindowFW.TYPE_ID:
+                    processWindow(buffer, index, length);
+                    break;
+                case ResetFW.TYPE_ID:
+                    processReset(buffer, index, length);
+                    break;
+                default:
+                    // ignore
+                    break;
             }
         }
 
-        private void throttleSkipNextWindow(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            switch (msgTypeId)
-            {
-            case WindowFW.TYPE_ID:
-                processSkipNextWindow(buffer, index, length);
-                break;
-            case ResetFW.TYPE_ID:
-                processReset(buffer, index, length);
-                break;
-            default:
-                // ignore
-                break;
-            }
-        }
-
-        private void throttleNextWindow(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            switch (msgTypeId)
-            {
-            case WindowFW.TYPE_ID:
-                processNextWindow(buffer, index, length);
-                break;
-            case ResetFW.TYPE_ID:
-                processReset(buffer, index, length);
-                break;
-            default:
-                // ignore
-                break;
-            }
-        }
-
-        private void processSkipNextWindow(
+        private void processWindow(
             DirectBuffer buffer,
             int index,
             int length)
         {
             windowRO.wrap(buffer, index, index + length);
 
-            throttleState = this::throttleNextWindow;
-        }
-
-        private void processNextWindow(
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            windowRO.wrap(buffer, index, index + length);
-
-            final int update = windowRO.update();
-
-            window += update;
-            source.doWindow(sourceId, update);
-        }
-
-        private void processNextThenSkipWindow(
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            windowRO.wrap(buffer, index, index + length);
-
-            final int update = windowRO.update();
-
-            window += update;
-            source.doWindow(sourceId, update);
-
-            throttleState = this::throttleSkipNextWindow;
+            source.doWindow(sourceId, windowRO.update());
         }
 
         private void processReset(
@@ -413,46 +352,48 @@ public final class TargetOutputEstablishedStreamFactory
 
             source.doReset(sourceId);
         }
-    }
 
-    // Map http1.1 header to http2 header field
-    private void mapHeader(HpackContext hpackContext, HttpHeaderFW httpHeader)
-    {
-        http2HeadersRW.header(hfBuilder ->
+        // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
+        private HpackHeaderFieldFW mapHeader(HttpHeaderFW httpHeader, HpackHeaderFieldFW.Builder builder)
         {
             StringFW name = httpHeader.name();
             StringFW value = httpHeader.value();
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
             valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
 
-            int index = hpackContext.index(nameRO, valueRO);
+            int index = encodeContext.index(nameRO, valueRO);
             if (index != -1)
             {
                 // Indexed
-                hfBuilder.indexed(index);
+                builder.indexed(index);
             }
             else
             {
                 // Literal
-                hfBuilder.literal(literalBuilder -> buildLiteral(literalBuilder, hpackContext));
+                builder.literal(literalBuilder -> buildLiteral(literalBuilder, encodeContext));
             }
-        });
+            return builder.build();
+        }
+
+        // Building Literal representation of header field
+        // TODO dynamic table, huffman, never indexed
+        private void buildLiteral(
+                HpackLiteralHeaderFieldFW.Builder builder,
+                HpackContext hpackContext)
+        {
+            int nameIndex = hpackContext.index(nameRO);
+            builder.type(WITHOUT_INDEXING);
+            if (nameIndex != -1)
+            {
+                builder.name(nameIndex);
+            }
+            else
+            {
+                builder.name(nameRO, 0, nameRO.capacity());
+            }
+            builder.value(valueRO, 0, valueRO.capacity());
+        }
     }
 
-    // Building Literal representation of header field
-    // TODO dynamic table, huffman, never indexed
-    private void buildLiteral(HpackLiteralHeaderFieldFW.Builder builder, HpackContext hpackContext)
-    {
-        int nameIndex = hpackContext.index(nameRO);
-        builder.type(WITHOUT_INDEXING);
-        if (nameIndex != -1)
-        {
-            builder.name(nameIndex);
-        }
-        else
-        {
-            builder.name(nameRO, 0, nameRO.capacity());
-        }
-        builder.value(valueRO, 0, valueRO.capacity());
-    }
+
 }
