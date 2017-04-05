@@ -20,7 +20,7 @@ import static java.util.Objects.requireNonNull;
 import java.util.Objects;
 import java.util.function.IntSupplier;
 
-import org.reaktivity.nukleus.http2.internal.routable.stream.IntObjectBiConsumer;
+import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 import org.reaktivity.nukleus.http2.internal.router.RouteKind;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;

@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal.routable.stream;
+package org.reaktivity.nukleus.http2.internal.util.function;
 
 import java.util.Objects;
 import java.util.function.BiConsumer;

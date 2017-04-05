@@ -40,8 +40,8 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntSupplier;
 import java.util.function.LongFunction;
@@ -246,7 +246,7 @@ public final class TargetOutputEstablishedStreamFactory
                         .wrap(writeBuffer, 0, writeBuffer.capacity())
                         .streamId(http2StreamId)
                         .endHeaders()
-                        .set(beginEx.headers(), mapHeader())
+                        .set(beginEx.headers(), this::mapHeader)
                         .build();
 
                 target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
@@ -281,7 +281,7 @@ public final class TargetOutputEstablishedStreamFactory
                         .streamId(http2StreamId)
                         .promisedStreamId(promisedStreamId)
                         .endHeaders()
-                        .set(dataEx.headers(), mapHeader())
+                        .set(dataEx.headers(), this::mapHeader)
                         .build();
 
                 // TODO remove the following and throttle based on HTTP2_WINDOW update
@@ -354,28 +354,25 @@ public final class TargetOutputEstablishedStreamFactory
         }
 
         // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
-        private BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader()
+        private HpackHeaderFieldFW mapHeader(HttpHeaderFW httpHeader, HpackHeaderFieldFW.Builder builder)
         {
-            return (httpHeader, builder) ->
-            {
-                StringFW name = httpHeader.name();
-                StringFW value = httpHeader.value();
-                nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
-                valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+            StringFW name = httpHeader.name();
+            StringFW value = httpHeader.value();
+            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+            valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
 
-                int index = encodeContext.index(nameRO, valueRO);
-                if (index != -1)
-                {
-                    // Indexed
-                    builder.indexed(index);
-                }
-                else
-                {
-                    // Literal
-                    builder.literal(literalBuilder -> buildLiteral(literalBuilder, encodeContext));
-                }
-                return builder.build();
-            };
+            int index = encodeContext.index(nameRO, valueRO);
+            if (index != -1)
+            {
+                // Indexed
+                builder.indexed(index);
+            }
+            else
+            {
+                // Literal
+                builder.literal(literalBuilder -> buildLiteral(literalBuilder, encodeContext));
+            }
+            return builder.build();
         }
 
         // Building Literal representation of header field
