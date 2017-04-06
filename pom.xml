@@ -45,9 +45,9 @@
     <k3po.version>3.0.0-alpha-63</k3po.version>
     <jmh.version>1.12</jmh.version>
 
-    <nukleus.plugin.version>0.7.5</nukleus.plugin.version>
+    <nukleus.plugin.version>develop-SNAPSHOT</nukleus.plugin.version>
     <nukleus.version>0.2</nukleus.version>
-    <nukleus.http2.spec.version>0.3</nukleus.http2.spec.version>
+    <nukleus.http2.spec.version>develop-SNAPSHOT</nukleus.http2.spec.version>
     <reaktor.test.version>0.1</reaktor.test.version>
     <reaktor.version>0.2.1</reaktor.version>
   </properties>
@@ -108,6 +108,12 @@
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-generator-annprocess</artifactId>
       <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.reaktivity</groupId>
+      <artifactId>nukleus-tcp</artifactId>
+      <version>develop-SNAPSHOT</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

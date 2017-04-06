@@ -293,7 +293,6 @@ public final class TargetOutputEstablishedStreamFactory
             {
                 Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                               .streamId(http2StreamId)
-                                              .endStream()      // TODO there may be multiple DATA frames
                                               .payload(payload.buffer(), payload.offset(), payload.sizeof())
                                               .build();
                 // TODO remove the following and throttle based on HTTP2_WINDOW update
@@ -308,6 +307,14 @@ public final class TargetOutputEstablishedStreamFactory
             int length)
         {
             endRO.wrap(buffer, index, index + length);
+
+            Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                          .streamId(http2StreamId)
+                                          .endStream()
+                                          .build();
+            // TODO remove the following and throttle based on HTTP2_WINDOW update
+            //target.addThrottle(sourceOutputEstId, this::handleThrottle);
+            target.doData(sourceOutputEstId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
 
             target.removeThrottle(sourceOutputEstId);
             source.removeStream(sourceId);

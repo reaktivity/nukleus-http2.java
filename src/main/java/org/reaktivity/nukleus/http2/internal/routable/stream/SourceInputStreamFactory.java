@@ -28,7 +28,6 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
-import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -151,6 +150,10 @@ public final class SourceInputStreamFactory
 
         private final AtomicBuffer slab = new UnsafeBuffer(new byte[4096]);
         private int slabLength = 0;
+
+        private int noClientStreams;
+        private int noPromisedStreams;
+        private int maxClientStreamId;
 
         @Override
         public String toString()
@@ -465,42 +468,160 @@ public final class SourceInputStreamFactory
                 return limit;
             }
 
-            int nextOffset = offset + http2RO.sizeof();
-
             Http2FrameType http2FrameType = http2RO.type();
 
-            if (http2FrameType == null)
+            switch (http2FrameType)
             {
-                return nextOffset;               // Ignore and discard unknown frame
+                case DATA:
+                    doData();
+                    break;
+                case HEADERS:
+                    doHeaders();
+                    break;
+                case PRIORITY:
+                    doPriority();
+                    break;
+                case RST_STREAM:
+                    doRst();
+                    break;
+                case SETTINGS:
+                    doSettings();
+                    break;
+                case PUSH_PROMISE:
+                    break;
+                case PING:
+                    doPing();
+                    break;
+                case GO_AWAY:
+                    doGoAway();
+                    break;
+                case WINDOW_UPDATE:
+                    doWindow();
+                    break;
+                case CONTINUATION:
+                    break;
+                default:
+                    // Ignore and discard unknown frame
             }
-            if (http2FrameType == Http2FrameType.SETTINGS)
-            {
-                doSettings(http2RO);
-                return nextOffset;
-            }
-            else if (http2FrameType == Http2FrameType.PING)
-            {
-                doPing();
-                return nextOffset;
-            }
-            int streamId = lastStreamId = http2RO.streamId();
-            Http2Stream http2Stream = http2Streams.get(streamId);
-            if (http2Stream == null)
-            {
-                long targetId = supplyStreamId.getAsLong();
-                http2Stream = new Http2Stream(this, streamId, targetId, State.IDLE);
-                http2Streams.put(streamId, http2Stream);
 
-                final Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                        http2RO.streamId(), encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
-
-                correlateNew.accept(targetId, correlation);
-            }
-            http2Stream.onFrame();
-            return nextOffset;
+            return offset + http2RO.sizeof();
         }
 
-        private void doSettings(Http2FrameFW http2RO)
+        private void doGoAway()
+        {
+        }
+
+        private void doPriority()
+        {
+        }
+
+        private void doHeaders()
+        {
+            int streamId = http2RO.streamId();
+            if (streamId%2 != 1 || streamId <= maxClientStreamId)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+
+            Http2Stream stream = http2Streams.get(streamId);
+            if (stream != null)
+            {
+                // TODO trailers
+            }
+            if (streamId <= maxClientStreamId)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            maxClientStreamId = streamId;
+
+            State  state = http2RO.endStream() ? State.HALF_CLOSED_REMOTE : State.OPEN;
+            stream = newStream(streamId, state);
+
+            headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            // TODO avoid iterating over headers twice
+            Map<String, String> headersMap = new HashMap<>();
+            headersRO.forEach(h -> decodeHeaderField(decodeContext, headersMap, h));
+            final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
+            Route route = stream.route = optional.get();
+            Target newTarget = route.target();
+            final long targetRef = route.targetRef();
+
+            newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId,
+                    hs -> headersRO.forEach(hf -> decodeHeaderField(decodeContext, hs, hf)));
+            newTarget.addThrottle(stream.targetId, this::handleThrottle);
+
+            source.doWindow(sourceId, http2RO.sizeof());
+            throttleState = this::throttleSkipNextWindow;
+
+            if (headersRO.endStream())
+            {
+                newTarget.doHttpEnd(stream.targetId);
+            }
+        }
+
+        private void doRst()
+        {
+            int streamId = http2RO.streamId();
+            Http2Stream stream = http2Streams.get(streamId);
+            if (stream != null)
+            {
+                if (stream.state == State.IDLE)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                }
+                else
+                {
+                    closeStream(stream);
+                }
+            }
+        }
+
+        private void closeStream(Http2Stream stream)
+        {
+            if (stream.isClient())
+            {
+                noClientStreams--;
+            }
+            else
+            {
+                noPromisedStreams--;
+            }
+            http2Streams.remove(stream.http2StreamId);
+        }
+
+        private void doWindow()
+        {
+        }
+
+        private void doContinuation()
+        {
+
+        }
+
+        private void doData()
+        {
+            int streamId = http2RO.streamId();
+            Http2Stream stream = http2Streams.get(streamId);
+
+            if (streamId == 0 || stream == null || stream.state == State.IDLE)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            Target newTarget = stream.route.target();
+            Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
+
+            if (dataRO.endStream())
+            {
+                newTarget.doHttpEnd(stream.targetId);
+            }
+        }
+
+        private void doSettings()
         {
             settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
             if (!settingsRO.ack())
@@ -665,246 +786,35 @@ public final class SourceInputStreamFactory
             Route route = optional.get();
             Target newTarget = route.target();
             long targetRef = route.targetRef();
-            long targetId = supplyStreamId.getAsLong();
+            Http2Stream http2Stream = newStream(http2StreamId, State.HALF_CLOSED_REMOTE);
+            http2Streams.put(http2StreamId, http2Stream);
+            long targetId = http2Stream.targetId;
             newTarget.doHttpBegin(targetId, targetRef, targetId,
-                    hs -> headers.forEach(h -> hs.item(builder -> mapHeader(h, builder))));
+                    hs -> headers.forEach(h -> hs.item(b -> b.representation((byte) 0)
+                                                             .name(h.name())
+                                                             .value(h.value()))));
+            newTarget.doHttpEnd(targetId);
             Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
                     http2StreamId, encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
             newTarget.addThrottle(targetId, this::handleThrottle);
 
-            Http2Stream http2Stream = new Http2Stream(this, http2StreamId, targetId, State.HALF_CLOSED_REMOTE);
+
+        }
+
+        private Http2Stream newStream(int http2StreamId, State state)
+        {
+            assert http2StreamId != 0;
+
+            Http2Stream http2Stream = new Http2Stream(this, http2StreamId, state);
             http2Streams.put(http2StreamId, http2Stream);
-        }
 
-        private void mapHeader(HttpHeaderFW h, HttpHeaderFW.Builder builder)
-        {
-            StringFW name = h.name();
-            StringFW value = h.value();
-            builder.representation((byte) 0)
-                   .name(name.buffer(), name.offset()+1, name.sizeof()-1)
-                   .value(value.buffer(), value.offset()+1, value.sizeof()-1);
-        }
-    }
+            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
+                    http2RO.streamId(), encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
 
-    private static int framing(
-        int payloadSize)
-    {
-        // TODO: consider chunks
-        return 0;
-    }
-
-    @FunctionalInterface
-    private interface DecoderState
-    {
-        int decode(DirectBuffer buffer, int offset, int length);
-    }
-
-    class Http2Stream
-    {
-        private final SourceInputStream connection;
-        private final int http2StreamId;
-        private final long targetId;
-        private Route route;
-        private State state;
-
-        Http2Stream(SourceInputStream connection, int http2StreamId, long targetId, State state)
-        {
-            this.connection = connection;
-            this.http2StreamId = http2StreamId;
-            this.targetId = targetId;
-            this.state = state;
-        }
-
-        void onFrame()
-        {
-            switch (state)
-            {
-                case IDLE:
-                    inIdle();
-                    break;
-                case RESERVED_LOCAL:
-                    inReservedLocal();
-                    break;
-                case RESERVED_REMOTE:
-                    inReservedRemote();
-                    break;
-                case OPEN:
-                    inOpen();
-                    break;
-                case HALF_CLOSED_LOCAL:
-                    inHalfClosedLocal();
-                    break;
-                case HALF_CLOSED_REMOTE:
-                    inHalfClosedRemote();
-                    break;
-                case CLOSED:
-                    inClosed();
-                    break;
-            }
-        }
-
-        private void inClosed()
-        {
-        }
-
-        private void inHalfClosedRemote()
-        {
-            if (!(http2RO.type() == Http2FrameType.WINDOW_UPDATE || http2RO.type() == Http2FrameType.PRIORITY
-                    || http2RO.type() == Http2FrameType.RST_STREAM))
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            if (http2RO.type() == Http2FrameType.RST_STREAM)
-            {
-                state = State.CLOSED;
-            }
-        }
-
-        private void inHalfClosedLocal()
-        {
-            if (http2RO.endStream() || http2RO.type() == Http2FrameType.RST_STREAM)
-            {
-                state = State.CLOSED;
-            }
-        }
-
-        private void inOpen()
-        {
-            if (http2RO.endStream())
-            {
-                state = State.HALF_CLOSED_REMOTE;
-            }
-            switch (http2RO.type())
-            {
-                case HEADERS:
-                    doHeaders();
-                    break;
-                case DATA:
-                    doData();
-                    break;
-                case RST_STREAM:
-                    state = State.CLOSED;
-                    connection.http2Streams.remove(http2StreamId);
-                    break;
-                default:
-                    connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-            }
-        }
-
-        private void inReservedRemote()
-        {
-            if (!(http2RO.type() == Http2FrameType.HEADERS || http2RO.type() == Http2FrameType.RST_STREAM
-                    || http2RO.type() == Http2FrameType.PRIORITY))
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            if (http2RO.type() == Http2FrameType.RST_STREAM)
-            {
-                state = State.CLOSED;
-            }
-            else if (http2RO.type() == Http2FrameType.HEADERS)
-            {
-                state = State.HALF_CLOSED_LOCAL;
-            }
-        }
-
-        private void inReservedLocal()
-        {
-            if (!(http2RO.type() == Http2FrameType.RST_STREAM || http2RO.type() == Http2FrameType.PRIORITY
-                    || http2RO.type() == Http2FrameType.WINDOW_UPDATE))
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            if (http2RO.type() == Http2FrameType.RST_STREAM)
-            {
-                state = State.CLOSED;
-            }
-        }
-
-        private void inIdle()
-        {
-            switch (http2RO.type())
-            {
-                case HEADERS:
-                    state = State.OPEN;
-                    doHeaders();
-                    break;
-                case PRIORITY:
-                    break;
-                default:
-                    connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-            }
-        }
-
-        private void doHeaders()
-        {
-            headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-
-            // TODO avoid iterating over headers twice
-            Map<String, String> headersMap = new HashMap<>();
-            headersRO.forEach(h -> decodeHeaderField(connection.decodeContext, headersMap, h));
-            final Optional<Route> optional = connection.resolveTarget(connection.sourceRef, headersMap);
-            route = optional.get();
-            Target newTarget = route.target();
-            final long targetRef = route.targetRef();
-
-            newTarget.doHttpBegin(targetId, targetRef, targetId,
-                    hs -> headersRO.forEach(hf -> decodeHeaderField(connection.decodeContext, hs, hf)));
-            newTarget.addThrottle(targetId, connection::handleThrottle);
-
-            source.doWindow(connection.sourceId, http2RO.sizeof());
-            connection.throttleState = connection::throttleSkipNextWindow;
-            state = State.OPEN;
-        }
-
-        private void doRst()
-        {
-            if (state == State.IDLE)
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-        }
-
-        private void doWindow()
-        {
-            if (state == State.IDLE)
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-        }
-
-        private void doContinuation()
-        {
-            if (state == State.IDLE)
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-        }
-
-        private void doData()
-        {
-            if (state == State.IDLE)
-            {
-                connection.error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            if (route == null)
-            {
-                connection.processUnexpected(connection.sourceId);
-                return;
-            }
-            Target newTarget = route.target();
-            Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-            newTarget.doHttpData(targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
-
+            correlateNew.accept(http2Stream.targetId, correlation);
+            return http2Stream;
         }
 
         private void decodeHeaderField(HpackContext context, ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
@@ -1035,5 +945,42 @@ public final class SourceInputStreamFactory
                     break;
             }
         }
+
+    }
+
+    private static int framing(
+        int payloadSize)
+    {
+        // TODO: consider chunks
+        return 0;
+    }
+
+    @FunctionalInterface
+    private interface DecoderState
+    {
+        int decode(DirectBuffer buffer, int offset, int length);
+    }
+
+    class Http2Stream
+    {
+        private final SourceInputStream connection;
+        private final int http2StreamId;
+        private final long targetId;
+        private Route route;
+        private State state;
+
+        Http2Stream(SourceInputStream connection, int http2StreamId, State state)
+        {
+            this.connection = connection;
+            this.http2StreamId = http2StreamId;
+            this.targetId = supplyStreamId.getAsLong();
+            this.state = state;
+        }
+
+        boolean isClient()
+        {
+            return http2StreamId%2 == 1;
+        }
+
     }
 }
