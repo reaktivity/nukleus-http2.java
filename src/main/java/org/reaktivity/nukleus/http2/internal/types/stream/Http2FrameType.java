@@ -26,7 +26,8 @@ public enum Http2FrameType
     PING(6),
     GO_AWAY(7),
     WINDOW_UPDATE(8),
-    CONTINUATION(9);
+    CONTINUATION(9),
+    UNKNOWN(10);
 
     private final byte type;
 
@@ -54,7 +55,7 @@ public enum Http2FrameType
             case 7 : return GO_AWAY;
             case 8 : return WINDOW_UPDATE;
             case 9 : return CONTINUATION;
-            default: return null;
+            default: return UNKNOWN;
         }
     }
 }

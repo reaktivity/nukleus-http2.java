@@ -45,7 +45,9 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
@@ -87,6 +89,8 @@ public final class SourceInputStreamFactory
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
     private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
     private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
+    private final Http2RstStreamFW.Builder resetRW = new Http2RstStreamFW.Builder();
+
 
     private final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> headersRW =
             new ListFW.Builder<>(new HttpHeaderFW.Builder(), new HttpHeaderFW());
@@ -154,6 +158,9 @@ public final class SourceInputStreamFactory
         private int noClientStreams;
         private int noPromisedStreams;
         private int maxClientStreamId;
+        private boolean goaway;
+        private Settings localSettings;
+        private Settings remoteSettings;
 
         @Override
         public String toString()
@@ -170,6 +177,8 @@ public final class SourceInputStreamFactory
             decodeContext = new HpackContext();
             encodeContext = new HpackContext();
             http2Streams = new Int2ObjectHashMap<>();
+            localSettings = new Settings();
+            remoteSettings = new Settings();
         }
 
         private void handleStream(
@@ -488,6 +497,7 @@ public final class SourceInputStreamFactory
                     doSettings();
                     break;
                 case PUSH_PROMISE:
+                    doPushPromise();
                     break;
                 case PING:
                     doPing();
@@ -499,6 +509,7 @@ public final class SourceInputStreamFactory
                     doWindow();
                     break;
                 case CONTINUATION:
+                    doContinuation();
                     break;
                 default:
                     // Ignore and discard unknown frame
@@ -509,6 +520,25 @@ public final class SourceInputStreamFactory
 
         private void doGoAway()
         {
+            int streamId = http2RO.streamId();
+            if (goaway)
+            {
+                if (streamId != 0)
+                {
+                    processUnexpected(sourceId);
+                }
+            }
+            else
+            {
+                goaway = true;
+                Http2ErrorCode errorCode = (streamId != 0) ? Http2ErrorCode.PROTOCOL_ERROR : Http2ErrorCode.NO_ERROR;
+                error(errorCode);
+            }
+        }
+
+        private void doPushPromise()
+        {
+            error(Http2ErrorCode.PROTOCOL_ERROR);
         }
 
         private void doPriority()
@@ -535,6 +565,12 @@ public final class SourceInputStreamFactory
                 return;
             }
             maxClientStreamId = streamId;
+
+            if (noClientStreams+1 > localSettings.maxConcurrentStreams)
+            {
+                streamError(streamId, Http2ErrorCode.REFUSED_STREAM);
+                return;
+            }
 
             State  state = http2RO.endStream() ? State.HALF_CLOSED_REMOTE : State.OPEN;
             stream = newStream(streamId, state);
@@ -566,22 +602,20 @@ public final class SourceInputStreamFactory
         {
             int streamId = http2RO.streamId();
             Http2Stream stream = http2Streams.get(streamId);
-            if (stream != null)
+            if (stream == null || stream.state == State.IDLE)
             {
-                if (stream.state == State.IDLE)
-                {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
-                }
-                else
-                {
-                    closeStream(stream);
-                }
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+            }
+            else
+            {
+                closeStream(stream);
+
             }
         }
 
         private void closeStream(Http2Stream stream)
         {
-            if (stream.isClient())
+            if (stream.isClientInitiated())
             {
                 noClientStreams--;
             }
@@ -594,11 +628,29 @@ public final class SourceInputStreamFactory
 
         private void doWindow()
         {
+            int streamId = http2RO.streamId();
+            Http2Stream stream = http2Streams.get(streamId);
+            if (stream == null || stream.state == State.IDLE)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+            }
         }
 
         private void doContinuation()
         {
-
+            int streamId = http2RO.streamId();
+            Http2Stream stream = http2Streams.get(streamId);
+            if (stream == null || stream.state == State.IDLE)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (stream.state == State.HALF_CLOSED_REMOTE)
+            {
+                streamError(streamId, Http2ErrorCode.STREAM_CLOSED);
+                closeStream(stream);
+                return;
+            }
         }
 
         private void doData()
@@ -609,6 +661,12 @@ public final class SourceInputStreamFactory
             if (streamId == 0 || stream == null || stream.state == State.IDLE)
             {
                 error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (stream.state == State.HALF_CLOSED_REMOTE)
+            {
+                error(Http2ErrorCode.STREAM_CLOSED);
+                closeStream(stream);
                 return;
             }
             Target newTarget = stream.route.target();
@@ -623,16 +681,77 @@ public final class SourceInputStreamFactory
 
         private void doSettings()
         {
+            if (http2RO.streamId() != 0)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            if (http2RO.payloadLength()%6 != 0)
+            {
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
+            }
+
             settingsRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            if (settingsRO.ack() && http2RO.payloadLength() != 0)
+            {
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
+            }
             if (!settingsRO.ack())
             {
+                settingsRO.accept(this::doSetting);
+
                 Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
                                                      .ack()
                                                      .build();
                 replyTarget.doData(sourceOutputEstId,
                         settings.buffer(), settings.offset(), settings.limit());
             }
-            // TODO when ack flag is true
+        }
+
+        private void doSetting(Http2SettingsId id, Long value)
+        {
+            switch (id)
+            {
+
+                case HEADER_TABLE_SIZE:
+                    break;
+                case ENABLE_PUSH:
+                    if (!(value == 0L || value == 1L))
+                    {
+                        error(Http2ErrorCode.PROTOCOL_ERROR);
+                        return;
+                    }
+                    remoteSettings.enablePush = (value == 1L);
+                    break;
+                case MAX_CONCURRENT_STREAMS:
+                    remoteSettings.maxConcurrentStreams = value.intValue();
+                    break;
+                case INITIAL_WINDOW_SIZE:
+                    if (value > Integer.MAX_VALUE)
+                    {
+                        error(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                        return;
+                    }
+                    remoteSettings.initialWindowSize = value.intValue();
+                    break;
+                case MAX_FRAME_SIZE:
+                    if (value < Math.pow(2, 14) || value > Math.pow(2, 24) -1)
+                    {
+                        error(Http2ErrorCode.PROTOCOL_ERROR);
+                        return;
+                    }
+                    remoteSettings.maxFrameSize = value.intValue();
+                    break;
+                case MAX_HEADER_LIST_SIZE:
+                    remoteSettings.maxHeaderListSize = value.intValue();
+                    break;
+                default:
+                    // Ignore the unkonwn setting
+                    break;
+            }
         }
 
         private void doPing()
@@ -771,14 +890,53 @@ public final class SourceInputStreamFactory
             replyTarget.doEnd(sourceOutputEstId);
         }
 
+        void streamError(int streamId, Http2ErrorCode errorCode)
+        {
+            Http2RstStreamFW resetRO = resetRW.wrap(buffer, 0, buffer.capacity())
+                                             .streamId(streamId)
+                                             .errorCode(errorCode)
+                                             .build();
+            replyTarget.doData(sourceOutputEstId,
+                    resetRO.buffer(), resetRO.offset(), resetRO.sizeof());
+        }
+
         private int nextPromisedId()
         {
             lastPromisedStreamId += 2;
             return lastPromisedStreamId;
-        };
+        }
+
+        /*
+         * @param streamId corresponding http2 stream-id on which service response
+         *                 will be sent
+         * @return a stream id on which PUSH_PROMISE can be sent
+         *         -1 otherwise
+         */
+        private int findPushId(int streamId)
+        {
+            if (remoteSettings.enablePush && noPromisedStreams+1 < remoteSettings.maxConcurrentStreams)
+            {
+                // PUSH_PROMISE frames MUST only be sent on a peer-initiated stream
+                if (streamId%2 == 0)
+                {
+                    // TODO find a stream on which PUSH_PROMISE can be sent
+                    return -1;
+                }
+                else
+                {
+                    return streamId;        // client-initiated stream
+                }
+            }
+            return -1;
+        }
 
         private void doPromisedRequest(int http2StreamId, ListFW<HttpHeaderFW> headers)
         {
+
+            Http2Stream http2Stream = newStream(http2StreamId, State.HALF_CLOSED_REMOTE);
+            http2Streams.put(http2StreamId, http2Stream);
+            long targetId = http2Stream.targetId;
+
             Map<String, String> headersMap = new HashMap<>();
             headers.forEach(
                     httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
@@ -786,21 +944,18 @@ public final class SourceInputStreamFactory
             Route route = optional.get();
             Target newTarget = route.target();
             long targetRef = route.targetRef();
-            Http2Stream http2Stream = newStream(http2StreamId, State.HALF_CLOSED_REMOTE);
-            http2Streams.put(http2StreamId, http2Stream);
-            long targetId = http2Stream.targetId;
+
             newTarget.doHttpBegin(targetId, targetRef, targetId,
                     hs -> headers.forEach(h -> hs.item(b -> b.representation((byte) 0)
                                                              .name(h.name())
                                                              .value(h.value()))));
             newTarget.doHttpEnd(targetId);
             Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                    http2StreamId, encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
+                    http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
+                    source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
             newTarget.addThrottle(targetId, this::handleThrottle);
-
-
         }
 
         private Http2Stream newStream(int http2StreamId, State state)
@@ -811,9 +966,18 @@ public final class SourceInputStreamFactory
             http2Streams.put(http2StreamId, http2Stream);
 
             Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
-                    http2RO.streamId(), encodeContext, this::nextPromisedId, source.routableName(), OUTPUT_ESTABLISHED);
+                    http2RO.streamId(), encodeContext, this::nextPromisedId, this::findPushId,
+                    source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(http2Stream.targetId, correlation);
+            if (http2Stream.isClientInitiated())
+            {
+                noClientStreams++;
+            }
+            else
+            {
+                noPromisedStreams++;
+            }
             return http2Stream;
         }
 
@@ -977,7 +1141,7 @@ public final class SourceInputStreamFactory
             this.state = state;
         }
 
-        boolean isClient()
+        boolean isClientInitiated()
         {
             return http2StreamId%2 == 1;
         }

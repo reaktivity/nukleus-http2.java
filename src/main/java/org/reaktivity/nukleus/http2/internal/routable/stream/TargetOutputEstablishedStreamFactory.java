@@ -108,6 +108,7 @@ public final class TargetOutputEstablishedStreamFactory
         private HpackContext encodeContext;
         private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
         private IntSupplier promisedStreamIds;
+        private Function<Integer, Integer> pushStreamIds;
 
         @Override
         public String toString()
@@ -233,6 +234,8 @@ public final class TargetOutputEstablishedStreamFactory
                 sourceOutputEstId = correlation.getSourceOutputEstId();
                 long sourceCorrelationId = correlation.id();
                 promisedStreamIds = correlation.promisedStreamIds();
+                pushStreamIds = correlation.pushStreamIds();
+
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
@@ -274,20 +277,24 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (extension.sizeof() > 0)
             {
-                int promisedStreamId = promisedStreamIds.getAsInt();
-                Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                Http2PushPromiseFW pushPromise = pushPromiseRW
-                        .wrap(writeBuffer, 0, writeBuffer.capacity())
-                        .streamId(http2StreamId)
-                        .promisedStreamId(promisedStreamId)
-                        .endHeaders()
-                        .set(dataEx.headers(), this::mapHeader)
-                        .build();
+                int pushStreamId = pushStreamIds.apply(http2StreamId);
+                if (pushStreamId != -1)
+                {
+                    int promisedStreamId = promisedStreamIds.getAsInt();
+                    Http2DataExFW dataEx = extension.get(dataExRO::wrap);
+                    Http2PushPromiseFW pushPromise = pushPromiseRW
+                            .wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(pushStreamId)
+                            .promisedStreamId(promisedStreamId)
+                            .endHeaders()
+                            .set(dataEx.headers(), this::mapHeader)
+                            .build();
 
-                // TODO remove the following and throttle based on HTTP2_WINDOW update
-                target.addThrottle(sourceOutputEstId, this::handleThrottle);
-                target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
-                pushHandler.accept(promisedStreamId, dataEx.headers());
+                    // TODO remove the following and throttle based on HTTP2_WINDOW update
+                    target.addThrottle(sourceOutputEstId, this::handleThrottle);
+                    target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
+                    pushHandler.accept(promisedStreamId, dataEx.headers());
+                }
             }
             if (payload.sizeof() > 0)
             {
