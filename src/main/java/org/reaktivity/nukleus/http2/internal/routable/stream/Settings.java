@@ -26,7 +26,7 @@ public class Settings
 
     int initialWindowSize = 65_535;
 
-    long maxFrameSize = 16_384;
+    int maxFrameSize = 16_384;
 
     long maxHeaderListSize;
 }

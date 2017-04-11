@@ -152,7 +152,7 @@ public final class SourceInputStreamFactory
         private final Int2ObjectHashMap<Http2Stream> http2Streams;
         private int lastPromisedStreamId = 0;
 
-        private final AtomicBuffer slab = new UnsafeBuffer(new byte[4096]);
+        private AtomicBuffer slab;
         private int slabLength = 0;
 
         private int noClientStreams;
@@ -179,6 +179,7 @@ public final class SourceInputStreamFactory
             http2Streams = new Int2ObjectHashMap<>();
             localSettings = new Settings();
             remoteSettings = new Settings();
+            slab = new UnsafeBuffer(new byte[localSettings.maxFrameSize]);
         }
 
         private void handleStream(

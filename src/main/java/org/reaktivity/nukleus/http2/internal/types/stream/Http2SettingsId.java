@@ -18,13 +18,13 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 public enum Http2SettingsId
 {
+    UNKNOWN(-1),
     HEADER_TABLE_SIZE(1),
     ENABLE_PUSH(2),
     MAX_CONCURRENT_STREAMS(3),
     INITIAL_WINDOW_SIZE(4),
     MAX_FRAME_SIZE(5),
-    MAX_HEADER_LIST_SIZE(6),
-    UNKNOWN(7);
+    MAX_HEADER_LIST_SIZE(6);
 
     private final int id;
 
