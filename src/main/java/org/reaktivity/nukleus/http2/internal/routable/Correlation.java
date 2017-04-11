@@ -18,8 +18,8 @@ package org.reaktivity.nukleus.http2.internal.routable;
 import static java.util.Objects.requireNonNull;
 
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.function.IntSupplier;
+import java.util.function.IntUnaryOperator;
 
 import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 import org.reaktivity.nukleus.http2.internal.router.RouteKind;
@@ -37,7 +37,7 @@ public class Correlation
     private final RouteKind established;
     private final long sourceOutputEstId;
     private final HpackContext encodeContext;
-    private final Function<Integer, Integer> pushStreamIds;
+    private final IntUnaryOperator pushStreamIds;
 
     public Correlation(
         long id,
@@ -46,7 +46,7 @@ public class Correlation
         int http2StreamId,
         HpackContext encodeContext,
         IntSupplier promisedStreamIds,
-        Function<Integer, Integer> pushStreamIds,
+        IntUnaryOperator pushStreamIds,
         String source,
         RouteKind established)
     {
@@ -101,7 +101,7 @@ public class Correlation
         return promisedStreamIds;
     }
 
-    public Function<Integer, Integer> pushStreamIds()
+    public IntUnaryOperator pushStreamIds()
     {
         return pushStreamIds;
     }

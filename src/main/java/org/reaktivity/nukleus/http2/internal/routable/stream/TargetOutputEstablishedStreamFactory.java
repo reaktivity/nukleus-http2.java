@@ -44,6 +44,7 @@ import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
 import java.util.function.Function;
 import java.util.function.IntSupplier;
+import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
@@ -108,7 +109,7 @@ public final class TargetOutputEstablishedStreamFactory
         private HpackContext encodeContext;
         private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
         private IntSupplier promisedStreamIds;
-        private Function<Integer, Integer> pushStreamIds;
+        private IntUnaryOperator pushStreamIds;
 
         @Override
         public String toString()
@@ -277,7 +278,7 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (extension.sizeof() > 0)
             {
-                int pushStreamId = pushStreamIds.apply(http2StreamId);
+                int pushStreamId = pushStreamIds.applyAsInt(http2StreamId);
                 if (pushStreamId != -1)
                 {
                     int promisedStreamId = promisedStreamIds.getAsInt();

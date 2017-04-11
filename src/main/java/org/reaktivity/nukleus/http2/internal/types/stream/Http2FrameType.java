@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 public enum Http2FrameType
 {
+    UNKNOWN(-1),
     DATA(0),
     HEADERS(1),
     PRIORITY(2),
@@ -26,8 +27,7 @@ public enum Http2FrameType
     PING(6),
     GO_AWAY(7),
     WINDOW_UPDATE(8),
-    CONTINUATION(9),
-    UNKNOWN(10);
+    CONTINUATION(9);
 
     private final byte type;
 
