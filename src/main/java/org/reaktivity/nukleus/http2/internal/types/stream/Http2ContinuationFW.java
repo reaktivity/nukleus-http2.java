@@ -43,8 +43,6 @@ public class Http2ContinuationFW extends Http2FrameFW
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
-
     @Override
     public Http2FrameType type()
     {
@@ -54,11 +52,6 @@ public class Http2ContinuationFW extends Http2FrameFW
     public boolean endHeaders()
     {
         return Http2Flags.endHeaders(flags());
-    }
-
-    public void forEach(Consumer<HpackHeaderFieldFW> headerField)
-    {
-        headerBlockRO.forEach(headerField);
     }
 
     @Override
@@ -78,8 +71,6 @@ public class Http2ContinuationFW extends Http2FrameFW
         {
             throw new IllegalArgumentException(String.format("Invalid CONTINUATION frame type=%s", type));
         }
-
-        headerBlockRO.wrap(buffer(), offset() + PAYLOAD_OFFSET, offset() + PAYLOAD_OFFSET + payloadLength());
 
         checkLimit(limit(), maxLimit);
         return this;

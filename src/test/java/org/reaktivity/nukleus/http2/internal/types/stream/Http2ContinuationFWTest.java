@@ -55,7 +55,9 @@ public class Http2ContinuationFWTest
 
         Map<String, String> headers = new LinkedHashMap<>();
         HpackContext context = new HpackContext();
-        fw.forEach(HpackHeaderBlockFWTest.getHeaders(context, headers));
+        HpackHeaderBlockFW block = new HpackHeaderBlockFW().wrap(
+                fw.buffer(), fw.offset() + 9, fw.limit());
+        block.forEach(HpackHeaderBlockFWTest.getHeaders(context, headers));
 
         assertEquals(4, headers.size());
         assertEquals("GET", headers.get(":method"));
