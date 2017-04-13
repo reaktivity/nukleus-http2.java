@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 public enum Http2FrameType
 {
+    UNKNOWN(-1),
     DATA(0),
     HEADERS(1),
     PRIORITY(2),
@@ -54,7 +55,7 @@ public enum Http2FrameType
             case 7 : return GO_AWAY;
             case 8 : return WINDOW_UPDATE;
             case 9 : return CONTINUATION;
-            default: return null;
+            default: return UNKNOWN;
         }
     }
 }

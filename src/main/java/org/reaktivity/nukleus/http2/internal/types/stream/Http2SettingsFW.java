@@ -19,10 +19,17 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.ENABLE_PUSH;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.HEADER_TABLE_SIZE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.INITIAL_WINDOW_SIZE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.MAX_CONCURRENT_STREAMS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.MAX_FRAME_SIZE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.MAX_HEADER_LIST_SIZE;
 
 /*
     Flyweight for HTTP2 SETTINGS frame
@@ -46,13 +53,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
  */
 public class Http2SettingsFW extends Http2FrameFW
 {
-    private static final int HEADER_TABLE_SIZE = 1;
-    private static final int ENABLE_PUSH = 2;
-    private static final int MAX_CONCURRENT_STREAMS = 3;
-    private static final int INITIAL_WINDOW_SIZE = 4;
-    private static final int MAX_FRAME_SIZE = 5;
-    private static final int MAX_HEADER_LIST_SIZE = 6;
-
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
@@ -75,34 +75,39 @@ public class Http2SettingsFW extends Http2FrameFW
         return 0;
     }
 
+    public void accept(BiConsumer<Http2SettingsId, Long> consumer)
+    {
+        listFW.forEach(s -> consumer.accept(Http2SettingsId.get(s.id()), s.value()));
+    }
+
     public long headerTableSize()
     {
-        return settings(HEADER_TABLE_SIZE);
+        return settings(HEADER_TABLE_SIZE.id());
     }
 
     public long enablePush()
     {
-        return settings(ENABLE_PUSH);
+        return settings(ENABLE_PUSH.id());
     }
 
     public long maxConcurrentStreams()
     {
-        return settings(MAX_CONCURRENT_STREAMS);
+        return settings(MAX_CONCURRENT_STREAMS.id());
     }
 
     public long initialWindowSize()
     {
-        return settings(INITIAL_WINDOW_SIZE);
+        return settings(INITIAL_WINDOW_SIZE.id());
     }
 
     public long maxFrameSize()
     {
-        return settings(MAX_FRAME_SIZE);
+        return settings(MAX_FRAME_SIZE.id());
     }
 
     public long maxHeaderListSize()
     {
-        return settings(MAX_HEADER_LIST_SIZE);
+        return settings(MAX_HEADER_LIST_SIZE.id());
     }
 
     public long settings(int key)
@@ -181,37 +186,37 @@ public class Http2SettingsFW extends Http2FrameFW
 
         public Builder headerTableSize(long size)
         {
-            addSetting(x -> x.setting(HEADER_TABLE_SIZE, size));
+            addSetting(x -> x.setting(HEADER_TABLE_SIZE.id(), size));
             return this;
         }
 
         public Builder enablePush()
         {
-            addSetting(x -> x.setting(ENABLE_PUSH, 1L));
+            addSetting(x -> x.setting(ENABLE_PUSH.id(), 1L));
             return this;
         }
 
         public Builder maxConcurrentStreams(long streams)
         {
-            addSetting(x -> x.setting(MAX_CONCURRENT_STREAMS, streams));
+            addSetting(x -> x.setting(MAX_CONCURRENT_STREAMS.id(), streams));
             return this;
         }
 
         public Builder initialWindowSize(long size)
         {
-            addSetting(x -> x.setting(INITIAL_WINDOW_SIZE, size));
+            addSetting(x -> x.setting(INITIAL_WINDOW_SIZE.id(), size));
             return this;
         }
 
         public Builder maxFrameSize(long size)
         {
-            addSetting(x -> x.setting(MAX_FRAME_SIZE, size));
+            addSetting(x -> x.setting(MAX_FRAME_SIZE.id(), size));
             return this;
         }
 
         public Builder maxHeaderListSize(long size)
         {
-            addSetting(x -> x.setting(MAX_HEADER_LIST_SIZE, size));
+            addSetting(x -> x.setting(MAX_HEADER_LIST_SIZE.id(), size));
             return this;
         }
 

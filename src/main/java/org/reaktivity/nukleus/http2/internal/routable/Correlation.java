@@ -19,6 +19,7 @@ import static java.util.Objects.requireNonNull;
 
 import java.util.Objects;
 import java.util.function.IntSupplier;
+import java.util.function.IntUnaryOperator;
 
 import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 import org.reaktivity.nukleus.http2.internal.router.RouteKind;
@@ -36,6 +37,7 @@ public class Correlation
     private final RouteKind established;
     private final long sourceOutputEstId;
     private final HpackContext encodeContext;
+    private final IntUnaryOperator pushStreamIds;
 
     public Correlation(
         long id,
@@ -44,6 +46,7 @@ public class Correlation
         int http2StreamId,
         HpackContext encodeContext,
         IntSupplier promisedStreamIds,
+        IntUnaryOperator pushStreamIds,
         String source,
         RouteKind established)
     {
@@ -53,6 +56,7 @@ public class Correlation
         this.http2StreamId = http2StreamId;
         this.encodeContext = encodeContext;
         this.promisedStreamIds = promisedStreamIds;
+        this.pushStreamIds = pushStreamIds;
         this.source = requireNonNull(source, "source");
         this.established = requireNonNull(established, "established");
     }
@@ -97,6 +101,11 @@ public class Correlation
         return promisedStreamIds;
     }
 
+    public IntUnaryOperator pushStreamIds()
+    {
+        return pushStreamIds;
+    }
+
     @Override
     public int hashCode()
     {
@@ -126,4 +135,5 @@ public class Correlation
         return String.format("[id=%s, sourceOutputEstId=%s http2StreamId=%s source=\"%s\", established=%s]",
                 id, sourceOutputEstId, http2StreamId, source, established);
     }
+
 }

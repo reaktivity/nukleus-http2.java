@@ -44,6 +44,7 @@ import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
 import java.util.function.Function;
 import java.util.function.IntSupplier;
+import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
@@ -108,6 +109,7 @@ public final class TargetOutputEstablishedStreamFactory
         private HpackContext encodeContext;
         private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
         private IntSupplier promisedStreamIds;
+        private IntUnaryOperator pushStreamIds;
 
         @Override
         public String toString()
@@ -233,6 +235,8 @@ public final class TargetOutputEstablishedStreamFactory
                 sourceOutputEstId = correlation.getSourceOutputEstId();
                 long sourceCorrelationId = correlation.id();
                 promisedStreamIds = correlation.promisedStreamIds();
+                pushStreamIds = correlation.pushStreamIds();
+
 
                 this.sourceId = newSourceId;
                 this.target = newTarget;
@@ -274,26 +278,29 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (extension.sizeof() > 0)
             {
-                int promisedStreamId = promisedStreamIds.getAsInt();
-                Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                Http2PushPromiseFW pushPromise = pushPromiseRW
-                        .wrap(writeBuffer, 0, writeBuffer.capacity())
-                        .streamId(http2StreamId)
-                        .promisedStreamId(promisedStreamId)
-                        .endHeaders()
-                        .set(dataEx.headers(), this::mapHeader)
-                        .build();
+                int pushStreamId = pushStreamIds.applyAsInt(http2StreamId);
+                if (pushStreamId != -1)
+                {
+                    int promisedStreamId = promisedStreamIds.getAsInt();
+                    Http2DataExFW dataEx = extension.get(dataExRO::wrap);
+                    Http2PushPromiseFW pushPromise = pushPromiseRW
+                            .wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(pushStreamId)
+                            .promisedStreamId(promisedStreamId)
+                            .endHeaders()
+                            .set(dataEx.headers(), this::mapHeader)
+                            .build();
 
-                // TODO remove the following and throttle based on HTTP2_WINDOW update
-                target.addThrottle(sourceOutputEstId, this::handleThrottle);
-                target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
-                pushHandler.accept(promisedStreamId, dataEx.headers());
+                    // TODO remove the following and throttle based on HTTP2_WINDOW update
+                    target.addThrottle(sourceOutputEstId, this::handleThrottle);
+                    target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
+                    pushHandler.accept(promisedStreamId, dataEx.headers());
+                }
             }
             if (payload.sizeof() > 0)
             {
                 Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                               .streamId(http2StreamId)
-                                              .endStream()      // TODO there may be multiple DATA frames
                                               .payload(payload.buffer(), payload.offset(), payload.sizeof())
                                               .build();
                 // TODO remove the following and throttle based on HTTP2_WINDOW update
@@ -308,6 +315,14 @@ public final class TargetOutputEstablishedStreamFactory
             int length)
         {
             endRO.wrap(buffer, index, index + length);
+
+            Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                          .streamId(http2StreamId)
+                                          .endStream()
+                                          .build();
+            // TODO remove the following and throttle based on HTTP2_WINDOW update
+            //target.addThrottle(sourceOutputEstId, this::handleThrottle);
+            target.doData(sourceOutputEstId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
 
             target.removeThrottle(sourceOutputEstId);
             source.removeStream(sourceId);
