@@ -98,7 +98,7 @@ public class Http2HeadersFW extends Http2FrameFW
         int dataLength = payloadLength();
         if (padded())
         {
-            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
+            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET) & 0xff;
             dataLength -= (paddingLength + 1);    // -1 for Pad Length, -Padding
         }
 

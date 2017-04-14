@@ -88,7 +88,7 @@ public class Http2PushPromiseFW extends Http2FrameFW
         int headersLength = payloadLength() - 4;    // -4 for promised stream id
         if (padded())
         {
-            int padding = buffer().getByte(offset() + PAYLOAD_OFFSET);
+            int padding = buffer().getByte(offset() + PAYLOAD_OFFSET) & 0xff;
             headersLength = headersLength - padding - 1;    // -1 for Pad Length field
         }
 

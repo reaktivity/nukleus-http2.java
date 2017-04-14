@@ -85,7 +85,6 @@ public class Slab
         }
         used.set(slot);
         availableSlots--;
-        System.out.println("slab acquire = " + slot);
 
         return slot;
     }
@@ -97,8 +96,6 @@ public class Slab
      */
     public MutableDirectBuffer buffer(int slot)
     {
-        System.out.println("slab buffer = " + slot);
-
         assert used.get(slot);
         final long slotAddressOffset = buffer.addressOffset() + (slot << bitsPerSlot);
         mutableFW.wrap(slotAddressOffset, slotCapacity);
@@ -111,8 +108,6 @@ public class Slab
      */
     public void release(int slot)
     {
-        System.out.println("slab release = " + slot);
-
         assert used.get(slot);
         used.clear(slot);
         availableSlots++;

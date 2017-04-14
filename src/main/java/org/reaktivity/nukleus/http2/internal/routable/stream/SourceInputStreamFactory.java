@@ -130,7 +130,9 @@ public final class SourceInputStreamFactory
         this.supplyStreamId = supplyStreamId;
         this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
-        int slotCapacity = Settings.DEFAULT_MAX_FRAME_SIZE;
+        // Actually, we need only DEFAULT_MAX_FRAME_SIZE + 9 bytes for frame header, but
+        // slab needs power of two
+        int slotCapacity = 1 << -Integer.numberOfLeadingZeros(Settings.DEFAULT_MAX_FRAME_SIZE + 9 - 1);
         int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
@@ -148,9 +150,12 @@ public final class SourceInputStreamFactory
         private DecoderState decoderState;
 
         // slab to assemble a complete HTTP2 frame
+        // no need for separate slab per HTTP2 stream as the frames are not fragmented
         private int frameSlotIndex = SLOT_NOT_AVAILABLE;
         private int frameSlotPosition;
         // slab to assemble a complete HTTP2 headers frame(including its continuation frames)
+        // no need for separate slab per HTTP2 stream as no interleaved frames of any other type
+        // or from any other stream
         private int headersSlotIndex = SLOT_NOT_AVAILABLE;
         private int headersSlotPosition;
 
@@ -329,7 +334,7 @@ public final class SourceInputStreamFactory
             this.decoderState = this::decodePreface;
 
             // TODO: acquire slab for request decode of up to initial bytes
-final int initial = 51240;
+            final int initial = 512;
             this.window += initial;
             source.doWindow(sourceId, initial);
         }
@@ -491,7 +496,7 @@ final int initial = 51240;
                     frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3- frameSlotPosition);
                 }
                 int length = http2FrameLength(frameBuffer, 0, 3);
-                if (frameSlotPosition +available >= length)
+                if (frameSlotPosition + available >= length)
                 {
                     frameBuffer.putBytes(frameSlotPosition, buffer, offset, length- frameSlotPosition);
                     http2RO.wrap(frameBuffer, 0, length);
@@ -527,6 +532,59 @@ final int initial = 51240;
             frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
             return false;
+        }
+
+        /*
+         * Assembles a complete HTTP2 headers (including any continuations) if any.
+         *
+         * @return true if a complete HTTP2 headers is assembled or any other frame
+         *         false otherwise
+         */
+        private boolean http2HeadersAvailable()
+        {
+            if (expectContinuation)
+            {
+                if (http2RO.type() != Http2FrameType.CONTINUATION || http2RO.streamId() != expectContinuationStreamId)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return false;
+                }
+            }
+            else if (http2RO.type() == Http2FrameType.CONTINUATION)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return false;
+            }
+            switch (http2RO.type())
+            {
+                case HEADERS:
+                    int streamId = http2RO.streamId();
+                    if (streamId == 0 || streamId % 2 != 1 || streamId <= maxClientStreamId)
+                    {
+                        error(Http2ErrorCode.PROTOCOL_ERROR);
+                        return false;
+                    }
+
+                    headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+                    if (headersRO.dataLength() < 0)
+                    {
+                        error(Http2ErrorCode.PROTOCOL_ERROR);
+                        return false;
+                    }
+                    source.doWindow(sourceId, http2RO.sizeof());
+
+                    return http2HeadersAvailable(headersRO.buffer(), headersRO.dataOffset(), headersRO.dataLength(),
+                            headersRO.endHeaders());
+
+                case CONTINUATION:
+                    continationRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+                    DirectBuffer payload = continationRO.payload();
+                    boolean endHeaders = continationRO.endHeaders();
+
+                    return http2HeadersAvailable(payload, 0, payload.capacity(), endHeaders);
+            }
+
+            return true;
         }
 
         /*
@@ -592,8 +650,8 @@ final int initial = 51240;
             }
 
             Http2FrameType http2FrameType = http2RO.type();
-System.out.println("HTTP2 frame = " + http2RO);
-            if (!validateContinuation())
+            // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
+            if (!http2HeadersAvailable())
             {
                 return offset + http2RO.sizeof();
             }
@@ -602,7 +660,8 @@ System.out.println("HTTP2 frame = " + http2RO);
                 case DATA:
                     doData();
                     break;
-                case HEADERS:
+                case HEADERS:   // fall-through
+                case CONTINUATION:
                     doHeaders();
                     break;
                 case PRIORITY:
@@ -626,35 +685,11 @@ System.out.println("HTTP2 frame = " + http2RO);
                 case WINDOW_UPDATE:
                     doWindow();
                     break;
-                case CONTINUATION:
-                    doContinuation();
-                    break;
                 default:
                     // Ignore and discard unknown frame
             }
 
             return offset + http2RO.sizeof();
-        }
-
-        private boolean validateContinuation()
-        {
-            if (expectContinuation)
-            {
-                if (http2RO.type() != Http2FrameType.CONTINUATION || http2RO.streamId() != expectContinuationStreamId)
-                {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
-                    return false;
-                }
-            }
-            else
-            {
-                if (http2RO.type() == Http2FrameType.CONTINUATION)
-                {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
-                    return false;
-                }
-            }
-            return true;
         }
 
         private void doGoAway()
@@ -682,26 +717,21 @@ System.out.println("HTTP2 frame = " + http2RO);
 
         private void doPriority()
         {
-        }
-
-        private void doHeaders()
-        {
-
             int streamId = http2RO.streamId();
-            if (streamId == 0 || streamId % 2 != 1 || streamId <= maxClientStreamId)
+            if (streamId == 0)
             {
                 error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-
-            headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-            if (http2HeadersAvailable(headersRO.buffer(), headersRO.dataOffset(), headersRO.dataLength(), headersRO.endHeaders()))
+            int payloadLength = http2RO.payloadLength();
+            if (payloadLength != 5)
             {
-                doHeaders1();
+                streamError(streamId, Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
             }
         }
 
-        private void doHeaders1()
+        private void doHeaders()
         {
             int streamId = http2RO.streamId();
 
@@ -730,7 +760,6 @@ System.out.println("HTTP2 frame = " + http2RO);
             // TODO avoid iterating over headers twice
             Map<String, String> headersMap = new HashMap<>();
             blockRO.forEach(h -> decodeHeaderField(decodeContext, h, headersMap));
-            System.out.println("headersMap = " +headersMap);
             final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
             Route route = stream.route = optional.get();
             Target newTarget = route.target();
@@ -752,6 +781,17 @@ System.out.println("HTTP2 frame = " + http2RO);
         private void doRst()
         {
             int streamId = http2RO.streamId();
+            if (streamId == 0)
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+            int payloadLength = http2RO.payloadLength();
+            if (payloadLength != 4)
+            {
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
+            }
             Http2Stream stream = http2Streams.get(streamId);
             if (stream == null || stream.state == State.IDLE)
             {
@@ -760,7 +800,6 @@ System.out.println("HTTP2 frame = " + http2RO);
             else
             {
                 closeStream(stream);
-
             }
         }
 
@@ -787,18 +826,6 @@ System.out.println("HTTP2 frame = " + http2RO);
             }
         }
 
-        private void doContinuation()
-        {
-            continationRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
-            DirectBuffer payload = continationRO.payload();
-            boolean endHeaders = continationRO.endHeaders();
-
-            if (http2HeadersAvailable(payload, 0, payload.capacity(), endHeaders))
-            {
-                doHeaders1();
-            }
-        }
-
         private void doData()
         {
             int streamId = http2RO.streamId();
@@ -817,6 +844,12 @@ System.out.println("HTTP2 frame = " + http2RO);
             }
             Target newTarget = stream.route.target();
             Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            if (dataRO.dataLength() < 0)        // because of invalid padding length
+            {
+                error(Http2ErrorCode.PROTOCOL_ERROR);
+                closeStream(stream);
+                return;
+            }
             newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
 
             if (dataRO.endStream())
@@ -1037,7 +1070,6 @@ System.out.println("HTTP2 frame = " + http2RO);
 
         void error(Http2ErrorCode errorCode)
         {
-System.out.println("Sending connection error = " + errorCode);
             Http2GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
                                              .lastStreamId(lastStreamId)
                                              .errorCode(errorCode)
@@ -1050,8 +1082,6 @@ System.out.println("Sending connection error = " + errorCode);
 
         void streamError(int streamId, Http2ErrorCode errorCode)
         {
-System.out.println("Sending stream error = " + errorCode);
-
             Http2RstStreamFW resetRO = resetRW.wrap(buffer, 0, buffer.capacity())
                                              .streamId(streamId)
                                              .errorCode(errorCode)
