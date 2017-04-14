@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
-import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
@@ -106,7 +105,7 @@ public final class SourceInputStreamFactory
     private final Slab frameSlab;
     private final Slab headersSlab;
 
-    private final AtomicBuffer buffer = new UnsafeBuffer(new byte[2048]);
+    private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[2048]);
 
     enum State
     {
@@ -407,7 +406,7 @@ final int initial = 51240;
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             // TODO: replace with connection pool (end)
 
-            AtomicBuffer payload = new UnsafeBuffer(new byte[2048]);
+            MutableDirectBuffer payload = new UnsafeBuffer(new byte[2048]);
             Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048)
                                                  .maxConcurrentStreams(100)
                                                  .build();
