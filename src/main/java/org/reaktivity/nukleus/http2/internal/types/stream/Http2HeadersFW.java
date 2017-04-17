@@ -58,8 +58,6 @@ public class Http2HeadersFW extends Http2FrameFW
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final HpackHeaderBlockFW headerBlockRO = new HpackHeaderBlockFW();
-
     @Override
     public Http2FrameType type()
     {
@@ -81,7 +79,7 @@ public class Http2HeadersFW extends Http2FrameFW
         return Http2Flags.priority(flags());
     }
 
-    private int dataOffset()
+    public int dataOffset()
     {
         int dataOffset = offset() + PAYLOAD_OFFSET;
         if (padded())
@@ -100,7 +98,7 @@ public class Http2HeadersFW extends Http2FrameFW
         int dataLength = payloadLength();
         if (padded())
         {
-            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
+            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET) & 0xff;
             dataLength -= (paddingLength + 1);    // -1 for Pad Length, -Padding
         }
 
@@ -110,11 +108,6 @@ public class Http2HeadersFW extends Http2FrameFW
         }
 
         return dataLength;
-    }
-
-    public void forEach(Consumer<HpackHeaderFieldFW> headerField)
-    {
-        headerBlockRO.forEach(headerField);
     }
 
     @Override
@@ -127,7 +120,6 @@ public class Http2HeadersFW extends Http2FrameFW
             throw new IllegalArgumentException(
                     String.format("Invalid HEADERS frame stream-id=%d (must not be 0)", streamId));
         }
-        headerBlockRO.wrap(buffer(), dataOffset(), dataOffset() + dataLength());
 
         checkLimit(limit(), maxLimit);
         return this;

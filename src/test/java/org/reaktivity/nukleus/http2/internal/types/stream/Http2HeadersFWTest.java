@@ -56,7 +56,9 @@ public class Http2HeadersFWTest
 
         Map<String, String> headers = new LinkedHashMap<>();
         HpackContext hpackContext = new HpackContext();
-        fw.forEach(HpackHeaderBlockFWTest.getHeaders(hpackContext, headers));
+        HpackHeaderBlockFW block = new HpackHeaderBlockFW().wrap(
+                fw.buffer(), fw.dataOffset(), fw.dataOffset() + fw.dataLength());
+        block.forEach(HpackHeaderBlockFWTest.getHeaders(hpackContext, headers));
 
         assertEquals(4, headers.size());
         assertEquals("GET", headers.get(":method"));
@@ -90,7 +92,9 @@ public class Http2HeadersFWTest
 
         Map<String, String> headers = new LinkedHashMap<>();
         HpackContext context = new HpackContext();
-        fw.forEach(HpackHeaderBlockFWTest.getHeaders(context, headers));
+        HpackHeaderBlockFW block = new HpackHeaderBlockFW().wrap(
+                fw.buffer(), fw.dataOffset(), fw.dataOffset() + fw.dataLength());
+        block.forEach(HpackHeaderBlockFWTest.getHeaders(context, headers));
 
         assertEquals(4, headers.size());
         assertEquals("GET", headers.get(":method"));

@@ -73,6 +73,11 @@ public class Http2FrameFW extends Flyweight
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
+    public final int payloadOffset()
+    {
+        return offset() + PAYLOAD_OFFSET;
+    }
+
     public final DirectBuffer payload()
     {
         return payloadRO;

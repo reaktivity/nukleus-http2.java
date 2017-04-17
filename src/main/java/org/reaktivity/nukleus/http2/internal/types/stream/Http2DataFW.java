@@ -70,7 +70,7 @@ public class Http2DataFW extends Http2FrameFW
     {
         if (padding())
         {
-            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET);
+            int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET) & 0xff;
             return payloadLength() - paddingLength - 1;
         }
         else
@@ -88,8 +88,17 @@ public class Http2DataFW extends Http2FrameFW
     public Http2DataFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
+        int streamId = streamId();
+        if (streamId == 0)
+        {
+            throw new IllegalArgumentException(
+                    String.format("Invalid DATA frame stream-id=%d (must not be 0)", streamId));
+        }
 
-        dataRO.wrap(buffer, dataOffset(), dataLength());
+        if (dataLength() >= 0)
+        {
+            dataRO.wrap(buffer, dataOffset(), dataLength());
+        }
 
         checkLimit(limit(), maxLimit);
 
