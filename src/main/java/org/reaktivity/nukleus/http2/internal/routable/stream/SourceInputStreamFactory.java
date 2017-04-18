@@ -66,6 +66,8 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.SLOT_NOT_AVAILABLE;
+import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
+import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
@@ -753,7 +755,7 @@ public final class SourceInputStreamFactory
                 return;
             }
 
-            State state = http2RO.endStream() ? State.HALF_CLOSED_REMOTE : State.OPEN;
+            State state = http2RO.endStream() ? HALF_CLOSED_REMOTE : OPEN;
             stream = newStream(streamId, state);
 
 
@@ -836,7 +838,7 @@ public final class SourceInputStreamFactory
                 error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-            if (stream.state == State.HALF_CLOSED_REMOTE)
+            if (stream.state == HALF_CLOSED_REMOTE)
             {
                 error(Http2ErrorCode.STREAM_CLOSED);
                 closeStream(stream);
@@ -1109,8 +1111,15 @@ public final class SourceInputStreamFactory
                 // PUSH_PROMISE frames MUST only be sent on a peer-initiated stream
                 if (streamId%2 == 0)
                 {
-                    // TODO find a stream on which PUSH_PROMISE can be sent
-                    return -1;
+                    // Find a stream on which PUSH_PROMISE can be sent
+                    return http2Streams.entrySet()
+                                       .stream()
+                                       .map(Map.Entry::getValue)
+                                       .filter(s -> s.http2StreamId%2 == 1)     // client-initiated stream
+                                       .filter(s -> s.state == OPEN || s.state == HALF_CLOSED_REMOTE)
+                                       .findAny()
+                                       .map(s -> s.http2StreamId)
+                                       .orElse(-1);
                 }
                 else
                 {
@@ -1123,7 +1132,7 @@ public final class SourceInputStreamFactory
         private void doPromisedRequest(int http2StreamId, ListFW<HttpHeaderFW> headers)
         {
 
-            Http2Stream http2Stream = newStream(http2StreamId, State.HALF_CLOSED_REMOTE);
+            Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE);
             http2Streams.put(http2StreamId, http2Stream);
             long targetId = http2Stream.targetId;
 
