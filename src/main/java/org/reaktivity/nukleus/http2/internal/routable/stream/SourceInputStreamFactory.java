@@ -1117,8 +1117,8 @@ public final class SourceInputStreamFactory
                                        .map(Map.Entry::getValue)
                                        .filter(s -> s.http2StreamId%2 == 1)     // client-initiated stream
                                        .filter(s -> s.state == OPEN || s.state == HALF_CLOSED_REMOTE)
+                                       .mapToInt(s -> s.http2StreamId)
                                        .findAny()
-                                       .map(s -> s.http2StreamId)
                                        .orElse(-1);
                 }
                 else
