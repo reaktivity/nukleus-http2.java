@@ -1115,7 +1115,7 @@ public final class SourceInputStreamFactory
                     return http2Streams.entrySet()
                                        .stream()
                                        .map(Map.Entry::getValue)
-                                       .filter(s -> s.http2StreamId%2 == 1)     // client-initiated stream
+                                       .filter(s -> (s.http2StreamId & 0x01) == 1)     // client-initiated stream
                                        .filter(s -> s.state == OPEN || s.state == HALF_CLOSED_REMOTE)
                                        .mapToInt(s -> s.http2StreamId)
                                        .findAny()
