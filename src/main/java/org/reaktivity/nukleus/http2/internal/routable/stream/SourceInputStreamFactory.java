@@ -196,11 +196,11 @@ public final class SourceInputStreamFactory
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
             sourceOutputEstId = supplyStreamId.getAsLong();
-            decodeContext = new HpackContext();
-            encodeContext = new HpackContext();
             http2Streams = new Int2ObjectHashMap<>();
             localSettings = new Settings();
             remoteSettings = new Settings();
+            decodeContext = new HpackContext();
+            encodeContext = new HpackContext();
         }
 
         private void handleStream(
@@ -898,6 +898,7 @@ public final class SourceInputStreamFactory
             {
 
                 case HEADER_TABLE_SIZE:
+                    remoteSettings.headerTableSize = value.intValue();
                     break;
                 case ENABLE_PUSH:
                     if (!(value == 0L || value == 1L))
