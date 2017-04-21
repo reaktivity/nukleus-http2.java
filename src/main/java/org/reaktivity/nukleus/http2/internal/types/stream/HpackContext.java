@@ -80,8 +80,10 @@ public class HpackContext
         /* 61 */ new HeaderField("www-authenticate", null)
     };
 
-    // Entries are added at the end (since it is in reverse order, need
-    // to calculate the index accordingly)
+    private static final int STATIC_TABLE_LENGTH = STATIC_TABLE.length;
+
+    // Dynamic table. Entries are added at the end (since it is in reverse order,
+    // need to calculate the index accordingly)
     /* private */ final List<HeaderField> table = new ArrayList<>();
     /* private */ int tableSize;
 
@@ -89,10 +91,10 @@ public class HpackContext
     private final boolean encoding;
 
     // name --> uniquie id (stable across evictions). Used during encoding
-    /* private */ final Map<DirectBuffer, Long> name2Index = new HashMap<>();
+    private final Map<DirectBuffer, Long> name2Index = new HashMap<>();
 
     // (name, value) --> uniquie id (stable across evictions). Used during encoding
-    /* private */ final Map<NameValue, Long> namevalue2Index = new HashMap<>();
+    private final Map<NameValue, Long> namevalue2Index = new HashMap<>();
 
     private int maxTableSize;
 
@@ -138,6 +140,19 @@ public class HpackContext
     {
         this.maxTableSize = maxTableSize;
         this.encoding = encoding;
+        if (encoding)
+        {
+            for(int i=1; i < STATIC_TABLE.length; i++)
+            {
+                Long id = (long) i;
+                name2Index.putIfAbsent(STATIC_TABLE[i].name, id);
+                if (STATIC_TABLE[i].value != null)
+                {
+                    NameValue nameValue = new NameValue(STATIC_TABLE[i].name, STATIC_TABLE[i].value);
+                    namevalue2Index.putIfAbsent(nameValue, id);
+                }
+            }
+        }
     }
 
     void add(String name, String value)
@@ -170,15 +185,15 @@ System.out.println("Evict i items ***** " + noEntries);
         boolean enoughSpace = wouldbeSize <= maxTableSize;
         if (enoughSpace)
         {
-            table.add(header);
-            tableSize += header.size;
             if (encoding)
             {
-                long id = noEvictions + table.size();
-                name2Index.put(header.name, id);
+                long id = STATIC_TABLE_LENGTH + noEvictions + table.size();
+                name2Index.putIfAbsent(header.name, id);
                 NameValue nameValue = new NameValue(header.name, header.value);
-                namevalue2Index.put(nameValue, id);
+                namevalue2Index.putIfAbsent(nameValue, id);
             }
+            table.add(header);
+            tableSize += header.size;
         }
     }
 
@@ -192,7 +207,7 @@ System.out.println("Evict i items ***** " + noEntries);
 
             if (encoding)
             {
-                Long id = noEvictions + i;
+                Long id = STATIC_TABLE_LENGTH + noEvictions + i;
                 if (id.equals(name2Index.get(header.name)))
                 {
 System.out.println("Evict name2Index ***** " + header.name.getStringWithoutLengthUtf8(0, header.name.capacity()));
@@ -269,44 +284,28 @@ System.out.println("Evict namevalue2Index ***** " + header.name.getStringWithout
 
     public int index(DirectBuffer name)
     {
-        for(int i=1; i < STATIC_TABLE.length; i++)
-        {
-            HeaderField hf = STATIC_TABLE[i];
-            DirectBuffer nameBuffer = hf.name;
-            if (nameBuffer.equals(name))
-            {
-                return i;
-            }
-        }
-
         Long id = name2Index.get(name);
         return  (id != null) ? idToIndex(id) : -1;
     }
 
-
     public int index(DirectBuffer name, DirectBuffer value)
     {
-        for(int i=1; i < STATIC_TABLE.length; i++)
-        {
-            HeaderField hf = STATIC_TABLE[i];
-            DirectBuffer nameBuffer = hf.name;
-            if (nameBuffer != null && nameBuffer.equals(name))
-            {
-                DirectBuffer valueBuffer = hf.value;
-                if (valueBuffer != null && valueBuffer.equals(value))
-                {
-                    return i;
-                }
-            }
-        }
         Long id = namevalue2Index.get(new NameValue(name, value));
         return  (id != null) ? idToIndex(id) : -1;
     }
 
     private int idToIndex(long id)
     {
-        int index = (int) (id - noEvictions);
-        return STATIC_TABLE.length + table.size() - index -1;
+        if (id < STATIC_TABLE_LENGTH)
+        {
+            return (int) id;
+        }
+        else
+        {
+            System.out.println("idToIndex = " +id);
+            long index = id - STATIC_TABLE_LENGTH - noEvictions;
+            return (int) (table.size() - index + STATIC_TABLE_LENGTH - 1);
+        }
     }
 
     private static final class NameValue
