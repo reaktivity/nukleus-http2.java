@@ -10,9 +10,11 @@ import java.util.Map;
 import java.util.Objects;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Objects.requireNonNull;
 
 public class HpackContext
 {
+    private static final DirectBuffer EMPTY_VALUE = new UnsafeBuffer(new byte[0]);
 
     private static final HeaderField[] STATIC_TABLE =
     {
@@ -117,23 +119,18 @@ public class HpackContext
 
         HeaderField(DirectBuffer name, DirectBuffer value)
         {
-            this.name = name;
-            this.value = value;
-            this.size = size(name) + size(value) + 32;
+            this.name = requireNonNull(name);
+            this.value = requireNonNull(value);
+            this.size = name.capacity() + value.capacity() + 32;
         }
 
         private static DirectBuffer buffer(String str)
         {
-            return str == null ? null : new UnsafeBuffer(str.getBytes(UTF_8));
-        }
-
-        private static int size(DirectBuffer buffer)
-        {
-            return buffer == null ? 0 : buffer.capacity();
+            return str == null ? EMPTY_VALUE : new UnsafeBuffer(str.getBytes(UTF_8));
         }
     }
 
-    public HpackContext()
+    HpackContext()
     {
         this(4096, true);
     }

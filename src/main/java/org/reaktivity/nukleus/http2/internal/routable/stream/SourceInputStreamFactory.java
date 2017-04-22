@@ -199,8 +199,8 @@ public final class SourceInputStreamFactory
             http2Streams = new Int2ObjectHashMap<>();
             localSettings = new Settings();
             remoteSettings = new Settings();
-            decodeContext = new HpackContext();
-            encodeContext = new HpackContext();
+            decodeContext = new HpackContext(localSettings.headerTableSize, false);
+            encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         }
 
         private void handleStream(
