@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.omg.CORBA.UNKNOWN;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.util.function.Consumer;
@@ -52,7 +53,8 @@ public class HpackHeaderFieldFW extends Flyweight
     {
         INDEXED,        // Indexed Header Field Representation
         LITERAL,        // Literal Header Field Representation
-        UPDATE          // Dynamic Table Size Update
+        UPDATE,         // Dynamic Table Size Update
+        UNKNOWN
     }
 
     public HeaderFieldType type()
@@ -72,7 +74,7 @@ public class HpackHeaderFieldFW extends Flyweight
             return HeaderFieldType.UPDATE;
         }
 
-        return null;
+        return HeaderFieldType.UNKNOWN;
     }
 
     public int index()
@@ -80,6 +82,13 @@ public class HpackHeaderFieldFW extends Flyweight
         assert type() == HeaderFieldType.INDEXED;
 
         return indexedRO.integer();
+    }
+
+    public int tableSize()
+    {
+        assert type() == HeaderFieldType.UPDATE;
+
+        return updateRO.integer();
     }
 
     public HpackLiteralHeaderFieldFW literal()

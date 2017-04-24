@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -69,6 +70,8 @@ import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.SLOT_NO
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UPDATE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
@@ -182,7 +185,8 @@ public final class SourceInputStreamFactory
         private Settings remoteSettings;
         private boolean expectContinuation;
         private int expectContinuationStreamId;
-
+        private boolean compressionError;
+        private boolean expectDynamicTableSizeUpdate = true;
 
         @Override
         public String toString()
@@ -336,7 +340,7 @@ public final class SourceInputStreamFactory
             this.decoderState = this::decodePreface;
 
             // TODO: acquire slab for request decode of up to initial bytes
-            final int initial = 512;
+final int initial = 51200;
             this.window += initial;
             source.doWindow(sourceId, initial);
         }
@@ -650,7 +654,7 @@ public final class SourceInputStreamFactory
             {
                 return limit;
             }
-
+System.out.println("---> " + http2RO);
             Http2FrameType http2FrameType = http2RO.type();
             // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
             if (!http2HeadersAvailable())
@@ -761,14 +765,22 @@ public final class SourceInputStreamFactory
 
             // TODO avoid iterating over headers twice
             Map<String, String> headersMap = new HashMap<>();
-            blockRO.forEach(h -> decodeHeaderField(decodeContext, h, headersMap));
+            Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
+            consumer = consumer.andThen(this::dynamicTableSizeUpdate);
+            consumer = consumer.andThen(h -> decodeHeaderField(h, headersMap));
+            blockRO.forEach(consumer);
+            if (compressionError)
+            {
+                error(Http2ErrorCode.COMPRESSION_ERROR);
+                return;
+            }
             final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
             Route route = stream.route = optional.get();
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
 
             newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId,
-                    hs -> blockRO.forEach(hf -> decodeHeaderField(decodeContext, hf, hs)));
+                    hs -> blockRO.forEach(hf -> decodeHeaderField(hf, hs)));
             newTarget.addThrottle(stream.targetId, this::handleThrottle);
 
             source.doWindow(sourceId, http2RO.sizeof());
@@ -1181,18 +1193,59 @@ public final class SourceInputStreamFactory
             return http2Stream;
         }
 
-        private void decodeHeaderField(HpackContext context, HpackHeaderFieldFW hf,
+        private void validateHeaderFieldType(HpackHeaderFieldFW hf)
+        {
+            if (!compressionError && hf.type() == UNKNOWN)
+            {
+                compressionError = true;
+            }
+        }
+
+        private void dynamicTableSizeUpdate(HpackHeaderFieldFW hf)
+        {
+            if (!compressionError)
+            {
+                System.out.println("hf type = " + hf.type());
+
+                switch (hf.type())
+                {
+                    case INDEXED:
+                    case LITERAL:
+                        expectDynamicTableSizeUpdate = false;
+                        break;
+                    case UPDATE:
+                        System.out.println("Dynamic table Update = " + hf.tableSize());
+
+                        if (!expectDynamicTableSizeUpdate)
+                        {
+                            // dynamic table size update MUST occur at the beginning of the first header block
+                            compressionError = true;
+                            return;
+                        }
+                        int maxTableSize = hf.tableSize();
+                        if (maxTableSize > localSettings.headerTableSize)
+                        {
+                            compressionError = true;
+                            return;
+                        }
+                        decodeContext.updateSize(hf.tableSize());
+                        break;
+                }
+            }
+        }
+
+        private void decodeHeaderField(HpackHeaderFieldFW hf,
                                        ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder)
         {
-            decodeHeaderField(context, hf, (name, value) -> builder.item(i -> i.representation((byte) 0)
+            decodeHeaderField(hf, false, (name, value) -> builder.item(i -> i.representation((byte) 0)
                                                                            .name(name, 0, name.capacity())
                                                                            .value(value, 0, value.capacity())));
 
         }
 
-        private void decodeHeaderField(HpackContext context, HpackHeaderFieldFW hf, Map<String, String> headersMap)
+        private void decodeHeaderField(HpackHeaderFieldFW hf, Map<String, String> headersMap)
         {
-            decodeHeaderField(context, hf, (n, v) ->
+            decodeHeaderField(hf, true, (n, v) ->
             {
                 String name = n.getStringWithoutLengthUtf8(0, n.capacity());
                 String value = v.getStringWithoutLengthUtf8(0, v.capacity());
@@ -1200,18 +1253,22 @@ public final class SourceInputStreamFactory
             });
         }
 
-        private void decodeHeaderField(HpackContext context, HpackHeaderFieldFW hf,
+        private void decodeHeaderField(HpackHeaderFieldFW hf,
+                                       boolean incrementalIndexing,
                                        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
         {
-
-            HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
-            switch (headerFieldType)
+            switch (hf.type())
             {
                 case INDEXED :
                 {
                     int index = hf.index();
-                    DirectBuffer nameBuffer = context.nameBuffer(index);
-                    DirectBuffer valueBuffer = context.valueBuffer(index);
+                    if (!decodeContext.valid(index))
+                    {
+                        compressionError = true;
+                        return;
+                    }
+                    DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
+                    DirectBuffer valueBuffer = decodeContext.valueBuffer(index);
                     nameValue.accept(nameBuffer, valueBuffer);
                 }
                 break;
@@ -1223,7 +1280,7 @@ public final class SourceInputStreamFactory
                         case INDEXED:
                         {
                             int index = literalRO.nameIndex();
-                            DirectBuffer nameBuffer = context.nameBuffer(index);
+                            DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
                             DirectBuffer valuePayload = valueRO.payload();
@@ -1257,21 +1314,18 @@ public final class SourceInputStreamFactory
                             DirectBuffer valueBuffer = valuePayload;
                             nameValue.accept(nameBuffer, valueBuffer);
 
-                            if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                            if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
                             {
                                 // make a copy for name and value as they go into dynamic table (outlives current frame)
                                 MutableDirectBuffer name = new UnsafeBuffer(new byte[namePayload.capacity()]);
                                 name.putBytes(0, namePayload, 0, namePayload.capacity());
                                 MutableDirectBuffer value = new UnsafeBuffer(new byte[valuePayload.capacity()]);
                                 value.putBytes(0, valuePayload, 0, valuePayload.capacity());
-                                context.add(name, value);
+                                decodeContext.add(name, value);
                             }
                         }
                         break;
                     }
-                    break;
-
-                case UPDATE:
                     break;
             }
         }
