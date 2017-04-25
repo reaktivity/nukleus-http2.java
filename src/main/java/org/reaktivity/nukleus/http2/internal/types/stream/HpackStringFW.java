@@ -50,10 +50,16 @@ public class HpackStringFW extends Flyweight
         return payloadRO;
     }
 
+    public boolean error()
+    {
+        return integerRO.limit() + integerRO.integer() > maxLimit();
+    }
+
     @Override
     public int limit()
     {
-        return integerRO.limit() + integerRO.integer();
+        int limit = integerRO.limit() + integerRO.integer();
+        return limit > maxLimit() ? maxLimit() : limit;
     }
 
     @Override
@@ -62,8 +68,10 @@ public class HpackStringFW extends Flyweight
         super.wrap(buffer, offset, maxLimit);
 
         integerRO.wrap(buffer, offset, maxLimit);
-        payloadRO.wrap(buffer, integerRO.limit(), integerRO.integer());
-
+        if (!error())
+        {
+            payloadRO.wrap(buffer, integerRO.limit(), integerRO.integer());
+        }
         checkLimit(limit(), maxLimit);
         return this;
     }

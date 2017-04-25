@@ -49,6 +49,11 @@ public class HpackHeaderFieldFW extends Flyweight
         return 0;
     }
 
+    public boolean error()
+    {
+        return type() == HeaderFieldType.LITERAL && literal().error();
+    }
+
     public enum HeaderFieldType
     {
         INDEXED,        // Indexed Header Field Representation

@@ -26,8 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
 public class HpackHeaderBlockFWTest
@@ -434,6 +434,20 @@ public class HpackHeaderBlockFWTest
         assertEquals("Mon, 21 Oct 2013 20:13:22 GMT", context.value(64));
     }
 
+    @Test
+    public void error()
+    {
+        byte[] bytes = DatatypeConverter.parseHexBinary(
+                        // Header list begin
+                        "828684418aa0e41d139d09b8f01e07" +
+                        "0085f2b24a87fffffffd25427f"
+                        // Header list end
+                        );
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 0, buffer.capacity()-1);
+        assertTrue(fw.error());
+        assertEquals(27, fw.limit());
+    }
 
     static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers)
     {
@@ -457,28 +471,14 @@ public class HpackHeaderBlockFWTest
                         {
                             index = literalRO.nameIndex();
                             name = context.name(index);
-
-                            HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
-                            value = valueRO.huffman()
-                                    ? HpackHuffman.decode(valuePayload)
-                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            value = string(literalRO.valueLiteral());
                             headers.put(name, value);
                         }
                         break;
                         case NEW:
                         {
-                            HpackStringFW nameRO = literalRO.nameLiteral();
-                            DirectBuffer namePayload = nameRO.payload();
-                            name = nameRO.huffman()
-                                    ? HpackHuffman.decode(namePayload)
-                                    : namePayload.getStringWithoutLengthUtf8(0, namePayload.capacity());
-
-                            HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
-                            value = valueRO.huffman()
-                                    ? HpackHuffman.decode(valuePayload)
-                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            name = string(literalRO.nameLiteral());
+                            value = string(literalRO.valueLiteral());
                             headers.put(name, value);
                         }
                         break;
@@ -495,9 +495,20 @@ public class HpackHeaderBlockFWTest
         };
     }
 
-    private DirectBuffer buffer(String s)
+    private static String string(HpackStringFW value)
     {
-        return new UnsafeBuffer(s.getBytes(UTF_8));
+        DirectBuffer valuePayload = value.payload();
+        if (value.huffman())
+        {
+            MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]);
+            int length = HpackHuffman.decode(valuePayload, dst);
+            assert length != -1;
+            return dst.getStringWithoutLengthUtf8(0, length);
+        }
+        else
+        {
+            return valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+        }
     }
 
 }

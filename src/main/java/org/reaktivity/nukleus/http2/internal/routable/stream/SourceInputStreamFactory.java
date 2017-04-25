@@ -1237,20 +1237,26 @@ System.out.println("---> " + http2RO);
         private void decodeHeaderField(HpackHeaderFieldFW hf,
                                        ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder)
         {
-            decodeHeaderField(hf, false, (name, value) -> builder.item(i -> i.representation((byte) 0)
-                                                                           .name(name, 0, name.capacity())
-                                                                           .value(value, 0, value.capacity())));
+            if (!compressionError)
+            {
+                decodeHeaderField(hf, false, (name, value) -> builder.item(i -> i.representation((byte) 0)
+                                                                                 .name(name, 0, name.capacity())
+                                                                                 .value(value, 0, value.capacity())));
+            }
 
         }
 
         private void decodeHeaderField(HpackHeaderFieldFW hf, Map<String, String> headersMap)
         {
-            decodeHeaderField(hf, true, (n, v) ->
+            if (!compressionError)
             {
-                String name = n.getStringWithoutLengthUtf8(0, n.capacity());
-                String value = v.getStringWithoutLengthUtf8(0, v.capacity());
-                headersMap.put(name, value);
-            });
+                decodeHeaderField(hf, true, (n, v) ->
+                {
+                    String name = n.getStringWithoutLengthUtf8(0, n.capacity());
+                    String value = v.getStringWithoutLengthUtf8(0, v.capacity());
+                    headersMap.put(name, value);
+                });
+            }
         }
 
         private void decodeHeaderField(HpackHeaderFieldFW hf,
@@ -1275,6 +1281,11 @@ System.out.println("---> " + http2RO);
 
                 case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = hf.literal();
+                    if (literalRO.error())
+                    {
+                        compressionError = true;
+                        return;
+                    }
                     switch (literalRO.nameType())
                     {
                         case INDEXED:
@@ -1286,8 +1297,14 @@ System.out.println("---> " + http2RO);
                             DirectBuffer valuePayload = valueRO.payload();
                             if (valueRO.huffman())
                             {
-                                String value = HpackHuffman.decode(valuePayload);
-                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                                MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                                int length = HpackHuffman.decode(valuePayload, dst);
+                                if (length == -1)
+                                {
+                                    compressionError = true;
+                                    return;
+                                }
+                                valuePayload = new UnsafeBuffer(dst, 0, length);
                             }
                             DirectBuffer valueBuffer = valuePayload;
                             nameValue.accept(nameBuffer, valueBuffer);
@@ -1299,8 +1316,14 @@ System.out.println("---> " + http2RO);
                             DirectBuffer namePayload = nameRO.payload();
                             if (nameRO.huffman())
                             {
-                                String name = HpackHuffman.decode(namePayload);
-                                namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
+                                MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                                int length = HpackHuffman.decode(namePayload, dst);
+                                if (length == -1)
+                                {
+                                    compressionError = true;
+                                    return;
+                                }
+                                namePayload = new UnsafeBuffer(dst, 0, length);
                             }
                             DirectBuffer nameBuffer = namePayload;
 
@@ -1308,8 +1331,14 @@ System.out.println("---> " + http2RO);
                             DirectBuffer valuePayload = valueRO.payload();
                             if (valueRO.huffman())
                             {
-                                String value = HpackHuffman.decode(valuePayload);
-                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                                MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                                int length = HpackHuffman.decode(valuePayload, dst);
+                                if (length == -1)
+                                {
+                                    compressionError = true;
+                                    return;
+                                }
+                                valuePayload = new UnsafeBuffer(dst, 0, length);
                             }
                             DirectBuffer valueBuffer = valuePayload;
                             nameValue.accept(nameBuffer, valueBuffer);

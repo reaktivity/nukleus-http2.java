@@ -346,7 +346,7 @@ public class HpackHuffman
                 }
             }
             current.sym = sym;
-            current.accept = true;
+            current.accept = sym != CODES.length-1;     // EOS is invalid in string literal
         }
 
         transition(ROOT);
@@ -459,25 +459,34 @@ public class HpackHuffman
      * bits.
      *
      * https://pdfs.semanticscholar.org/3697/8e4715a7bf21426877132f5b2e9c3d280287.pdf
+     *
+     * @return length of decoded string
+     *         -1 if there is an error
      */
-    public static String decode(DirectBuffer buf)
+    public static int decode(DirectBuffer src, MutableDirectBuffer dst)
     {
-        StringBuilder sb = new StringBuilder();
         Node current = ROOT;
+        int offset = 0;
 
-        for (int i = 0; i < buf.capacity(); i++)
+        for (int i = 0; i < src.capacity(); i++)
         {
-            int b = buf.getByte(i) & 0xff;
+            int b = src.getByte(i) & 0xff;
             Node next = current.transitions[b];
-            // TODO handle next == null
+            if (next == null)
+            {
+                return -1;
+            }
             if (current.symbols[b] != null)
             {
-                sb.append(current.symbols[b]);
+                dst.putByte(offset++, (byte) current.symbols[b].charAt(0));
+                if (current.symbols[b].length() == 2)
+                {
+                    dst.putByte(offset++, (byte) current.symbols[b].charAt(1));
+                }
             }
             current = next;
         }
-        // TODO handle current.accept == false
-        return sb.toString();
+        return current.accept ? offset : -1;
     }
 
     // Returns the no of bytes needed to encode src
