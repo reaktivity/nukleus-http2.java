@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PADDED;
@@ -91,6 +92,23 @@ public class Http2HeadersFW extends Http2FrameFW
             dataOffset += 5;      // +4 for Stream Dependency, +1 for Weight
         }
         return dataOffset;
+    }
+
+    public int parentStream()
+    {
+        if (priority())
+        {
+            int dependencyOffset = offset() + PAYLOAD_OFFSET;
+            if (padded())
+            {
+                dependencyOffset++;
+            }
+            return buffer().getInt(dependencyOffset, BIG_ENDIAN) & 0x7F_FF_FF_FF;
+        }
+        else
+        {
+            return 0;
+        }
     }
 
     public int dataLength()

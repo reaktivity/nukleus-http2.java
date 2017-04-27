@@ -49,6 +49,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
@@ -93,6 +94,7 @@ public final class SourceInputStreamFactory
     private final Http2HeadersFW headersRO = new Http2HeadersFW();
     private final Http2ContinuationFW continationRO = new Http2ContinuationFW();
     private final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
+    private final Http2WindowUpdateFW http2WindowRO = new Http2WindowUpdateFW();
 
     private final Http2PingFW pingRO = new Http2PingFW();
 
@@ -213,6 +215,7 @@ public final class SourceInputStreamFactory
         private boolean expectContinuation;
         private int expectContinuationStreamId;
         private boolean expectDynamicTableSizeUpdate = true;
+        private long http2Window;
 
         @Override
         public String toString()
@@ -376,22 +379,29 @@ final int initial = 51200;
             int index,
             int length)
         {
+System.out.println("processData length = " + length);
             dataRO.wrap(buffer, index, index + length);
 
             window -= dataRO.length();
 
             if (window < 0)
             {
+                System.out.println("processData window = " + window);
+
                 processUnexpected(buffer, index, length);
             }
             else
             {
+
                 final OctetsFW payload = dataRO.payload();
                 final int limit = payload.limit();
 
                 int offset = payload.offset();
+
                 while (offset < limit)
                 {
+                    System.out.println("processData decode offset = " + offset + " limit = " + limit);
+
                     offset = decoderState.decode(buffer, offset, limit);
                 }
             }
@@ -598,6 +608,13 @@ final int initial = 51200;
                     }
 
                     headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+                    int parentStreamId = headersRO.parentStream();
+                    if (parentStreamId == streamId)
+                    {
+                        // 5.3.1 A stream cannot depend on itself
+                        streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                        return false;
+                    }
                     if (headersRO.dataLength() < 0)
                     {
                         error(Http2ErrorCode.PROTOCOL_ERROR);
@@ -882,14 +899,67 @@ System.out.println("---> " + http2RO);
         private void doWindow()
         {
             int streamId = http2RO.streamId();
+            if (http2RO.payloadLength() != 4)
+            {
+                if (streamId == 0)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+                else
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+            }
             if (streamId != 0)
             {
                 Http2Stream stream = http2Streams.get(streamId);
                 if (stream == null || stream.state == State.IDLE)
                 {
                     error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
                 }
             }
+            http2WindowRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            // 6.9 WINDOW_UPDATE - legal range for flow-control window increment is 1 to 2^31-1 octets.
+            if (http2WindowRO.size() < 1)
+            {
+                if (streamId == 0)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+                else
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+            }
+
+            // 6.9.1 A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets.
+            if (streamId == 0)
+            {
+                http2Window += http2WindowRO.size();
+                System.out.println("http2Window = " + http2Window);
+                if (http2Window > Integer.MAX_VALUE)
+                {
+                    error(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    return;
+                }
+            }
+            else
+            {
+                Http2Stream stream = http2Streams.get(streamId);
+                stream.http2Window += http2WindowRO.size();
+                if (stream.http2Window > Integer.MAX_VALUE)
+                {
+                    streamError(streamId, Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    return;
+                }
+            }
+
         }
 
         private void doData()
@@ -1524,6 +1594,7 @@ System.out.println("---> " + http2RO);
         private final long targetId;
         private Route route;
         private State state;
+        private long http2Window;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state)
         {

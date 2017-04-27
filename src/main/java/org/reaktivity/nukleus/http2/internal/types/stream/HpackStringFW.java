@@ -52,14 +52,13 @@ public class HpackStringFW extends Flyweight
 
     public boolean error()
     {
-        return integerRO.limit() + integerRO.integer() > maxLimit();
+        return integerRO.error() || integerRO.limit() + integerRO.integer() > maxLimit();
     }
 
     @Override
     public int limit()
     {
-        int limit = integerRO.limit() + integerRO.integer();
-        return limit > maxLimit() ? maxLimit() : limit;
+        return error() ? maxLimit() : integerRO.limit() + integerRO.integer();
     }
 
     @Override
