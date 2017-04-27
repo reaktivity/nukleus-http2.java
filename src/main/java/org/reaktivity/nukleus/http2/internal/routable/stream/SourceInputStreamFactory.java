@@ -71,7 +71,6 @@ import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputS
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UPDATE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
@@ -101,6 +100,7 @@ public final class SourceInputStreamFactory
     private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
     private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
     private final Http2RstStreamFW.Builder resetRW = new Http2RstStreamFW.Builder();
+    private final HeadersContext headersContext = new HeadersContext();
 
     private final Source source;
     private final LongFunction<List<Route>> supplyRoutes;
@@ -121,6 +121,33 @@ public final class SourceInputStreamFactory
         HALF_CLOSED_LOCAL,
         HALF_CLOSED_REMOTE,
         CLOSED
+    }
+
+    private static final class HeadersContext
+    {
+        Http2ErrorCode connectionError;
+        Map<String, String> headers = new HashMap<>();
+        int method;
+        int scheme;
+        int path;
+        boolean regularHeader;
+        Http2ErrorCode streamError;
+
+        void reset()
+        {
+            connectionError = null;
+            headers.clear();
+            method = 0;
+            scheme = 0;
+            path = 0;
+            regularHeader = false;
+            streamError = null;
+        }
+
+        boolean error()
+        {
+            return streamError != null || connectionError != null;
+        }
     }
 
     public SourceInputStreamFactory(
@@ -185,7 +212,6 @@ public final class SourceInputStreamFactory
         private Settings remoteSettings;
         private boolean expectContinuation;
         private int expectContinuationStreamId;
-        private boolean compressionError;
         private boolean expectDynamicTableSizeUpdate = true;
 
         @Override
@@ -762,19 +788,42 @@ System.out.println("---> " + http2RO);
             State state = http2RO.endStream() ? HALF_CLOSED_REMOTE : OPEN;
             stream = newStream(streamId, state);
 
+            headersContext.reset();
 
             // TODO avoid iterating over headers twice
-            Map<String, String> headersMap = new HashMap<>();
+            BiConsumer<DirectBuffer, DirectBuffer> collectHeaders = this::collectHeaders;
+            BiConsumer<DirectBuffer, DirectBuffer> validatePseudoHeaders = collectHeaders.andThen(this::validatePseudoHeaders);
+            BiConsumer<DirectBuffer, DirectBuffer> uppercaseHeaders = validatePseudoHeaders.andThen(this::uppercaseHeaders);
+            BiConsumer<DirectBuffer, DirectBuffer> nameValue = uppercaseHeaders.andThen(this::connectionHeaders);
+
             Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
             consumer = consumer.andThen(this::dynamicTableSizeUpdate);
-            consumer = consumer.andThen(h -> decodeHeaderField(h, headersMap));
+            consumer = consumer.andThen(h -> decodeHeaderField(h, true, nameValue));
+
             blockRO.forEach(consumer);
-            if (compressionError)
+            // All HTTP/2 requests MUST include exactly one valid value for the
+            // ":method", ":scheme", and ":path" pseudo-header fields, unless it is
+            // a CONNECT request (Section 8.3).  An HTTP request that omits
+            // mandatory pseudo-header fields is malformed
+            if (!headersContext.error() && (headersContext.method != 1 || headersContext.scheme != 1 || headersContext.path != 1))
             {
-                error(Http2ErrorCode.COMPRESSION_ERROR);
-                return;
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
             }
-            final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
+            if (headersContext.error())
+            {
+                if (headersContext.streamError != null)
+                {
+                    streamError(streamId, headersContext.streamError);
+                    return;
+                }
+                if (headersContext.connectionError != null)
+                {
+                    error(headersContext.connectionError);
+                    return;
+                }
+            }
+
+            final Optional<Route> optional = resolveTarget(sourceRef, headersContext.headers);
             Route route = stream.route = optional.get();
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
@@ -833,10 +882,13 @@ System.out.println("---> " + http2RO);
         private void doWindow()
         {
             int streamId = http2RO.streamId();
-            Http2Stream stream = http2Streams.get(streamId);
-            if (stream == null || stream.state == State.IDLE)
+            if (streamId != 0)
             {
-                error(Http2ErrorCode.PROTOCOL_ERROR);
+                Http2Stream stream = http2Streams.get(streamId);
+                if (stream == null || stream.state == State.IDLE)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                }
             }
         }
 
@@ -1195,15 +1247,15 @@ System.out.println("---> " + http2RO);
 
         private void validateHeaderFieldType(HpackHeaderFieldFW hf)
         {
-            if (!compressionError && hf.type() == UNKNOWN)
+            if (!headersContext.error() && hf.type() == UNKNOWN)
             {
-                compressionError = true;
+                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
             }
         }
 
         private void dynamicTableSizeUpdate(HpackHeaderFieldFW hf)
         {
-            if (!compressionError)
+            if (!headersContext.error())
             {
                 System.out.println("hf type = " + hf.type());
 
@@ -1219,13 +1271,13 @@ System.out.println("---> " + http2RO);
                         if (!expectDynamicTableSizeUpdate)
                         {
                             // dynamic table size update MUST occur at the beginning of the first header block
-                            compressionError = true;
+                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                             return;
                         }
                         int maxTableSize = hf.tableSize();
                         if (maxTableSize > localSettings.headerTableSize)
                         {
-                            compressionError = true;
+                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                             return;
                         }
                         decodeContext.updateSize(hf.tableSize());
@@ -1234,29 +1286,120 @@ System.out.println("---> " + http2RO);
             }
         }
 
+        private void validatePseudoHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error())
+            {
+                if (name.capacity() > 0 && name.getByte(0) == ':')
+                {
+                    // All pseudo-header fields MUST appear in the header block before regular header fields
+                    if (headersContext.regularHeader)
+                    {
+                        headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                        return;
+                    }
+                    // request pseudo-header fields MUST be one of :authority, :method, :path, :scheme,
+                    int index = decodeContext.index(name);
+                    switch (index)
+                    {
+                        case 1:             // :authority
+                            break;
+                        case 2:             // :method
+                            headersContext.method++;
+                            break;
+                        case 4:             // :path
+                            if (value.capacity() > 0)       // :path MUST not be empty
+                            {
+                                headersContext.path++;
+                            }
+                            break;
+                        case 6:             // :scheme
+                            headersContext.scheme++;
+                            break;
+                        default:
+                            headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                            return;
+                    }
+                }
+                else
+                {
+                    headersContext.regularHeader = true;
+                }
+            }
+        }
+
+        private void connectionHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            DirectBuffer connection = new UnsafeBuffer("connection".getBytes(UTF_8));
+            if (!headersContext.error() && name.equals(connection))
+            {
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+            }
+        }
+
+        private void uppercaseHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error())
+            {
+                for(int i=0; i < name.capacity(); i++)
+                {
+                    if (name.getByte(i) >= 'A' && name.getByte(i) <= 'Z')
+                    {
+                        headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                    }
+                }
+            }
+        }
+
+//        // MUST not omit or duplicate ":method" pseudo-header field
+//        private void validateMethod(DirectBuffer name, DirectBuffer value)
+//        {
+//            if (!headersContext.compressionError && name.equals(decodeContext.nameBuffer(2)))
+//            {
+//                headersContext.method++;
+//            }
+//        }
+//
+//        // MUST not omit or duplicate ":scheme" pseudo-header field
+//        private void validateScheme(DirectBuffer name, DirectBuffer value)
+//        {
+//            if (!headersContext.compressionError && name.equals(decodeContext.nameBuffer(6)))
+//            {
+//                headersContext.scheme++;
+//            }
+//        }
+//
+//        // MUST not omit or duplicate ":path" pseudo-header field, and value cannot be empty
+//        private void validatePath(DirectBuffer name, DirectBuffer value)
+//        {
+//            if (!headersContext.compressionError && name.equals(decodeContext.nameBuffer(4)) && value.capacity() > 0)
+//            {
+//                headersContext.path++;
+//            }
+//        }
+
+        // Collect headers into map to resolve target
+        // TODO avoid this
+        private void collectHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error())
+            {
+                String nameStr = name.getStringWithoutLengthUtf8(0, name.capacity());
+                String valueStr = value.getStringWithoutLengthUtf8(0, value.capacity());
+                headersContext.headers.put(nameStr, valueStr);
+            }
+        }
+
         private void decodeHeaderField(HpackHeaderFieldFW hf,
                                        ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder)
         {
-            if (!compressionError)
+            if (!headersContext.error())
             {
                 decodeHeaderField(hf, false, (name, value) -> builder.item(i -> i.representation((byte) 0)
                                                                                  .name(name, 0, name.capacity())
                                                                                  .value(value, 0, value.capacity())));
             }
 
-        }
-
-        private void decodeHeaderField(HpackHeaderFieldFW hf, Map<String, String> headersMap)
-        {
-            if (!compressionError)
-            {
-                decodeHeaderField(hf, true, (n, v) ->
-                {
-                    String name = n.getStringWithoutLengthUtf8(0, n.capacity());
-                    String value = v.getStringWithoutLengthUtf8(0, v.capacity());
-                    headersMap.put(name, value);
-                });
-            }
         }
 
         private void decodeHeaderField(HpackHeaderFieldFW hf,
@@ -1270,7 +1413,7 @@ System.out.println("---> " + http2RO);
                     int index = hf.index();
                     if (!decodeContext.valid(index))
                     {
-                        compressionError = true;
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                         return;
                     }
                     DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
@@ -1283,7 +1426,7 @@ System.out.println("---> " + http2RO);
                     HpackLiteralHeaderFieldFW literalRO = hf.literal();
                     if (literalRO.error())
                     {
-                        compressionError = true;
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                         return;
                     }
                     switch (literalRO.nameType())
@@ -1301,7 +1444,7 @@ System.out.println("---> " + http2RO);
                                 int length = HpackHuffman.decode(valuePayload, dst);
                                 if (length == -1)
                                 {
-                                    compressionError = true;
+                                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                                     return;
                                 }
                                 valuePayload = new UnsafeBuffer(dst, 0, length);
@@ -1320,7 +1463,7 @@ System.out.println("---> " + http2RO);
                                 int length = HpackHuffman.decode(namePayload, dst);
                                 if (length == -1)
                                 {
-                                    compressionError = true;
+                                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                                     return;
                                 }
                                 namePayload = new UnsafeBuffer(dst, 0, length);
@@ -1335,7 +1478,7 @@ System.out.println("---> " + http2RO);
                                 int length = HpackHuffman.decode(valuePayload, dst);
                                 if (length == -1)
                                 {
-                                    compressionError = true;
+                                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                                     return;
                                 }
                                 valuePayload = new UnsafeBuffer(dst, 0, length);
