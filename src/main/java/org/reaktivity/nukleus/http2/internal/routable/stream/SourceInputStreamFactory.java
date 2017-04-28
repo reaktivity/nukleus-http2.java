@@ -46,6 +46,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
@@ -95,6 +96,7 @@ public final class SourceInputStreamFactory
     private final Http2ContinuationFW continationRO = new Http2ContinuationFW();
     private final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
     private final Http2WindowUpdateFW http2WindowRO = new Http2WindowUpdateFW();
+    private final Http2PriorityFW priorityRO = new Http2PriorityFW();
 
     private final Http2PingFW pingRO = new Http2PingFW();
 
@@ -788,6 +790,14 @@ System.out.println("---> " + http2RO);
             if (payloadLength != 5)
             {
                 streamError(streamId, Http2ErrorCode.FRAME_SIZE_ERROR);
+                return;
+            }
+            priorityRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            int parentStreamId = priorityRO.parentStream();
+            if (parentStreamId == streamId)
+            {
+                // 5.3.1 A stream cannot depend on itself
+                streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
         }
