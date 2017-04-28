@@ -216,6 +216,8 @@ public final class SourceInputStreamFactory
         private int expectContinuationStreamId;
         private boolean expectDynamicTableSizeUpdate = true;
         private long http2Window;
+        private boolean prefaceAvailable;
+        private boolean http2FrameAvailable;
 
         @Override
         public String toString()
@@ -402,7 +404,7 @@ System.out.println("processData length = " + length);
                 {
                     System.out.println("processData decode offset = " + offset + " limit = " + limit);
 
-                    offset = decoderState.decode(buffer, offset, limit);
+                    offset += decoderState.decode(buffer, offset, limit);
                 }
             }
         }
@@ -436,14 +438,15 @@ System.out.println("processData length = " + length);
 
         private int decodePreface(final DirectBuffer buffer, final int offset, final int limit)
         {
-            if (!prefaceAvailable(buffer, offset, limit))
+            int length = prefaceAvailable(buffer, offset, limit);
+            if (!prefaceAvailable)
             {
-                return limit;
+                return length;
             }
             if (!prefaceRO.matches())
             {
                 processUnexpected(sourceId);
-                return limit;
+                return length;
             }
             this.decoderState = this::decodeHttp2Frame;
             source.doWindow(sourceId, prefaceRO.sizeof());
@@ -459,9 +462,7 @@ System.out.println("processData length = " + length);
                                                  .build();
 
             replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.sizeof());
-
-
-            return prefaceRO.limit();
+            return length;
         }
 
         private int http2FrameLength(DirectBuffer buffer, final int offset, int limit)
@@ -477,17 +478,17 @@ System.out.println("processData length = " + length);
          * Assembles a complete HTTP2 client preface and the flyweight is wrapped with the
          * buffer (it could be given buffer or slab)
          *
-         * @return true if a complete HTTP2 frame is assembled
-         *         false otherwise
+         * @return no of bytes consumed
          */
-        private boolean prefaceAvailable(DirectBuffer buffer, int offset, int limit)
+        private int prefaceAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
-            if (frameSlotPosition > 0 && frameSlotPosition +available >= PRI_REQUEST.length)
+            if (frameSlotPosition > 0 && frameSlotPosition + available >= PRI_REQUEST.length)
             {
                 MutableDirectBuffer prefaceBuffer = frameSlab.buffer(frameSlotIndex);
-                prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, PRI_REQUEST.length- frameSlotPosition);
+                int remainingLength = PRI_REQUEST.length - frameSlotPosition;
+                prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
                 prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
                 if (frameSlotIndex != SLOT_NOT_AVAILABLE)
                 {
@@ -495,12 +496,14 @@ System.out.println("processData length = " + length);
                     frameSlotIndex = SLOT_NOT_AVAILABLE;
                     frameSlotPosition = 0;
                 }
-                return true;
+                prefaceAvailable = true;
+                return remainingLength;
             }
             else if (available >= PRI_REQUEST.length)
             {
                 prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
-                return true;
+                prefaceAvailable = true;
+                return PRI_REQUEST.length;
             }
 
             assert frameSlotIndex == SLOT_NOT_AVAILABLE;
@@ -509,24 +512,25 @@ System.out.println("processData length = " + length);
             {
                 // all slots are in use, just reset the connection
                 source.doReset(sourceId);
-                return false;
+                prefaceAvailable = false;
+                return available;               // assume everything is consumed
             }
             frameSlotPosition = 0;
             MutableDirectBuffer prefaceBuffer = frameSlab.buffer(frameSlotIndex);
             prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
-            return false;
+            prefaceAvailable = false;
+            return available;
         }
 
         /*
          * Assembles a complete HTTP2 frame and the flyweight is wrapped with the
          * buffer (it could be given buffer or slab)
          *
-         * @return true if a complete HTTP2 frame is assembled
-         *         false otherwise
+         * @return consumed octets
          */
         // TODO check slab capacity
-        private boolean http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
+        private int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
@@ -535,29 +539,32 @@ System.out.println("processData length = " + length);
                 MutableDirectBuffer frameBuffer = SourceInputStreamFactory.this.frameSlab.buffer(frameSlotIndex);
                 if (frameSlotPosition < 3)
                 {
-                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3- frameSlotPosition);
+                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
                 }
-                int length = http2FrameLength(frameBuffer, 0, 3);
-                if (frameSlotPosition + available >= length)
+                int frameLength = http2FrameLength(frameBuffer, 0, 3);
+                if (frameSlotPosition + available >= frameLength)
                 {
-                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, length- frameSlotPosition);
-                    http2RO.wrap(frameBuffer, 0, length);
+                    int remainingFrameLength = frameLength - frameSlotPosition;
+                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, remainingFrameLength);
+                    http2RO.wrap(frameBuffer, 0, frameLength);
                     if (frameSlotIndex != SLOT_NOT_AVAILABLE)
                     {
                         frameSlab.release(frameSlotIndex);
                         frameSlotIndex = SLOT_NOT_AVAILABLE;
                         frameSlotPosition = 0;
                     }
-                    return true;
+                    http2FrameAvailable = true;
+                    return remainingFrameLength;
                 }
             }
             else if (available >= 3)
             {
-                int length = http2FrameLength(buffer, offset, limit);
-                if (available >= length)
+                int frameLength = http2FrameLength(buffer, offset, limit);
+                if (available >= frameLength)
                 {
-                    http2RO.wrap(buffer, offset, offset + length);
-                    return true;
+                    http2RO.wrap(buffer, offset, offset + frameLength);
+                    http2FrameAvailable = true;
+                    return frameLength;
                 }
             }
 
@@ -567,13 +574,15 @@ System.out.println("processData length = " + length);
             {
                 // all slots are in use, just reset the connection
                 source.doReset(sourceId);
-                return false;
+                http2FrameAvailable = false;
+                return available;
             }
             frameSlotPosition = 0;
             MutableDirectBuffer frameBuffer = frameSlab.buffer(frameSlotIndex);
             frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
-            return false;
+            http2FrameAvailable = false;
+            return available;
         }
 
         /*
@@ -693,16 +702,18 @@ System.out.println("processData length = " + length);
 
         private int decodeHttp2Frame(final DirectBuffer buffer, final int offset, final int limit)
         {
-            if (!http2FrameAvailable(buffer, offset, limit))
+            int length = http2FrameAvailable(buffer, offset, limit);
+            if (!http2FrameAvailable)
             {
-                return limit;
+                System.out.println("!http2FrameAvailable Returning length = " + length);
+                return length;
             }
 System.out.println("---> " + http2RO);
             Http2FrameType http2FrameType = http2RO.type();
             // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
             if (!http2HeadersAvailable())
             {
-                return offset + http2RO.sizeof();
+                return length;
             }
             switch (http2FrameType)
             {
@@ -738,7 +749,8 @@ System.out.println("---> " + http2RO);
                     // Ignore and discard unknown frame
             }
 
-            return offset + http2RO.sizeof();
+            System.out.println("End Returning length = " + length);
+            return length;
         }
 
         private void doGoAway()
