@@ -55,6 +55,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -136,6 +137,7 @@ public final class SourceInputStreamFactory
         int path;
         boolean regularHeader;
         Http2ErrorCode streamError;
+        int contentLength = -1;
 
         void reset()
         {
@@ -146,6 +148,7 @@ public final class SourceInputStreamFactory
             path = 0;
             regularHeader = false;
             streamError = null;
+            contentLength = -1;
         }
 
         boolean error()
@@ -829,11 +832,13 @@ System.out.println("---> " + http2RO);
 
             headersContext.reset();
 
-            // TODO avoid iterating over headers twice
-            BiConsumer<DirectBuffer, DirectBuffer> collectHeaders = this::collectHeaders;
-            BiConsumer<DirectBuffer, DirectBuffer> validatePseudoHeaders = collectHeaders.andThen(this::validatePseudoHeaders);
-            BiConsumer<DirectBuffer, DirectBuffer> uppercaseHeaders = validatePseudoHeaders.andThen(this::uppercaseHeaders);
-            BiConsumer<DirectBuffer, DirectBuffer> nameValue = uppercaseHeaders.andThen(this::connectionHeaders);
+            BiConsumer<DirectBuffer, DirectBuffer> nameValue =
+                    ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
+                            .andThen(this::validatePseudoHeaders)
+                            .andThen(this::uppercaseHeaders)
+                            .andThen(this::connectionHeaders)
+                            .andThen(this::contentLengthHeader)
+                            .andThen(this::teHeader);
 
             Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
             consumer = consumer.andThen(this::dynamicTableSizeUpdate);
@@ -861,6 +866,7 @@ System.out.println("---> " + http2RO);
                     return;
                 }
             }
+            stream.contentLength = headersContext.contentLength;
 
             final Optional<Route> optional = resolveTarget(sourceRef, headersContext.headers);
             Route route = stream.route = optional.get();
@@ -1010,10 +1016,21 @@ System.out.println("---> " + http2RO);
             }
             newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
 
+            stream.totalData += http2RO.payloadLength();
+
             if (dataRO.endStream())
             {
+                // 8.1.2.6 A request is malformed if the value of a content-length header field does
+                // not equal the sum of the DATA frame payload lengths
+                if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    newTarget.doEnd(stream.targetId);
+                    return;
+                }
                 newTarget.doHttpEnd(stream.targetId);
             }
+
         }
 
         private void doSettings()
@@ -1429,6 +1446,27 @@ System.out.println("---> " + http2RO);
             }
         }
 
+        private void contentLengthHeader(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error() && name.equals(decodeContext.nameBuffer(28)))
+            {
+                String contentLength = value.getStringWithoutLengthUtf8(0, value.capacity());
+                headersContext.contentLength = Integer.parseInt(contentLength);
+            }
+        }
+
+        // 8.1.2.2 TE header MUST NOT contain any value other than "trailers".
+        private void teHeader(DirectBuffer name, DirectBuffer value)
+        {
+            UnsafeBuffer te = new UnsafeBuffer("te".getBytes(StandardCharsets.UTF_8));
+            UnsafeBuffer trailers = new UnsafeBuffer("trailers".getBytes(StandardCharsets.UTF_8));
+
+            if (!headersContext.error() && name.equals(te) && !value.equals(trailers))
+            {
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+            }
+        }
+
         private void uppercaseHeaders(DirectBuffer name, DirectBuffer value)
         {
             if (!headersContext.error())
@@ -1617,6 +1655,8 @@ System.out.println("---> " + http2RO);
         private Route route;
         private State state;
         private long http2Window;
+        private long contentLength;
+        private long totalData;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state)
         {
