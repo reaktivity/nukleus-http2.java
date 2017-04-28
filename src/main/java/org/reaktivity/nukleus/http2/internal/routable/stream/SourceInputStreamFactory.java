@@ -533,6 +533,7 @@ System.out.println("processData length = " + length);
          * buffer (it could be given buffer or slab)
          *
          * @return consumed octets
+         *         -1 if the frame size is more than the max frame size
          */
         // TODO check slab capacity
         private int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
@@ -547,6 +548,10 @@ System.out.println("processData length = " + length);
                     frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
                 }
                 int frameLength = http2FrameLength(frameBuffer, 0, 3);
+                if (frameLength > localSettings.maxFrameSize)
+                {
+                    return -1;
+                }
                 if (frameSlotPosition + available >= frameLength)
                 {
                     int remainingFrameLength = frameLength - frameSlotPosition;
@@ -565,6 +570,10 @@ System.out.println("processData length = " + length);
             else if (available >= 3)
             {
                 int frameLength = http2FrameLength(buffer, offset, limit);
+                if (frameLength > localSettings.maxFrameSize)
+                {
+                    return -1;
+                }
                 if (available >= frameLength)
                 {
                     http2RO.wrap(buffer, offset, offset + frameLength);
@@ -708,6 +717,11 @@ System.out.println("processData length = " + length);
         private int decodeHttp2Frame(final DirectBuffer buffer, final int offset, final int limit)
         {
             int length = http2FrameAvailable(buffer, offset, limit);
+            if (length == -1)
+            {
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return limit - offset;
+            }
             if (!http2FrameAvailable)
             {
                 System.out.println("!http2FrameAvailable Returning length = " + length);
