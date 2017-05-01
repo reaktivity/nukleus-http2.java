@@ -154,7 +154,6 @@ public class HpackContextTest
         assertEquals(-1, context.index("name1", "value1"));
 
         context.add("name6", "value66666666666666666666666666666666");
-        System.out.println("*************** table size = " + context.tableSize);
         assertEquals(62, context.index("name6"));
         assertEquals(62, context.index("name6", "value66666666666666666666666666666666"));
         assertEquals(63, context.index("name5"));

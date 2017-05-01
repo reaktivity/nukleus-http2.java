@@ -90,7 +90,7 @@ public final class SourceInputStreamFactory
     private final ResetFW resetRO = new ResetFW();
 
     private final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
-    private final Http2FrameFW http2RO = new Http2FrameFW();
+    /* private */ final Http2FrameFW http2RO = new Http2FrameFW();
     private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
     private final Http2HeadersFW headersRO = new Http2HeadersFW();
@@ -182,7 +182,7 @@ public final class SourceInputStreamFactory
         return new SourceInputStream()::handleStream;
     }
 
-    private final class SourceInputStream
+    /* private */ final class SourceInputStream
     {
         private MessageHandler streamState;
         private MessageHandler throttleState;
@@ -222,7 +222,7 @@ public final class SourceInputStreamFactory
         private boolean expectDynamicTableSizeUpdate = true;
         private long http2Window;
         private boolean prefaceAvailable;
-        private boolean http2FrameAvailable;
+        /* private */ boolean http2FrameAvailable;
 
         @Override
         public String toString()
@@ -231,7 +231,7 @@ public final class SourceInputStreamFactory
                     getClass().getSimpleName(), source.routableName(), sourceId, window);
         }
 
-        private SourceInputStream()
+        /* private */ SourceInputStream()
         {
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
@@ -386,15 +386,12 @@ final int initial = 51200;
             int index,
             int length)
         {
-System.out.println("processData length = " + length);
             dataRO.wrap(buffer, index, index + length);
 
             window -= dataRO.length();
 
             if (window < 0)
             {
-                System.out.println("processData window = " + window);
-
                 processUnexpected(buffer, index, length);
             }
             else
@@ -407,8 +404,6 @@ System.out.println("processData length = " + length);
 
                 while (offset < limit)
                 {
-                    System.out.println("processData decode offset = " + offset + " limit = " + limit);
-
                     offset += decoderState.decode(buffer, offset, limit);
                 }
             }
@@ -536,7 +531,7 @@ System.out.println("processData length = " + length);
          *         -1 if the frame size is more than the max frame size
          */
         // TODO check slab capacity
-        private int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
+        /* private */ int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
@@ -742,10 +737,8 @@ System.out.println("processData length = " + length);
             }
             if (!http2FrameAvailable)
             {
-                System.out.println("!http2FrameAvailable Returning length = " + length);
                 return length;
             }
-System.out.println("---> " + http2RO);
             Http2FrameType http2FrameType = http2RO.type();
             // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
             if (!http2HeadersAvailable())
@@ -786,7 +779,6 @@ System.out.println("---> " + http2RO);
                     // Ignore and discard unknown frame
             }
 
-            System.out.println("End Returning length = " + length);
             return length;
         }
 
@@ -1002,7 +994,6 @@ System.out.println("---> " + http2RO);
             if (streamId == 0)
             {
                 http2Window += http2WindowRO.size();
-                System.out.println("http2Window = " + http2Window);
                 if (http2Window > Integer.MAX_VALUE)
                 {
                     error(Http2ErrorCode.FLOW_CONTROL_ERROR);
@@ -1398,8 +1389,6 @@ System.out.println("---> " + http2RO);
         {
             if (!headersContext.error())
             {
-                System.out.println("hf type = " + hf.type());
-
                 switch (hf.type())
                 {
                     case INDEXED:
@@ -1407,8 +1396,6 @@ System.out.println("---> " + http2RO);
                         expectDynamicTableSizeUpdate = false;
                         break;
                     case UPDATE:
-                        System.out.println("Dynamic table Update = " + hf.tableSize());
-
                         if (!expectDynamicTableSizeUpdate)
                         {
                             // dynamic table size update MUST occur at the beginning of the first header block

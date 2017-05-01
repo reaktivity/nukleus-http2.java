@@ -162,7 +162,6 @@ public class HpackContext
             wouldbeSize -= table.get(noEntries).size;
             noEntries++;
         }
-        System.out.println("Evict i items ***** " + noEntries);
         if (noEntries > 0)
         {
             evict(noEntries);
@@ -200,7 +199,6 @@ public class HpackContext
                 wouldbeSize -= table.get(noEntries).size;
                 noEntries++;
             }
-            System.out.println("Evict i items ***** " + noEntries);
             if (noEntries > 0)
             {
                 evict(noEntries);
@@ -224,16 +222,12 @@ public class HpackContext
                 Long id = noEvictions + i;
                 if (id.equals(name2Index.get(header.name)))
                 {
-System.out.println("Evict name2Index ***** " + header.name.getStringWithoutLengthUtf8(0, header.name.capacity()));
-
                     name2Index.remove(header.name, id);
 
                 }
                 NameValue nameValue = new NameValue(header.name, header.value);
                 if (id.equals(namevalue2Index.get(nameValue)))
                 {
-System.out.println("Evict namevalue2Index ***** " + header.name.getStringWithoutLengthUtf8(0, header.name.capacity()));
-
                     namevalue2Index.remove(nameValue, id);
                 }
             }
@@ -324,7 +318,6 @@ System.out.println("Evict namevalue2Index ***** " + header.name.getStringWithout
 
     private int idToIndex(long id)
     {
-        System.out.println("idToIndex = " + id);
         return (int) (STATIC_TABLE_LENGTH + table.size() - (id - noEvictions) - 1);
 
     }
