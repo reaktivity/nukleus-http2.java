@@ -376,7 +376,7 @@ public final class SourceInputStreamFactory
             this.decoderState = this::decodePreface;
 
             // TODO: acquire slab for request decode of up to initial bytes
-final int initial = 51200;
+            final int initial = 512;
             this.window += initial;
             source.doWindow(sourceId, initial);
         }
@@ -396,12 +396,10 @@ final int initial = 51200;
             }
             else
             {
-
                 final OctetsFW payload = dataRO.payload();
                 final int limit = payload.limit();
 
                 int offset = payload.offset();
-
                 while (offset < limit)
                 {
                     offset += decoderState.decode(buffer, offset, limit);
@@ -1499,33 +1497,6 @@ final int initial = 51200;
                 }
             }
         }
-
-//        // MUST not omit or duplicate ":method" pseudo-header field
-//        private void validateMethod(DirectBuffer name, DirectBuffer value)
-//        {
-//            if (!headersContext.compressionError && name.equals(decodeContext.nameBuffer(2)))
-//            {
-//                headersContext.method++;
-//            }
-//        }
-//
-//        // MUST not omit or duplicate ":scheme" pseudo-header field
-//        private void validateScheme(DirectBuffer name, DirectBuffer value)
-//        {
-//            if (!headersContext.compressionError && name.equals(decodeContext.nameBuffer(6)))
-//            {
-//                headersContext.scheme++;
-//            }
-//        }
-//
-//        // MUST not omit or duplicate ":path" pseudo-header field, and value cannot be empty
-//        private void validatePath(DirectBuffer name, DirectBuffer value)
-//        {
-//            if (!headersContext.compressionError && name.equals(decodeContext.nameBuffer(4)) && value.capacity() > 0)
-//            {
-//                headersContext.path++;
-//            }
-//        }
 
         // Collect headers into map to resolve target
         // TODO avoid this

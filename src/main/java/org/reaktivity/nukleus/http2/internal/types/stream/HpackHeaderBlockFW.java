@@ -55,10 +55,7 @@ public class HpackHeaderBlockFW extends Flyweight
 
     public boolean error()
     {
-        boolean[] errors = new boolean[1];
-        listFW.forEach(h -> errors[0] = errors[0] || h.error());
-
-        return  errors[0];
+        return listFW.anyMatch(HpackHeaderFieldFW::error);
     }
 
     @Override
