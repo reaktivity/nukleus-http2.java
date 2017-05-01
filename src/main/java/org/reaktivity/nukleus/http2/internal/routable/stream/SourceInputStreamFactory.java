@@ -540,7 +540,7 @@ System.out.println("processData length = " + length);
         {
             int available = limit - offset;
 
-            if (frameSlotPosition > 0 && frameSlotPosition +available >= 3)
+            if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
             {
                 MutableDirectBuffer frameBuffer = SourceInputStreamFactory.this.frameSlab.buffer(frameSlotIndex);
                 if (frameSlotPosition < 3)
@@ -557,12 +557,7 @@ System.out.println("processData length = " + length);
                     int remainingFrameLength = frameLength - frameSlotPosition;
                     frameBuffer.putBytes(frameSlotPosition, buffer, offset, remainingFrameLength);
                     http2RO.wrap(frameBuffer, 0, frameLength);
-                    if (frameSlotIndex != SLOT_NOT_AVAILABLE)
-                    {
-                        frameSlab.release(frameSlotIndex);
-                        frameSlotIndex = SLOT_NOT_AVAILABLE;
-                        frameSlotPosition = 0;
-                    }
+                    releaseSlot();
                     http2FrameAvailable = true;
                     return remainingFrameLength;
                 }
@@ -582,21 +577,44 @@ System.out.println("processData length = " + length);
                 }
             }
 
-            assert frameSlotIndex == SLOT_NOT_AVAILABLE;
-            frameSlotIndex = frameSlab.acquire(sourceId);
-            if (frameSlotIndex == SLOT_NOT_AVAILABLE)
+            if (!acquireSlot())
             {
-                // all slots are in use, just reset the connection
-                source.doReset(sourceId);
                 http2FrameAvailable = false;
                 return available;
             }
-            frameSlotPosition = 0;
+
             MutableDirectBuffer frameBuffer = frameSlab.buffer(frameSlotIndex);
             frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
             http2FrameAvailable = false;
             return available;
+        }
+
+        private boolean acquireSlot()
+        {
+            if (frameSlotPosition == 0)
+            {
+                assert frameSlotIndex == SLOT_NOT_AVAILABLE;
+                frameSlotIndex = frameSlab.acquire(sourceId);
+                if (frameSlotIndex == SLOT_NOT_AVAILABLE)
+                {
+                    // all slots are in use, just reset the connection
+                    source.doReset(sourceId);
+                    http2FrameAvailable = false;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void releaseSlot()
+        {
+            if (frameSlotIndex != SLOT_NOT_AVAILABLE)
+            {
+                frameSlab.release(frameSlotIndex);
+                frameSlotIndex = SLOT_NOT_AVAILABLE;
+                frameSlotPosition = 0;
+            }
         }
 
         /*
