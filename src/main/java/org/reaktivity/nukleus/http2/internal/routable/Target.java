@@ -33,6 +33,11 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 
 public final class Target implements Nukleus
@@ -44,6 +49,10 @@ public final class Target implements Nukleus
     private final EndFW.Builder endRW = new EndFW.Builder();
 
     private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
+    private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
+    private final Http2RstStreamFW.Builder resetRW = new Http2RstStreamFW.Builder();
+    private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
+    private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
 
     private final String name;
     private final StreamsLayout layout;
@@ -216,6 +225,72 @@ public final class Target implements Nukleus
         streamsBuffer.write(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
+    public void doSettings(
+            long targetId,
+            int maxConcurrentStreams)
+    {
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitSettings(maxConcurrentStreams)))
+                            .extension(e -> e.reset())
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    public void doSettingsAck(
+            long targetId)
+    {
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitSettingsAck()))
+                            .extension(e -> e.reset())
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    public void doRst(
+            long targetId,
+            int streamId,
+            Http2ErrorCode errorCode)
+    {
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitRst(streamId, errorCode)))
+                            .extension(e -> e.reset())
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    public void doGoaway(
+            long targetId,
+            int lastStreamId,
+            Http2ErrorCode errorCode)
+    {
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitGoaway(lastStreamId, errorCode)))
+                            .extension(e -> e.reset())
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    public void doPingAck(
+            long targetId,
+            DirectBuffer payload)
+    {
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitPingAck(payload)))
+                            .extension(e -> e.reset())
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
     private Flyweight.Builder.Visitor visitHttpBeginEx(
         Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> headers)
     {
@@ -224,5 +299,59 @@ public final class Target implements Nukleus
                          .headers(headers)
                          .build()
                          .sizeof();
+    }
+
+    private Flyweight.Builder.Visitor visitSettings(
+            int maxConcurrentStreams)
+    {
+        return (buffer, offset, limit) ->
+                settingsRW.wrap(buffer, offset, limit)
+                          .maxConcurrentStreams(maxConcurrentStreams)
+                          .build()
+                          .sizeof();
+    }
+
+    private Flyweight.Builder.Visitor visitSettingsAck()
+    {
+        return (buffer, offset, limit) ->
+                settingsRW.wrap(buffer, offset, limit)
+                          .ack()
+                          .build()
+                          .sizeof();
+    }
+
+    private Flyweight.Builder.Visitor visitRst(
+            int streamId,
+            Http2ErrorCode errorCode)
+    {
+        return (buffer, offset, limit) ->
+                resetRW.wrap(buffer, offset, limit)
+                       .streamId(streamId)
+                       .errorCode(errorCode)
+                       .build()
+                       .sizeof();
+    }
+
+    private Flyweight.Builder.Visitor visitGoaway(
+            int lastStreamId,
+            Http2ErrorCode errorCode)
+    {
+        return (buffer, offset, limit) ->
+                goawayRW.wrap(buffer, offset, limit)
+                        .lastStreamId(lastStreamId)
+                        .errorCode(errorCode)
+                        .build()
+                        .sizeof();
+    }
+
+    private Flyweight.Builder.Visitor visitPingAck(
+            DirectBuffer payload)
+    {
+        return (buffer, offset, limit) ->
+                pingRW.wrap(buffer, offset, limit)
+                      .ack()
+                      .payload(payload)
+                      .build()
+                      .sizeof();
     }
 }
