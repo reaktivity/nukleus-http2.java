@@ -293,7 +293,7 @@ public class HpackHuffman
 
     private static final class Node
     {
-        int sym;
+        int symbol;
         Node left;
         Node right;
         Node[] transitions;     // node x byte --> node (256 transitions for byte)
@@ -302,7 +302,7 @@ public class HpackHuffman
 
         Node()
         {
-            this.sym = -1;
+            this.symbol = -1;
             this.transitions = new Node[256];
             this.symbols = new String[256];
         }
@@ -310,7 +310,7 @@ public class HpackHuffman
         @Override
         public String toString()
         {
-            return "node[sym="+(char)sym+"]";
+            return "node[sym="+(char) symbol +"]";
         }
     }
 
@@ -345,7 +345,7 @@ public class HpackHuffman
                     current = current.right;
                 }
             }
-            current.sym = sym;
+            current.symbol = sym;
             current.accept = sym != CODES.length-1;     // EOS is invalid in string literal
         }
 
@@ -386,13 +386,13 @@ public class HpackHuffman
         {
             int bit = ((b >>> i) & 0x01);           // Using MSB to traverse
             cur = bit == 0 ? cur.left : cur.right;
-            if (cur == null || cur.sym == 256)      // EOS is invalid in sequence
+            if (cur == null || cur.symbol == 256)      // EOS is invalid in sequence
             {
                 return;
             }
-            if (cur.sym != -1)                      // Can have two symbols in a byte traversal
+            if (cur.symbol != -1)                      // Can have two symbols in a byte traversal
             {
-                str = (str == null) ? ""+(char)cur.sym : str+(char)cur.sym;
+                str = (str == null) ? ""+(char)cur.symbol : str+(char)cur.symbol;
                 cur = ROOT;
             }
         }

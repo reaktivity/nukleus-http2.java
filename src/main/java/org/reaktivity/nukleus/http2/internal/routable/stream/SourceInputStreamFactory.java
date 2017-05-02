@@ -53,7 +53,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
-import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +70,8 @@ import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.SLOT_NO
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
@@ -215,6 +216,7 @@ public final class SourceInputStreamFactory
         private long http2Window;
         private boolean prefaceAvailable;
         /* private */ boolean http2FrameAvailable;
+        private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
 
         @Override
         public String toString()
@@ -233,6 +235,17 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
+            BiConsumer<DirectBuffer, DirectBuffer> nameValue =
+                    ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
+                            .andThen(this::validatePseudoHeaders)
+                            .andThen(this::uppercaseHeaders)
+                            .andThen(this::connectionHeaders)
+                            .andThen(this::contentLengthHeader)
+                            .andThen(this::teHeader);
+
+            Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
+            consumer = consumer.andThen(this::dynamicTableSizeUpdate);
+            this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, true, nameValue));
         }
 
         private void handleStream(
@@ -841,19 +854,9 @@ public final class SourceInputStreamFactory
 
             headersContext.reset();
 
-            BiConsumer<DirectBuffer, DirectBuffer> nameValue =
-                    ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
-                            .andThen(this::validatePseudoHeaders)
-                            .andThen(this::uppercaseHeaders)
-                            .andThen(this::connectionHeaders)
-                            .andThen(this::contentLengthHeader)
-                            .andThen(this::teHeader);
 
-            Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
-            consumer = consumer.andThen(this::dynamicTableSizeUpdate);
-            consumer = consumer.andThen(h -> decodeHeaderField(h, true, nameValue));
 
-            blockRO.forEach(consumer);
+            blockRO.forEach(headerFieldConsumer);
             // All HTTP/2 requests MUST include exactly one valid value for the
             // ":method", ":scheme", and ":path" pseudo-header fields, unless it is
             // a CONNECT request (Section 8.3).  An HTTP request that omits
@@ -1422,8 +1425,8 @@ public final class SourceInputStreamFactory
 
         private void connectionHeaders(DirectBuffer name, DirectBuffer value)
         {
-            DirectBuffer connection = new UnsafeBuffer("connection".getBytes(UTF_8));
-            if (!headersContext.error() && name.equals(connection))
+
+            if (!headersContext.error() && name.equals(HpackContext.CONNECTION))
             {
                 headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
             }
@@ -1441,10 +1444,7 @@ public final class SourceInputStreamFactory
         // 8.1.2.2 TE header MUST NOT contain any value other than "trailers".
         private void teHeader(DirectBuffer name, DirectBuffer value)
         {
-            UnsafeBuffer te = new UnsafeBuffer("te".getBytes(StandardCharsets.UTF_8));
-            UnsafeBuffer trailers = new UnsafeBuffer("trailers".getBytes(StandardCharsets.UTF_8));
-
-            if (!headersContext.error() && name.equals(te) && !value.equals(trailers))
+            if (!headersContext.error() && name.equals(TE) && !value.equals(TRAILERS))
             {
                 headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
             }
