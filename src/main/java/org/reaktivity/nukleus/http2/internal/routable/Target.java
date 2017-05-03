@@ -232,7 +232,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitSettings(maxConcurrentStreams)))
-                            .extension(e -> e.reset())
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -244,7 +243,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitSettingsAck()))
-                            .extension(e -> e.reset())
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -258,7 +256,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitRst(streamId, errorCode)))
-                            .extension(e -> e.reset())
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -272,7 +269,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitGoaway(lastStreamId, errorCode)))
-                            .extension(e -> e.reset())
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -285,7 +281,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitPingAck(payload)))
-                            .extension(e -> e.reset())
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
