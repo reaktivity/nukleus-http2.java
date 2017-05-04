@@ -37,11 +37,17 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
         return valueRO.limit();
     }
 
+    public boolean error()
+    {
+        return literalType() == LiteralType.UNKNOWN || (nameType() == NameType.NEW && nameRO.error()) || valueRO.error();
+    }
+
     public enum LiteralType
     {
         INCREMENTAL_INDEXING,   // Literal Header Field with Incremental Indexing
         WITHOUT_INDEXING,       // Literal Header Field without Indexing
         NEVER_INDEXED,          // Literal Header Field Never Indexed
+        UNKNOWN
     }
 
     public enum NameType
@@ -67,7 +73,7 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
             return LiteralType.NEVER_INDEXED;
         }
 
-        return null;
+        return LiteralType.UNKNOWN;
     }
 
     public int nameIndex()
@@ -201,7 +207,7 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
                 return LiteralType.NEVER_INDEXED;
             }
 
-            return null;
+            return LiteralType.UNKNOWN;
         }
 
         public HpackLiteralHeaderFieldFW.Builder name(int indexedName)

@@ -49,8 +49,13 @@ public class HpackHeaderBlockFW extends Flyweight
 
     public HpackHeaderBlockFW forEach(Consumer<HpackHeaderFieldFW> headerField)
     {
-        listFW.forEach(x -> headerField.accept(x));
+        listFW.forEach(headerField::accept);
         return this;
+    }
+
+    public boolean error()
+    {
+        return listFW.anyMatch(HpackHeaderFieldFW::error);
     }
 
     @Override

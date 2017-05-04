@@ -45,7 +45,7 @@
     <k3po.version>3.0.0-alpha-63</k3po.version>
     <jmh.version>1.12</jmh.version>
 
-    <nukleus.plugin.version>0.7.6</nukleus.plugin.version>
+    <nukleus.plugin.version>0.7.8</nukleus.plugin.version>
     <nukleus.version>0.2</nukleus.version>
     <nukleus.http2.spec.version>0.6</nukleus.http2.spec.version>
     <reaktor.test.version>0.1</reaktor.test.version>

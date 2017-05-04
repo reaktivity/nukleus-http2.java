@@ -39,7 +39,6 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
  */
 public class HpackIntegerFW extends Flyweight
 {
-
     private static final int[] TWON_TABLE;
     private final int n;
 
@@ -65,10 +64,15 @@ public class HpackIntegerFW extends Flyweight
         return value;
     }
 
+    public boolean error()
+    {
+        return offset() + decodedOctets > maxLimit();
+    }
+
     @Override
     public int limit()
     {
-        return offset() + decodedOctets;
+        return error() ? maxLimit() : offset() + decodedOctets;
     }
 
     @Override

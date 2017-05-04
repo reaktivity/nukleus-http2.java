@@ -42,13 +42,13 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
@@ -69,6 +70,9 @@ import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.SLOT_NO
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
@@ -91,13 +95,12 @@ public final class SourceInputStreamFactory
     private final Http2HeadersFW headersRO = new Http2HeadersFW();
     private final Http2ContinuationFW continationRO = new Http2ContinuationFW();
     private final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
+    private final Http2WindowUpdateFW http2WindowRO = new Http2WindowUpdateFW();
+    private final Http2PriorityFW priorityRO = new Http2PriorityFW();
 
     private final Http2PingFW pingRO = new Http2PingFW();
 
-    private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
-    private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
-    private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
-    private final Http2RstStreamFW.Builder resetRW = new Http2RstStreamFW.Builder();
+    private final HeadersContext headersContext = new HeadersContext();
 
     private final Source source;
     private final LongFunction<List<Route>> supplyRoutes;
@@ -106,8 +109,6 @@ public final class SourceInputStreamFactory
     private final LongObjectBiConsumer<Correlation> correlateNew;
     private final Slab frameSlab;
     private final Slab headersSlab;
-
-    private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[2048]);
 
     enum State
     {
@@ -118,6 +119,35 @@ public final class SourceInputStreamFactory
         HALF_CLOSED_LOCAL,
         HALF_CLOSED_REMOTE,
         CLOSED
+    }
+
+    private static final class HeadersContext
+    {
+        Http2ErrorCode connectionError;
+        Map<String, String> headers = new HashMap<>();
+        int method;
+        int scheme;
+        int path;
+        boolean regularHeader;
+        Http2ErrorCode streamError;
+        int contentLength = -1;
+
+        void reset()
+        {
+            connectionError = null;
+            headers.clear();
+            method = 0;
+            scheme = 0;
+            path = 0;
+            regularHeader = false;
+            streamError = null;
+            contentLength = -1;
+        }
+
+        boolean error()
+        {
+            return streamError != null || connectionError != null;
+        }
     }
 
     public SourceInputStreamFactory(
@@ -182,7 +212,11 @@ public final class SourceInputStreamFactory
         private Settings remoteSettings;
         private boolean expectContinuation;
         private int expectContinuationStreamId;
-
+        private boolean expectDynamicTableSizeUpdate = true;
+        private long http2Window;
+        private boolean prefaceAvailable;
+        private boolean http2FrameAvailable;
+        private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
 
         @Override
         public String toString()
@@ -196,11 +230,22 @@ public final class SourceInputStreamFactory
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
             sourceOutputEstId = supplyStreamId.getAsLong();
-            decodeContext = new HpackContext();
-            encodeContext = new HpackContext();
             http2Streams = new Int2ObjectHashMap<>();
             localSettings = new Settings();
             remoteSettings = new Settings();
+            decodeContext = new HpackContext(localSettings.headerTableSize, false);
+            encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
+            BiConsumer<DirectBuffer, DirectBuffer> nameValue =
+                    ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
+                            .andThen(this::validatePseudoHeaders)
+                            .andThen(this::uppercaseHeaders)
+                            .andThen(this::connectionHeaders)
+                            .andThen(this::contentLengthHeader)
+                            .andThen(this::teHeader);
+
+            Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
+            consumer = consumer.andThen(this::dynamicTableSizeUpdate);
+            this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, true, nameValue));
         }
 
         private void handleStream(
@@ -335,8 +380,7 @@ public final class SourceInputStreamFactory
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;
 
-            // TODO: acquire slab for request decode of up to initial bytes
-            final int initial = 512;
+            final int initial = localSettings.maxFrameSize + 9;
             this.window += initial;
             source.doWindow(sourceId, initial);
         }
@@ -362,7 +406,7 @@ public final class SourceInputStreamFactory
                 int offset = payload.offset();
                 while (offset < limit)
                 {
-                    offset = decoderState.decode(buffer, offset, limit);
+                    offset += decoderState.decode(buffer, offset, limit);
                 }
             }
         }
@@ -396,14 +440,15 @@ public final class SourceInputStreamFactory
 
         private int decodePreface(final DirectBuffer buffer, final int offset, final int limit)
         {
-            if (!prefaceAvailable(buffer, offset, limit))
+            int length = prefaceAvailable(buffer, offset, limit);
+            if (!prefaceAvailable)
             {
-                return limit;
+                return length;
             }
             if (!prefaceRO.matches())
             {
                 processUnexpected(sourceId);
-                return limit;
+                return length;
             }
             this.decoderState = this::decodeHttp2Frame;
             source.doWindow(sourceId, prefaceRO.sizeof());
@@ -413,15 +458,8 @@ public final class SourceInputStreamFactory
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             // TODO: replace with connection pool (end)
 
-            MutableDirectBuffer payload = new UnsafeBuffer(new byte[2048]);
-            Http2SettingsFW settings = settingsRW.wrap(payload, 0, 2048)
-                                                 .maxConcurrentStreams(100)
-                                                 .build();
-
-            replyTarget.doData(sourceOutputEstId, settings.buffer(), settings.offset(), settings.sizeof());
-
-
-            return prefaceRO.limit();
+            replyTarget.doSettings(sourceOutputEstId, localSettings.maxConcurrentStreams);
+            return length;
         }
 
         private int http2FrameLength(DirectBuffer buffer, final int offset, int limit)
@@ -437,17 +475,17 @@ public final class SourceInputStreamFactory
          * Assembles a complete HTTP2 client preface and the flyweight is wrapped with the
          * buffer (it could be given buffer or slab)
          *
-         * @return true if a complete HTTP2 frame is assembled
-         *         false otherwise
+         * @return no of bytes consumed
          */
-        private boolean prefaceAvailable(DirectBuffer buffer, int offset, int limit)
+        private int prefaceAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
-            if (frameSlotPosition > 0 && frameSlotPosition +available >= PRI_REQUEST.length)
+            if (frameSlotPosition > 0 && frameSlotPosition + available >= PRI_REQUEST.length)
             {
                 MutableDirectBuffer prefaceBuffer = frameSlab.buffer(frameSlotIndex);
-                prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, PRI_REQUEST.length- frameSlotPosition);
+                int remainingLength = PRI_REQUEST.length - frameSlotPosition;
+                prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
                 prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
                 if (frameSlotIndex != SLOT_NOT_AVAILABLE)
                 {
@@ -455,12 +493,14 @@ public final class SourceInputStreamFactory
                     frameSlotIndex = SLOT_NOT_AVAILABLE;
                     frameSlotPosition = 0;
                 }
-                return true;
+                prefaceAvailable = true;
+                return remainingLength;
             }
             else if (available >= PRI_REQUEST.length)
             {
                 prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
-                return true;
+                prefaceAvailable = true;
+                return PRI_REQUEST.length;
             }
 
             assert frameSlotIndex == SLOT_NOT_AVAILABLE;
@@ -469,71 +509,104 @@ public final class SourceInputStreamFactory
             {
                 // all slots are in use, just reset the connection
                 source.doReset(sourceId);
-                return false;
+                prefaceAvailable = false;
+                return available;               // assume everything is consumed
             }
             frameSlotPosition = 0;
             MutableDirectBuffer prefaceBuffer = frameSlab.buffer(frameSlotIndex);
             prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
-            return false;
+            prefaceAvailable = false;
+            return available;
         }
 
         /*
          * Assembles a complete HTTP2 frame and the flyweight is wrapped with the
          * buffer (it could be given buffer or slab)
          *
-         * @return true if a complete HTTP2 frame is assembled
-         *         false otherwise
+         * @return consumed octets
+         *         -1 if the frame size is more than the max frame size
          */
         // TODO check slab capacity
-        private boolean http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
+        private int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
-            if (frameSlotPosition > 0 && frameSlotPosition +available >= 3)
+            if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
             {
                 MutableDirectBuffer frameBuffer = SourceInputStreamFactory.this.frameSlab.buffer(frameSlotIndex);
                 if (frameSlotPosition < 3)
                 {
-                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3- frameSlotPosition);
+                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
                 }
-                int length = http2FrameLength(frameBuffer, 0, 3);
-                if (frameSlotPosition + available >= length)
+                int frameLength = http2FrameLength(frameBuffer, 0, 3);
+                if (frameLength > localSettings.maxFrameSize)
                 {
-                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, length- frameSlotPosition);
-                    http2RO.wrap(frameBuffer, 0, length);
-                    if (frameSlotIndex != SLOT_NOT_AVAILABLE)
-                    {
-                        frameSlab.release(frameSlotIndex);
-                        frameSlotIndex = SLOT_NOT_AVAILABLE;
-                        frameSlotPosition = 0;
-                    }
-                    return true;
+                    return -1;
+                }
+                if (frameSlotPosition + available >= frameLength)
+                {
+                    int remainingFrameLength = frameLength - frameSlotPosition;
+                    frameBuffer.putBytes(frameSlotPosition, buffer, offset, remainingFrameLength);
+                    http2RO.wrap(frameBuffer, 0, frameLength);
+                    releaseSlot();
+                    http2FrameAvailable = true;
+                    return remainingFrameLength;
                 }
             }
             else if (available >= 3)
             {
-                int length = http2FrameLength(buffer, offset, limit);
-                if (available >= length)
+                int frameLength = http2FrameLength(buffer, offset, limit);
+                if (frameLength > localSettings.maxFrameSize)
                 {
-                    http2RO.wrap(buffer, offset, offset + length);
-                    return true;
+                    return -1;
+                }
+                if (available >= frameLength)
+                {
+                    http2RO.wrap(buffer, offset, offset + frameLength);
+                    http2FrameAvailable = true;
+                    return frameLength;
                 }
             }
 
-            assert frameSlotIndex == SLOT_NOT_AVAILABLE;
-            frameSlotIndex = frameSlab.acquire(sourceId);
-            if (frameSlotIndex == SLOT_NOT_AVAILABLE)
+            if (!acquireSlot())
             {
-                // all slots are in use, just reset the connection
-                source.doReset(sourceId);
-                return false;
+                http2FrameAvailable = false;
+                return available;
             }
-            frameSlotPosition = 0;
+
             MutableDirectBuffer frameBuffer = frameSlab.buffer(frameSlotIndex);
             frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
-            return false;
+            http2FrameAvailable = false;
+            return available;
+        }
+
+        private boolean acquireSlot()
+        {
+            if (frameSlotPosition == 0)
+            {
+                assert frameSlotIndex == SLOT_NOT_AVAILABLE;
+                frameSlotIndex = frameSlab.acquire(sourceId);
+                if (frameSlotIndex == SLOT_NOT_AVAILABLE)
+                {
+                    // all slots are in use, just reset the connection
+                    source.doReset(sourceId);
+                    http2FrameAvailable = false;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        private void releaseSlot()
+        {
+            if (frameSlotIndex != SLOT_NOT_AVAILABLE)
+            {
+                frameSlab.release(frameSlotIndex);
+                frameSlotIndex = SLOT_NOT_AVAILABLE;
+                frameSlotPosition = 0;
+            }
         }
 
         /*
@@ -568,6 +641,13 @@ public final class SourceInputStreamFactory
                     }
 
                     headersRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+                    int parentStreamId = headersRO.parentStream();
+                    if (parentStreamId == streamId)
+                    {
+                        // 5.3.1 A stream cannot depend on itself
+                        streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                        return false;
+                    }
                     if (headersRO.dataLength() < 0)
                     {
                         error(Http2ErrorCode.PROTOCOL_ERROR);
@@ -646,16 +726,21 @@ public final class SourceInputStreamFactory
 
         private int decodeHttp2Frame(final DirectBuffer buffer, final int offset, final int limit)
         {
-            if (!http2FrameAvailable(buffer, offset, limit))
+            int length = http2FrameAvailable(buffer, offset, limit);
+            if (length == -1)
             {
-                return limit;
+                error(Http2ErrorCode.FRAME_SIZE_ERROR);
+                return limit - offset;
             }
-
+            if (!http2FrameAvailable)
+            {
+                return length;
+            }
             Http2FrameType http2FrameType = http2RO.type();
             // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
             if (!http2HeadersAvailable())
             {
-                return offset + http2RO.sizeof();
+                return length;
             }
             switch (http2FrameType)
             {
@@ -691,7 +776,7 @@ public final class SourceInputStreamFactory
                     // Ignore and discard unknown frame
             }
 
-            return offset + http2RO.sizeof();
+            return length;
         }
 
         private void doGoAway()
@@ -731,6 +816,14 @@ public final class SourceInputStreamFactory
                 streamError(streamId, Http2ErrorCode.FRAME_SIZE_ERROR);
                 return;
             }
+            priorityRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+            int parentStreamId = priorityRO.parentStream();
+            if (parentStreamId == streamId)
+            {
+                // 5.3.1 A stream cannot depend on itself
+                streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
         }
 
         private void doHeaders()
@@ -758,17 +851,41 @@ public final class SourceInputStreamFactory
             State state = http2RO.endStream() ? HALF_CLOSED_REMOTE : OPEN;
             stream = newStream(streamId, state);
 
+            headersContext.reset();
 
-            // TODO avoid iterating over headers twice
-            Map<String, String> headersMap = new HashMap<>();
-            blockRO.forEach(h -> decodeHeaderField(decodeContext, h, headersMap));
-            final Optional<Route> optional = resolveTarget(sourceRef, headersMap);
+
+
+            blockRO.forEach(headerFieldConsumer);
+            // All HTTP/2 requests MUST include exactly one valid value for the
+            // ":method", ":scheme", and ":path" pseudo-header fields, unless it is
+            // a CONNECT request (Section 8.3).  An HTTP request that omits
+            // mandatory pseudo-header fields is malformed
+            if (!headersContext.error() && (headersContext.method != 1 || headersContext.scheme != 1 || headersContext.path != 1))
+            {
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+            }
+            if (headersContext.error())
+            {
+                if (headersContext.streamError != null)
+                {
+                    streamError(streamId, headersContext.streamError);
+                    return;
+                }
+                if (headersContext.connectionError != null)
+                {
+                    error(headersContext.connectionError);
+                    return;
+                }
+            }
+            stream.contentLength = headersContext.contentLength;
+
+            final Optional<Route> optional = resolveTarget(sourceRef, headersContext.headers);
             Route route = stream.route = optional.get();
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
 
             newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId,
-                    hs -> blockRO.forEach(hf -> decodeHeaderField(decodeContext, hf, hs)));
+                    hs -> blockRO.forEach(hf -> decodeHeaderField(hf, hs)));
             newTarget.addThrottle(stream.targetId, this::handleThrottle);
 
             source.doWindow(sourceId, http2RO.sizeof());
@@ -821,11 +938,66 @@ public final class SourceInputStreamFactory
         private void doWindow()
         {
             int streamId = http2RO.streamId();
-            Http2Stream stream = http2Streams.get(streamId);
-            if (stream == null || stream.state == State.IDLE)
+            if (http2RO.payloadLength() != 4)
             {
-                error(Http2ErrorCode.PROTOCOL_ERROR);
+                if (streamId == 0)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+                else
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
             }
+            if (streamId != 0)
+            {
+                Http2Stream stream = http2Streams.get(streamId);
+                if (stream == null || stream.state == State.IDLE)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+            }
+            http2WindowRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+            // 6.9 WINDOW_UPDATE - legal range for flow-control window increment is 1 to 2^31-1 octets.
+            if (http2WindowRO.size() < 1)
+            {
+                if (streamId == 0)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+                else
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+            }
+
+            // 6.9.1 A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets.
+            if (streamId == 0)
+            {
+                http2Window += http2WindowRO.size();
+                if (http2Window > Integer.MAX_VALUE)
+                {
+                    error(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    return;
+                }
+            }
+            else
+            {
+                Http2Stream stream = http2Streams.get(streamId);
+                stream.http2Window += http2WindowRO.size();
+                if (stream.http2Window > Integer.MAX_VALUE)
+                {
+                    streamError(streamId, Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    return;
+                }
+            }
+
         }
 
         private void doData()
@@ -854,10 +1026,21 @@ public final class SourceInputStreamFactory
             }
             newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
 
+            stream.totalData += http2RO.payloadLength();
+
             if (dataRO.endStream())
             {
+                // 8.1.2.6 A request is malformed if the value of a content-length header field does
+                // not equal the sum of the DATA frame payload lengths
+                if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    newTarget.doEnd(stream.targetId);
+                    return;
+                }
                 newTarget.doHttpEnd(stream.targetId);
             }
+
         }
 
         private void doSettings()
@@ -883,12 +1066,7 @@ public final class SourceInputStreamFactory
             if (!settingsRO.ack())
             {
                 settingsRO.accept(this::doSetting);
-
-                Http2SettingsFW settings = settingsRW.wrap(buffer, 0, buffer.capacity())
-                                                     .ack()
-                                                     .build();
-                replyTarget.doData(sourceOutputEstId,
-                        settings.buffer(), settings.offset(), settings.limit());
+                replyTarget.doSettingsAck(sourceOutputEstId);
             }
         }
 
@@ -898,6 +1076,7 @@ public final class SourceInputStreamFactory
             {
 
                 case HEADER_TABLE_SIZE:
+                    remoteSettings.headerTableSize = value.intValue();
                     break;
                 case ENABLE_PUSH:
                     if (!(value == 0L || value == 1L))
@@ -951,12 +1130,7 @@ public final class SourceInputStreamFactory
 
             if (!pingRO.ack())
             {
-                Http2PingFW ping = pingRW.wrap(buffer, 0, buffer.capacity())
-                                         .ack()
-                                         .payload(pingRO.payload())
-                                         .build();
-                replyTarget.doData(sourceOutputEstId,
-                        ping.buffer(), ping.offset(), ping.sizeof());
+                replyTarget.doPingAck(sourceOutputEstId, pingRO.payload());
             }
         }
 
@@ -1072,24 +1246,13 @@ public final class SourceInputStreamFactory
 
         void error(Http2ErrorCode errorCode)
         {
-            Http2GoawayFW goawayRO = goawayRW.wrap(buffer, 0, buffer.capacity())
-                                             .lastStreamId(lastStreamId)
-                                             .errorCode(errorCode)
-                                             .build();
-            replyTarget.doData(sourceOutputEstId,
-                    goawayRO.buffer(), goawayRO.offset(), goawayRO.sizeof());
-
+            replyTarget.doGoaway(sourceOutputEstId, lastStreamId, errorCode);
             replyTarget.doEnd(sourceOutputEstId);
         }
 
         void streamError(int streamId, Http2ErrorCode errorCode)
         {
-            Http2RstStreamFW resetRO = resetRW.wrap(buffer, 0, buffer.capacity())
-                                             .streamId(streamId)
-                                             .errorCode(errorCode)
-                                             .build();
-            replyTarget.doData(sourceOutputEstId,
-                    resetRO.buffer(), resetRO.offset(), resetRO.sizeof());
+            replyTarget.doRst(sourceOutputEstId, streamId, errorCode);
         }
 
         private int nextPromisedId()
@@ -1180,56 +1343,196 @@ public final class SourceInputStreamFactory
             return http2Stream;
         }
 
-        private void decodeHeaderField(HpackContext context, HpackHeaderFieldFW hf,
+        private void validateHeaderFieldType(HpackHeaderFieldFW hf)
+        {
+            if (!headersContext.error() && hf.type() == UNKNOWN)
+            {
+                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+            }
+        }
+
+        private void dynamicTableSizeUpdate(HpackHeaderFieldFW hf)
+        {
+            if (!headersContext.error())
+            {
+                switch (hf.type())
+                {
+                    case INDEXED:
+                    case LITERAL:
+                        expectDynamicTableSizeUpdate = false;
+                        break;
+                    case UPDATE:
+                        if (!expectDynamicTableSizeUpdate)
+                        {
+                            // dynamic table size update MUST occur at the beginning of the first header block
+                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                            return;
+                        }
+                        int maxTableSize = hf.tableSize();
+                        if (maxTableSize > localSettings.headerTableSize)
+                        {
+                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                            return;
+                        }
+                        decodeContext.updateSize(hf.tableSize());
+                        break;
+                }
+            }
+        }
+
+        private void validatePseudoHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error())
+            {
+                if (name.capacity() > 0 && name.getByte(0) == ':')
+                {
+                    // All pseudo-header fields MUST appear in the header block before regular header fields
+                    if (headersContext.regularHeader)
+                    {
+                        headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                        return;
+                    }
+                    // request pseudo-header fields MUST be one of :authority, :method, :path, :scheme,
+                    int index = decodeContext.index(name);
+                    switch (index)
+                    {
+                        case 1:             // :authority
+                            break;
+                        case 2:             // :method
+                            headersContext.method++;
+                            break;
+                        case 4:             // :path
+                            if (value.capacity() > 0)       // :path MUST not be empty
+                            {
+                                headersContext.path++;
+                            }
+                            break;
+                        case 6:             // :scheme
+                            headersContext.scheme++;
+                            break;
+                        default:
+                            headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                            return;
+                    }
+                }
+                else
+                {
+                    headersContext.regularHeader = true;
+                }
+            }
+        }
+
+        private void connectionHeaders(DirectBuffer name, DirectBuffer value)
+        {
+
+            if (!headersContext.error() && name.equals(HpackContext.CONNECTION))
+            {
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+            }
+        }
+
+        private void contentLengthHeader(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error() && name.equals(decodeContext.nameBuffer(28)))
+            {
+                String contentLength = value.getStringWithoutLengthUtf8(0, value.capacity());
+                headersContext.contentLength = Integer.parseInt(contentLength);
+            }
+        }
+
+        // 8.1.2.2 TE header MUST NOT contain any value other than "trailers".
+        private void teHeader(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error() && name.equals(TE) && !value.equals(TRAILERS))
+            {
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+            }
+        }
+
+        private void uppercaseHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error())
+            {
+                for(int i=0; i < name.capacity(); i++)
+                {
+                    if (name.getByte(i) >= 'A' && name.getByte(i) <= 'Z')
+                    {
+                        headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                    }
+                }
+            }
+        }
+
+        // Collect headers into map to resolve target
+        // TODO avoid this
+        private void collectHeaders(DirectBuffer name, DirectBuffer value)
+        {
+            if (!headersContext.error())
+            {
+                String nameStr = name.getStringWithoutLengthUtf8(0, name.capacity());
+                String valueStr = value.getStringWithoutLengthUtf8(0, value.capacity());
+                headersContext.headers.put(nameStr, valueStr);
+            }
+        }
+
+        private void decodeHeaderField(HpackHeaderFieldFW hf,
                                        ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder)
         {
-            decodeHeaderField(context, hf, (name, value) -> builder.item(i -> i.representation((byte) 0)
-                                                                           .name(name, 0, name.capacity())
-                                                                           .value(value, 0, value.capacity())));
-
-        }
-
-        private void decodeHeaderField(HpackContext context, HpackHeaderFieldFW hf, Map<String, String> headersMap)
-        {
-            decodeHeaderField(context, hf, (n, v) ->
+            if (!headersContext.error())
             {
-                String name = n.getStringWithoutLengthUtf8(0, n.capacity());
-                String value = v.getStringWithoutLengthUtf8(0, v.capacity());
-                headersMap.put(name, value);
-            });
+                decodeHeaderField(hf, false, (name, value) -> builder.item(i -> i.representation((byte) 0)
+                                                                                 .name(name, 0, name.capacity())
+                                                                                 .value(value, 0, value.capacity())));
+            }
+
         }
 
-        private void decodeHeaderField(HpackContext context, HpackHeaderFieldFW hf,
+        private void decodeHeaderField(HpackHeaderFieldFW hf,
+                                       boolean incrementalIndexing,
                                        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
         {
-
-            HpackHeaderFieldFW.HeaderFieldType headerFieldType = hf.type();
-            switch (headerFieldType)
+            switch (hf.type())
             {
                 case INDEXED :
                 {
                     int index = hf.index();
-                    DirectBuffer nameBuffer = context.nameBuffer(index);
-                    DirectBuffer valueBuffer = context.valueBuffer(index);
+                    if (!decodeContext.valid(index))
+                    {
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                        return;
+                    }
+                    DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
+                    DirectBuffer valueBuffer = decodeContext.valueBuffer(index);
                     nameValue.accept(nameBuffer, valueBuffer);
                 }
                 break;
 
                 case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = hf.literal();
+                    if (literalRO.error())
+                    {
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                        return;
+                    }
                     switch (literalRO.nameType())
                     {
                         case INDEXED:
                         {
                             int index = literalRO.nameIndex();
-                            DirectBuffer nameBuffer = context.nameBuffer(index);
+                            DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
                             DirectBuffer valuePayload = valueRO.payload();
                             if (valueRO.huffman())
                             {
-                                String value = HpackHuffman.decode(valuePayload);
-                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                                MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                                int length = HpackHuffman.decode(valuePayload, dst);
+                                if (length == -1)
+                                {
+                                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                                    return;
+                                }
+                                valuePayload = new UnsafeBuffer(dst, 0, length);
                             }
                             DirectBuffer valueBuffer = valuePayload;
                             nameValue.accept(nameBuffer, valueBuffer);
@@ -1241,8 +1544,14 @@ public final class SourceInputStreamFactory
                             DirectBuffer namePayload = nameRO.payload();
                             if (nameRO.huffman())
                             {
-                                String name = HpackHuffman.decode(namePayload);
-                                namePayload = new UnsafeBuffer(name.getBytes(UTF_8));
+                                MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                                int length = HpackHuffman.decode(namePayload, dst);
+                                if (length == -1)
+                                {
+                                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                                    return;
+                                }
+                                namePayload = new UnsafeBuffer(dst, 0, length);
                             }
                             DirectBuffer nameBuffer = namePayload;
 
@@ -1250,27 +1559,30 @@ public final class SourceInputStreamFactory
                             DirectBuffer valuePayload = valueRO.payload();
                             if (valueRO.huffman())
                             {
-                                String value = HpackHuffman.decode(valuePayload);
-                                valuePayload = new UnsafeBuffer(value.getBytes(UTF_8));
+                                MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                                int length = HpackHuffman.decode(valuePayload, dst);
+                                if (length == -1)
+                                {
+                                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                                    return;
+                                }
+                                valuePayload = new UnsafeBuffer(dst, 0, length);
                             }
                             DirectBuffer valueBuffer = valuePayload;
                             nameValue.accept(nameBuffer, valueBuffer);
 
-                            if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                            if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
                             {
                                 // make a copy for name and value as they go into dynamic table (outlives current frame)
                                 MutableDirectBuffer name = new UnsafeBuffer(new byte[namePayload.capacity()]);
                                 name.putBytes(0, namePayload, 0, namePayload.capacity());
                                 MutableDirectBuffer value = new UnsafeBuffer(new byte[valuePayload.capacity()]);
                                 value.putBytes(0, valuePayload, 0, valuePayload.capacity());
-                                context.add(name, value);
+                                decodeContext.add(name, value);
                             }
                         }
                         break;
                     }
-                    break;
-
-                case UPDATE:
                     break;
             }
         }
@@ -1297,6 +1609,9 @@ public final class SourceInputStreamFactory
         private final long targetId;
         private Route route;
         private State state;
+        private long http2Window;
+        private long contentLength;
+        private long totalData;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state)
         {

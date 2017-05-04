@@ -24,6 +24,7 @@ import javax.xml.bind.DatatypeConverter;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 public class HpackHuffmanTest
 {
@@ -51,7 +52,10 @@ public class HpackHuffmanTest
     {
         byte[] bytes = DatatypeConverter.parseHexBinary("00" + encoded);    // +00 to test offset
         DirectBuffer buf = new UnsafeBuffer(bytes, 1, bytes.length - 1);
-        String got = HpackHuffman.decode(buf);
+        MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]);
+        int length = HpackHuffman.decode(buf, dst);
+        assertNotEquals(-1, length);
+        String got = dst.getStringWithoutLengthUtf8(0, length);
         assertEquals(expected, got);
     }
 

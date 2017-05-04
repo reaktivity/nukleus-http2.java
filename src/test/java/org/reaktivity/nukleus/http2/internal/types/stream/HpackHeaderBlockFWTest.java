@@ -27,6 +27,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
 public class HpackHeaderBlockFWTest
@@ -303,6 +304,151 @@ public class HpackHeaderBlockFWTest
     }
 
 
+
+
+    // Test for encoding "C.3.  Request Examples without Huffman Coding"
+    @Test
+    public void decodeC5()
+    {
+        HpackContext context = new HpackContext(256, false);
+
+        // First response
+        decodeC51(context);
+
+        // Second response
+        decodeC52(context);
+
+        // Third request
+        decodeC53(context);
+    }
+
+    // Decoding "C.5.1.  First Response"
+    private void decodeC51(HpackContext context)
+    {
+        byte[] bytes = DatatypeConverter.parseHexBinary(
+                "00" +  // +00 to test offset
+                        // Header list begin
+                        "4803333032580770726976617465611d" +
+                        "4d6f6e2c203231204f63742032303133" +
+                        "2032303a31333a323120474d546e1768" +
+                        "747470733a2f2f7777772e6578616d70" +
+                        "6c652e636f6d" +
+                        // Header list end
+                        "00");
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        assertEquals(71, fw.limit());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(context, headers));
+
+        assertEquals(4, headers.size());
+        assertEquals("302", headers.get(":status"));
+        assertEquals("private", headers.get("cache-control"));
+        assertEquals("Mon, 21 Oct 2013 20:13:21 GMT", headers.get("date"));
+        assertEquals("https://www.example.com", headers.get("location"));
+
+        assertEquals(4, context.table.size());
+        assertEquals(222, context.tableSize);
+        assertEquals("location", context.name(62));
+        assertEquals("https://www.example.com", context.value(62));
+        assertEquals("date", context.name(63));
+        assertEquals("Mon, 21 Oct 2013 20:13:21 GMT", context.value(63));
+        assertEquals("cache-control", context.name(64));
+        assertEquals("private", context.value(64));
+        assertEquals(":status", context.name(65));
+        assertEquals("302", context.value(65));
+    }
+
+    // Decoding "C.5.2.  Second Response"
+    private void decodeC52(HpackContext context)
+    {
+        byte[] bytes = DatatypeConverter.parseHexBinary(
+                "00" +  // +00 to test offset
+                        // Header list begin
+                        "4803333037c1c0bf" +
+                        // Header list end
+                        "00");
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        assertEquals(9, fw.limit());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(context, headers));
+
+        assertEquals(4, headers.size());
+        assertEquals("307", headers.get(":status"));
+        assertEquals("private", headers.get("cache-control"));
+        assertEquals("Mon, 21 Oct 2013 20:13:21 GMT", headers.get("date"));
+        assertEquals("https://www.example.com", headers.get("location"));
+
+        assertEquals(4, context.table.size());
+        assertEquals(222, context.tableSize);
+        assertEquals(":status", context.name(62));
+        assertEquals("307", context.value(62));
+        assertEquals("location", context.name(63));
+        assertEquals("https://www.example.com", context.value(63));
+        assertEquals("date", context.name(64));
+        assertEquals("Mon, 21 Oct 2013 20:13:21 GMT", context.value(64));
+        assertEquals("cache-control", context.name(65));
+        assertEquals("private", context.value(65));
+    }
+
+    // Decoding "C.5.3.  Third Response"
+    private void decodeC53(HpackContext context)
+    {
+        byte[] bytes = DatatypeConverter.parseHexBinary(
+                "00" +  // +00 to test offset
+                        // Header list begin
+                        "88c1611d4d6f6e2c203231204f637420" +
+                        "323031332032303a31333a323220474d" +
+                        "54c05a04677a69707738666f6f3d4153" +
+                        "444a4b48514b425a584f5157454f5049" +
+                        "5541585157454f49553b206d61782d61" +
+                        "67653d333630303b2076657273696f6e" +
+                        "3d31" +
+                        // Header list end
+                        "00");
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        assertEquals(99, fw.limit());
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(context, headers));
+
+        assertEquals(6, headers.size());
+        assertEquals("200", headers.get(":status"));
+        assertEquals("private", headers.get("cache-control"));
+        assertEquals("Mon, 21 Oct 2013 20:13:22 GMT", headers.get("date"));
+        assertEquals("https://www.example.com", headers.get("location"));
+        assertEquals("gzip", headers.get("content-encoding"));
+        assertEquals("foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1", headers.get("set-cookie"));
+
+        assertEquals(3, context.table.size());
+        assertEquals(215, context.tableSize);
+        assertEquals("set-cookie", context.name(62));
+        assertEquals("foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1", context.value(62));
+        assertEquals("content-encoding", context.name(63));
+        assertEquals("gzip", context.value(63));
+        assertEquals("date", context.name(64));
+        assertEquals("Mon, 21 Oct 2013 20:13:22 GMT", context.value(64));
+    }
+
+    @Test
+    public void error()
+    {
+        byte[] bytes = DatatypeConverter.parseHexBinary(
+                        // Header list begin
+                        "828684418aa0e41d139d09b8f01e07" +
+                        "0085f2b24a87fffffffd25427f"
+                        // Header list end
+                        );
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 0, buffer.capacity()-1);
+        assertTrue(fw.error());
+        assertEquals(27, fw.limit());
+    }
+
     static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers)
     {
         return x -> {
@@ -325,28 +471,14 @@ public class HpackHeaderBlockFWTest
                         {
                             index = literalRO.nameIndex();
                             name = context.name(index);
-
-                            HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
-                            value = valueRO.huffman()
-                                    ? HpackHuffman.decode(valuePayload)
-                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            value = string(literalRO.valueLiteral());
                             headers.put(name, value);
                         }
                         break;
                         case NEW:
                         {
-                            HpackStringFW nameRO = literalRO.nameLiteral();
-                            DirectBuffer namePayload = nameRO.payload();
-                            name = nameRO.huffman()
-                                    ? HpackHuffman.decode(namePayload)
-                                    : namePayload.getStringWithoutLengthUtf8(0, namePayload.capacity());
-
-                            HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
-                            value = valueRO.huffman()
-                                    ? HpackHuffman.decode(valuePayload)
-                                    : valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+                            name = string(literalRO.nameLiteral());
+                            value = string(literalRO.valueLiteral());
                             headers.put(name, value);
                         }
                         break;
@@ -361,6 +493,22 @@ public class HpackHeaderBlockFWTest
                     break;
             }
         };
+    }
+
+    private static String string(HpackStringFW value)
+    {
+        DirectBuffer valuePayload = value.payload();
+        if (value.huffman())
+        {
+            MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]);
+            int length = HpackHuffman.decode(valuePayload, dst);
+            assert length != -1;
+            return dst.getStringWithoutLengthUtf8(0, length);
+        }
+        else
+        {
+            return valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
+        }
     }
 
 }
