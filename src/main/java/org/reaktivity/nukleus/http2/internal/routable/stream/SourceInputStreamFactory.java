@@ -383,6 +383,11 @@ public final class SourceInputStreamFactory
             final int initial = localSettings.maxFrameSize + 9;
             this.window += initial;
             source.doWindow(sourceId, initial);
+
+            replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
+            replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
+
+            replyTarget.doSettings(sourceOutputEstId, localSettings.maxConcurrentStreams);
         }
 
         private void processData(
@@ -453,12 +458,6 @@ public final class SourceInputStreamFactory
             this.decoderState = this::decodeHttp2Frame;
             source.doWindow(sourceId, prefaceRO.sizeof());
 
-            // TODO: replace with connection pool (start)
-            replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
-            replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-            // TODO: replace with connection pool (end)
-
-            replyTarget.doSettings(sourceOutputEstId, localSettings.maxConcurrentStreams);
             return length;
         }
 
