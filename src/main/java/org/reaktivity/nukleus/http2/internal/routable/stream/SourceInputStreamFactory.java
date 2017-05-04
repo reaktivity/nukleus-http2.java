@@ -89,7 +89,7 @@ public final class SourceInputStreamFactory
     private final ResetFW resetRO = new ResetFW();
 
     private final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
-    /* private */ final Http2FrameFW http2RO = new Http2FrameFW();
+    private final Http2FrameFW http2RO = new Http2FrameFW();
     private final Http2SettingsFW settingsRO = new Http2SettingsFW();
     private final Http2DataFW http2DataRO = new Http2DataFW();
     private final Http2HeadersFW headersRO = new Http2HeadersFW();
@@ -175,7 +175,7 @@ public final class SourceInputStreamFactory
         return new SourceInputStream()::handleStream;
     }
 
-    /* private */ final class SourceInputStream
+    private final class SourceInputStream
     {
         private MessageHandler streamState;
         private MessageHandler throttleState;
@@ -215,7 +215,7 @@ public final class SourceInputStreamFactory
         private boolean expectDynamicTableSizeUpdate = true;
         private long http2Window;
         private boolean prefaceAvailable;
-        /* private */ boolean http2FrameAvailable;
+        private boolean http2FrameAvailable;
         private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
 
         @Override
@@ -225,7 +225,7 @@ public final class SourceInputStreamFactory
                     getClass().getSimpleName(), source.routableName(), sourceId, window);
         }
 
-        /* private */ SourceInputStream()
+        private SourceInputStream()
         {
             this.streamState = this::streamBeforeBegin;
             this.throttleState = this::throttleSkipNextWindow;
@@ -529,7 +529,7 @@ public final class SourceInputStreamFactory
          *         -1 if the frame size is more than the max frame size
          */
         // TODO check slab capacity
-        /* private */ int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
+        private int http2FrameAvailable(DirectBuffer buffer, int offset, int limit)
         {
             int available = limit - offset;
 
