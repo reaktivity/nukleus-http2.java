@@ -380,8 +380,7 @@ public final class SourceInputStreamFactory
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;
 
-            // TODO: acquire slab for request decode of up to initial bytes
-            final int initial = 512;
+            final int initial = localSettings.maxFrameSize + 9;
             this.window += initial;
             source.doWindow(sourceId, initial);
         }
