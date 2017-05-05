@@ -1513,15 +1513,17 @@ public final class SourceInputStreamFactory
                         headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                         return;
                     }
+                    DirectBuffer namePayload = null;
+                    DirectBuffer valuePayload = null;
                     switch (literalRO.nameType())
                     {
                         case INDEXED:
                         {
                             int index = literalRO.nameIndex();
-                            DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
+                            namePayload = decodeContext.nameBuffer(index);
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
+                            valuePayload = valueRO.payload();
                             if (valueRO.huffman())
                             {
                                 MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
@@ -1533,14 +1535,13 @@ public final class SourceInputStreamFactory
                                 }
                                 valuePayload = new UnsafeBuffer(dst, 0, length);
                             }
-                            DirectBuffer valueBuffer = valuePayload;
-                            nameValue.accept(nameBuffer, valueBuffer);
+                            nameValue.accept(namePayload, valuePayload);
                         }
                         break;
                         case NEW:
                         {
                             HpackStringFW nameRO = literalRO.nameLiteral();
-                            DirectBuffer namePayload = nameRO.payload();
+                            namePayload = nameRO.payload();
                             if (nameRO.huffman())
                             {
                                 MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
@@ -1552,10 +1553,9 @@ public final class SourceInputStreamFactory
                                 }
                                 namePayload = new UnsafeBuffer(dst, 0, length);
                             }
-                            DirectBuffer nameBuffer = namePayload;
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
+                            valuePayload = valueRO.payload();
                             if (valueRO.huffman())
                             {
                                 MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
@@ -1567,20 +1567,18 @@ public final class SourceInputStreamFactory
                                 }
                                 valuePayload = new UnsafeBuffer(dst, 0, length);
                             }
-                            DirectBuffer valueBuffer = valuePayload;
-                            nameValue.accept(nameBuffer, valueBuffer);
-
-                            if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
-                            {
-                                // make a copy for name and value as they go into dynamic table (outlives current frame)
-                                MutableDirectBuffer name = new UnsafeBuffer(new byte[namePayload.capacity()]);
-                                name.putBytes(0, namePayload, 0, namePayload.capacity());
-                                MutableDirectBuffer value = new UnsafeBuffer(new byte[valuePayload.capacity()]);
-                                value.putBytes(0, valuePayload, 0, valuePayload.capacity());
-                                decodeContext.add(name, value);
-                            }
+                            nameValue.accept(namePayload, valuePayload);
                         }
                         break;
+                    }
+                    if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
+                    {
+                        // make a copy for name and value as they go into dynamic table (outlives current frame)
+                        MutableDirectBuffer name = new UnsafeBuffer(new byte[namePayload.capacity()]);
+                        name.putBytes(0, namePayload, 0, namePayload.capacity());
+                        MutableDirectBuffer value = new UnsafeBuffer(new byte[valuePayload.capacity()]);
+                        value.putBytes(0, valuePayload, 0, valuePayload.capacity());
+                        decodeContext.add(name, value);
                     }
                     break;
             }
