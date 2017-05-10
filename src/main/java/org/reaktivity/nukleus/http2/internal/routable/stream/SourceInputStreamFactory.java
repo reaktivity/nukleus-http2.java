@@ -376,6 +376,8 @@ public final class SourceInputStreamFactory
             this.sourceRef = beginRO.referenceId();
             this.correlationId = beginRO.correlationId();
 
+            System.out.printf("BEGIN sourceId:%x sourceRef:%d correlationId:%x\n", sourceId, sourceRef, correlationId);
+
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;
 
@@ -385,6 +387,7 @@ public final class SourceInputStreamFactory
 
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
+            System.out.printf("JITU writing to replyTarget - id=%x correlation-id=%x\n", sourceOutputEstId, correlationId);
         }
 
         private void processData(
@@ -734,6 +737,7 @@ public final class SourceInputStreamFactory
             {
                 return length;
             }
+System.out.println("--> " + http2RO);
             Http2FrameType http2FrameType = http2RO.type();
             // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
             if (!http2HeadersAvailable())
