@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
+import static java.lang.String.format;
 import static org.agrona.BitUtil.isPowerOfTwo;
 
 import java.nio.ByteBuffer;
@@ -30,9 +31,12 @@ import org.agrona.concurrent.UnsafeBuffer;
  * to store data in it, and releasing the slot once it is no longer needed.
  * <b>Each instance of this class is assumed to be used by one and only one thread.</b>
  */
-public class Slab
+public final class Slab
 {
-    static final int SLOT_NOT_AVAILABLE = -1;
+    public static final String DISABLE_SLOT_CHECK_PROP_NAME = "nukleus.http.disable.slot.check";
+    public static final boolean SHOULD_SLOT_CHECK = !Boolean.getBoolean(DISABLE_SLOT_CHECK_PROP_NAME);
+
+    public static final int NO_SLOT = -1;
 
     private final MutableDirectBuffer mutableFW = new UnsafeBuffer(new byte[0]);
 
@@ -70,13 +74,13 @@ public class Slab
     /**
      * Reserves a slot for use by the given stream
      * @param streamId - Stream id
-     * @return Id of the acquired slot, or SLOT_NOT_AVAILABLE if all slots are in use
+     * @return Id of the acquired slot, or NO_SLOT if all slots are in use
      */
     public int acquire(long streamId)
     {
         if (availableSlots == 0)
         {
-            return SLOT_NOT_AVAILABLE;
+            return NO_SLOT;
         }
         int slot = Hashing.hash(streamId, mask);
         while (used.get(slot))
@@ -85,7 +89,6 @@ public class Slab
         }
         used.set(slot);
         availableSlots--;
-
         return slot;
     }
 
@@ -96,7 +99,14 @@ public class Slab
      */
     public MutableDirectBuffer buffer(int slot)
     {
-        assert used.get(slot);
+        if (SHOULD_SLOT_CHECK)
+        {
+            // BitSet.get will throw IndexOutOfBoundsException if slot is out of range
+            if (!used.get(slot))
+            {
+                throw new IllegalArgumentException(format("slot %d was not acquired", slot));
+            }
+        }
         final long slotAddressOffset = buffer.addressOffset() + (slot << bitsPerSlot);
         mutableFW.wrap(slotAddressOffset, slotCapacity);
         return mutableFW;
@@ -108,9 +118,17 @@ public class Slab
      */
     public void release(int slot)
     {
-        assert used.get(slot);
-        used.clear(slot);
-        availableSlots++;
+        if (slot >= 0)
+        {
+            assert used.get(slot);
+            used.clear(slot);
+            availableSlots++;
+        }
+    }
+
+    public int slotCapacity()
+    {
+        return slotCapacity;
     }
 
 }

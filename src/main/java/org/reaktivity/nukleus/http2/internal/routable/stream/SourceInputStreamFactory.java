@@ -66,7 +66,7 @@ import java.util.function.Predicate;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.SLOT_NOT_AVAILABLE;
+import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
@@ -183,12 +183,12 @@ public final class SourceInputStreamFactory
 
         // slab to assemble a complete HTTP2 frame
         // no need for separate slab per HTTP2 stream as the frames are not fragmented
-        private int frameSlotIndex = SLOT_NOT_AVAILABLE;
+        private int frameSlotIndex = NO_SLOT;
         private int frameSlotPosition;
         // slab to assemble a complete HTTP2 headers frame(including its continuation frames)
         // no need for separate slab per HTTP2 stream as no interleaved frames of any other type
         // or from any other stream
-        private int headersSlotIndex = SLOT_NOT_AVAILABLE;
+        private int headersSlotIndex = NO_SLOT;
         private int headersSlotPosition;
 
         long sourceId;
@@ -428,16 +428,16 @@ public final class SourceInputStreamFactory
 
             source.removeStream(streamId);
             //target.removeThrottle(targetId);
-            if (frameSlotIndex != SLOT_NOT_AVAILABLE)
+            if (frameSlotIndex != NO_SLOT)
             {
                 frameSlab.release(frameSlotIndex);
-                frameSlotIndex = SLOT_NOT_AVAILABLE;
+                frameSlotIndex = NO_SLOT;
                 frameSlotPosition = 0;
             }
-            if (headersSlotIndex != SLOT_NOT_AVAILABLE)
+            if (headersSlotIndex != NO_SLOT)
             {
                 headersSlab.release(headersSlotIndex);
-                headersSlotIndex = SLOT_NOT_AVAILABLE;
+                headersSlotIndex = NO_SLOT;
                 headersSlotPosition = 0;
             }
         }
@@ -488,10 +488,10 @@ public final class SourceInputStreamFactory
                 int remainingLength = PRI_REQUEST.length - frameSlotPosition;
                 prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
                 prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
-                if (frameSlotIndex != SLOT_NOT_AVAILABLE)
+                if (frameSlotIndex != NO_SLOT)
                 {
                     frameSlab.release(frameSlotIndex);
-                    frameSlotIndex = SLOT_NOT_AVAILABLE;
+                    frameSlotIndex = NO_SLOT;
                     frameSlotPosition = 0;
                 }
                 prefaceAvailable = true;
@@ -504,9 +504,9 @@ public final class SourceInputStreamFactory
                 return PRI_REQUEST.length;
             }
 
-            assert frameSlotIndex == SLOT_NOT_AVAILABLE;
+            assert frameSlotIndex == NO_SLOT;
             frameSlotIndex = frameSlab.acquire(sourceId);
-            if (frameSlotIndex == SLOT_NOT_AVAILABLE)
+            if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
                 source.doReset(sourceId);
@@ -587,9 +587,9 @@ public final class SourceInputStreamFactory
         {
             if (frameSlotPosition == 0)
             {
-                assert frameSlotIndex == SLOT_NOT_AVAILABLE;
+                assert frameSlotIndex == NO_SLOT;
                 frameSlotIndex = frameSlab.acquire(sourceId);
-                if (frameSlotIndex == SLOT_NOT_AVAILABLE)
+                if (frameSlotIndex == NO_SLOT)
                 {
                     // all slots are in use, just reset the connection
                     source.doReset(sourceId);
@@ -602,10 +602,10 @@ public final class SourceInputStreamFactory
 
         private void releaseSlot()
         {
-            if (frameSlotIndex != SLOT_NOT_AVAILABLE)
+            if (frameSlotIndex != NO_SLOT)
             {
                 frameSlab.release(frameSlotIndex);
-                frameSlotIndex = SLOT_NOT_AVAILABLE;
+                frameSlotIndex = NO_SLOT;
                 frameSlotPosition = 0;
             }
         }
@@ -692,10 +692,10 @@ public final class SourceInputStreamFactory
                 }
                 int maxLimit = offset + length;
                 expectContinuation = false;
-                if (headersSlotIndex != SLOT_NOT_AVAILABLE)
+                if (headersSlotIndex != NO_SLOT)
                 {
                     headersSlab.release(headersSlotIndex);      // early release, but fine
-                    headersSlotIndex = SLOT_NOT_AVAILABLE;
+                    headersSlotIndex = NO_SLOT;
                     headersSlotPosition = 0;
                 }
 
@@ -704,10 +704,10 @@ public final class SourceInputStreamFactory
             }
             else
             {
-                if (headersSlotIndex == SLOT_NOT_AVAILABLE)
+                if (headersSlotIndex == NO_SLOT)
                 {
                     headersSlotIndex = headersSlab.acquire(sourceId);
-                    if (headersSlotIndex == SLOT_NOT_AVAILABLE)
+                    if (headersSlotIndex == NO_SLOT)
                     {
                         // all slots are in use, just reset the connection
                         source.doReset(sourceId);
@@ -1200,16 +1200,16 @@ System.out.println("--> " + http2RO);
             int length)
         {
             resetRO.wrap(buffer, index, index + length);
-            if (frameSlotIndex != SLOT_NOT_AVAILABLE)
+            if (frameSlotIndex != NO_SLOT)
             {
                 frameSlab.release(frameSlotIndex);
-                frameSlotIndex = SLOT_NOT_AVAILABLE;
+                frameSlotIndex = NO_SLOT;
                 frameSlotPosition = 0;
             }
-            if (headersSlotIndex != SLOT_NOT_AVAILABLE)
+            if (headersSlotIndex != NO_SLOT)
             {
                 headersSlab.release(headersSlotIndex);
-                headersSlotIndex = SLOT_NOT_AVAILABLE;
+                headersSlotIndex = NO_SLOT;
                 headersSlotPosition = 0;
             }
             source.doReset(sourceId);
