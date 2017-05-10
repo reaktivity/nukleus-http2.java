@@ -451,7 +451,8 @@ public class HpackHeaderBlockFWTest
 
     static Consumer<HpackHeaderFieldFW> getHeaders(HpackContext context, Map<String, String> headers)
     {
-        return x -> {
+        return x ->
+        {
             HeaderFieldType headerFieldType = x.type();
             String name = null;
             String value = null;
