@@ -75,4 +75,14 @@ public class ConnectionManagement1IT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/multiple.data.frames/client",
+            "${nukleus}/multiple.data.frames/server" })
+    public void multipleDataFrames() throws Exception
+    {
+        k3po.finish();
+    }
+
 }
