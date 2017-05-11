@@ -390,7 +390,6 @@ public final class SourceInputStreamFactory
 
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
-            System.out.printf("JITU writing to replyTarget - id=%x correlation-id=%x\n", sourceOutputEstId, correlationId);
         }
 
         private void processData(
@@ -1707,7 +1706,8 @@ System.out.println("--> " + http2RO);
                     targetWindow += update;
                     break;
                 case ResetFW.TYPE_ID:
-                    throw new UnsupportedOperationException("TODO");
+                    doReset(buffer, index, length);
+                    break;
                 default:
                     // ignore
                     break;
@@ -1767,7 +1767,7 @@ System.out.println("--> " + http2RO);
                     //source.doWindow(sourceId, update + framing(update));
                     break;
                 case ResetFW.TYPE_ID:
-                    //processReset(buffer, index, length);
+                    doReset(buffer, index, length);
                     break;
                 default:
                     // ignore
@@ -1812,6 +1812,16 @@ System.out.println("--> " + http2RO);
                 targetSlotIndex = NO_SLOT;
                 targetSlotPosition = 0;
             }
+        }
+
+        private void doReset(
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            resetRO.wrap(buffer, index, index + length);
+            releaseSlot();
+            //source.doReset(sourceId);
         }
 
         int framing()

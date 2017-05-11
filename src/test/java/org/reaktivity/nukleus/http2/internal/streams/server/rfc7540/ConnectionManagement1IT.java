@@ -31,7 +31,8 @@ public class ConnectionManagement1IT
 {
     private final K3poRule k3po = new K3poRule()
             .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("streams", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/connection.management");
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/connection.management")
+            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/connection.management");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
@@ -48,9 +49,19 @@ public class ConnectionManagement1IT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/http.get.exchange/server/rfc-client",
-            "${streams}/http.get.exchange/server/cooked-server" })
+            "${spec}/http.get.exchange/client",
+            "${nukleus}/http.get.exchange/server" })
     public void httpGetExchange() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/http.post.exchange/client",
+            "${nukleus}/http.post.exchange/server" })
+    public void httpPostExchange() throws Exception
     {
         k3po.finish();
     }

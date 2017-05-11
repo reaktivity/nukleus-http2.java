@@ -52,7 +52,7 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/connection.established/server/source" })
+            "${streams}/connection.established/source" })
     public void connectionEstablished() throws Exception
     {
         k3po.start();
@@ -64,34 +64,8 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/http.get.exchange/server/source",
-            "${streams}/http.get.exchange/server/target" })
-    public void httpGetExchange() throws Exception
-    {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-            "${route}/input/new/controller",
-            "${streams}/http.post.exchange/server/source",
-            "${streams}/http.post.exchange/server/target" })
-    public void httpPostExchange() throws Exception
-    {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-            "${route}/input/new/controller",
-            "${streams}/connection.has.two.streams/server/source",
-            "${streams}/connection.has.two.streams/server/target" })
+            "${streams}/connection.has.two.streams/source",
+            "${streams}/connection.has.two.streams/target" })
     public void connectionHasTwoStreams() throws Exception
     {
         k3po.start();
@@ -103,8 +77,8 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/http.push.promise/server/source",
-            "${streams}/http.push.promise/server/target" })
+            "${streams}/http.push.promise/source",
+            "${streams}/http.push.promise/target" })
     public void pushResources() throws Exception
     {
         k3po.start();
@@ -116,8 +90,8 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/push.promise.on.different.stream/server/source",
-            "${streams}/push.promise.on.different.stream/server/target" })
+            "${streams}/push.promise.on.different.stream/source",
+            "${streams}/push.promise.on.different.stream/target" })
     public void pushPromiseOnDifferentStream() throws Exception
     {
         k3po.start();
@@ -129,8 +103,8 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/multiple.data.frames/server/source",
-            "${streams}/multiple.data.frames/server/target" })
+            "${streams}/multiple.data.frames/source",
+            "${streams}/multiple.data.frames/target" })
     public void multipleDataFrames() throws Exception
     {
         k3po.start();
