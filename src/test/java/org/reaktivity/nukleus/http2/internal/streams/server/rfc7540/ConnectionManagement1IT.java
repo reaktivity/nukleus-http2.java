@@ -49,6 +49,15 @@ public class ConnectionManagement1IT
     @Test
     @Specification({
             "${route}/input/new/controller",
+            "${spec}/connection.established/client" })
+    public void connectionEstablished() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
             "${spec}/http.get.exchange/client",
             "${nukleus}/http.get.exchange/server" })
     public void httpGetExchange() throws Exception

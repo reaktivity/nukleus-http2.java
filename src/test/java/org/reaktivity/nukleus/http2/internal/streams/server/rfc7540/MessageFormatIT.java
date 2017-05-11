@@ -52,8 +52,8 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/continuation.frames/server/source",
-            "${streams}/continuation.frames/server/target" })
+            "${streams}/continuation.frames/source",
+            "${streams}/continuation.frames/target" })
     public void continuationFrames() throws Exception
     {
         k3po.start();
