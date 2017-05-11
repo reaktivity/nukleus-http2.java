@@ -257,6 +257,8 @@ public final class TargetOutputEstablishedStreamFactory
                         http2HeadersRO.limit());
 
                 this.streamState = this::afterBeginOrData;
+                source.doWindow(sourceId, 512);
+
             }
             else
             {

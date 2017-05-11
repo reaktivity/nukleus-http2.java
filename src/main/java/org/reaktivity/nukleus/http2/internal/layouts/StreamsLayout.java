@@ -101,7 +101,6 @@ public final class StreamsLayout extends Layout
             final long streamsSize = streamsCapacity + RingBufferDescriptor.TRAILER_LENGTH;
             final long throttleSize = throttleCapacity + RingBufferDescriptor.TRAILER_LENGTH;
 
-            System.out.println("streams = " + streams + " readOnly = " + readonly);
             if (!readonly)
             {
                 createEmptyFile(streams, streamsSize + throttleSize);

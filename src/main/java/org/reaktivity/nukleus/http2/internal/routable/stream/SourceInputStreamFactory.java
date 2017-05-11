@@ -196,12 +196,15 @@ public final class SourceInputStreamFactory
         long sourceRef;
         private long correlationId;
         private int window;
+        private int replyTargetWindow;
+
         private int sourceUpdateDeferred;
         final long sourceOutputEstId;
         private final HpackContext decodeContext;
         private final HpackContext encodeContext;
 
-        private final Int2ObjectHashMap<Http2Stream> http2Streams;
+        private final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
+
         private int lastPromisedStreamId;
 
         private int noClientStreams;
@@ -888,7 +891,7 @@ System.out.println("--> " + http2RO);
 
             newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId,
                     hs -> blockRO.forEach(hf -> decodeHeaderField(hf, hs)));
-            newTarget.addThrottle(stream.targetId, this::handleThrottle);
+            newTarget.addThrottle(stream.targetId, stream::onThrottle);
 
             source.doWindow(sourceId, http2RO.sizeof());
 
@@ -1017,7 +1020,6 @@ System.out.println("--> " + http2RO);
                 closeStream(stream);
                 return;
             }
-            Target newTarget = stream.route.target();
             Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
             if (dataRO.dataLength() < 0)        // because of invalid padding length
             {
@@ -1025,22 +1027,26 @@ System.out.println("--> " + http2RO);
                 closeStream(stream);
                 return;
             }
-            newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
 
-            stream.totalData += http2RO.payloadLength();
+            stream.onData();
 
-            if (dataRO.endStream())
-            {
-                // 8.1.2.6 A request is malformed if the value of a content-length header field does
-                // not equal the sum of the DATA frame payload lengths
-                if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
-                {
-                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-                    newTarget.doEnd(stream.targetId);
-                    return;
-                }
-                newTarget.doHttpEnd(stream.targetId);
-            }
+//            Target newTarget = stream.route.target();
+//            newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
+//
+//            stream.totalData += http2RO.payloadLength();
+//
+//            if (dataRO.endStream())
+//            {
+//                // 8.1.2.6 A request is malformed if the value of a content-length header field does
+//                // not equal the sum of the DATA frame payload lengths
+//                if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
+//                {
+//                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+//                    newTarget.doEnd(stream.targetId);
+//                    return;
+//                }
+//                newTarget.doHttpEnd(stream.targetId);
+//            }
 
         }
 
@@ -1173,6 +1179,8 @@ System.out.println("--> " + http2RO);
                 break;
             }
         }
+
+
 
         private void processNextWindow(
             DirectBuffer buffer,
@@ -1581,6 +1589,12 @@ System.out.println("--> " + http2RO);
         private long http2Window;
         private long contentLength;
         private long totalData;
+        private int targetWindow;
+        private int targetSlotIndex = NO_SLOT;
+        private int targetSlotPosition;
+        private MessageHandler streamState;
+        private MessageHandler throttleState;
+        private boolean endStream;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state)
         {
@@ -1588,11 +1602,221 @@ System.out.println("--> " + http2RO);
             this.http2StreamId = http2StreamId;
             this.targetId = supplyStreamId.getAsLong();
             this.state = state;
+            this.throttleState = this::throttleNoSlab;
+            this.streamState = this::streamNoSlab;
         }
 
         boolean isClientInitiated()
         {
             return http2StreamId%2 == 1;
+        }
+
+        private void onData()
+        {
+            streamState.onMessage(0, null, 0, 0);
+        }
+
+        private void streamNoSlab(
+                int msgTypeId,
+                MutableDirectBuffer buffer,
+                int index,
+                int length)
+        {
+            assert targetSlotIndex == NO_SLOT;
+            assert targetSlotPosition == 0;
+            assert !endStream;
+
+            endStream = http2DataRO.endStream();
+
+            int data = http2DataRO.dataLength();
+            int need = data == 0 ? 0 : data + framing();
+            int toHttp = need > targetWindow ? targetWindow - framing() : data;
+            if (toHttp < 0)
+            {
+                toHttp = 0;
+            }
+            int toSlab = data - toHttp;
+
+            System.out.println("streamNoSlab toHttp="+toHttp+" toSlab="+toSlab);
+
+            if (toHttp > 0)
+            {
+                route.target().doHttpData(targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
+            }
+
+            if (toSlab > 0)
+            {
+                boolean acquired = acquireSlot(targetId);
+                if (!acquired)
+                {
+                    throw new UnsupportedOperationException("TODO no slots available");
+                    // TODO reset
+                    //streamState =;
+                    //throttleState = this::throttleIgnore;
+                    //return;
+                }
+                MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
+                targetBuffer.putBytes(0, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
+                targetSlotPosition = toSlab;
+                streamState = this::streamSlab;
+                throttleState = this::throttleSlab;
+            }
+            else if (endStream)
+            {
+                // since there is no data is pending, we can send END frame
+                route.target().doHttpEnd(targetId);
+            }
+        }
+
+        private void streamSlab(
+                int msgTypeId,
+                MutableDirectBuffer buffer,
+                int index,
+                int length)
+        {
+            assert targetSlotIndex != NO_SLOT;
+            assert targetSlotPosition > 0;
+            assert !endStream;
+
+            endStream = http2DataRO.endStream();
+            MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
+            targetBuffer.putBytes(targetSlotPosition, http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
+            targetSlotPosition += http2DataRO.dataLength();
+        }
+
+        void onThrottle(
+                int msgTypeId,
+                MutableDirectBuffer buffer,
+                int index,
+                int length)
+        {
+            throttleState.onMessage(msgTypeId, buffer, index, length);
+        }
+
+        private void throttleNoSlab(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case WindowFW.TYPE_ID:
+                    windowRO.wrap(buffer, index, index + length);
+                    int update = windowRO.update();
+                    targetWindow += update;
+                    break;
+                case ResetFW.TYPE_ID:
+                    throw new UnsupportedOperationException("TODO");
+                default:
+                    // ignore
+                    break;
+            }
+        }
+
+        private void throttleSlab(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case WindowFW.TYPE_ID:
+                    windowRO.wrap(buffer, index, index + length);
+                    long targetId = windowRO.streamId();
+                    int update = windowRO.update();
+                    targetWindow += update;
+
+                    int data = targetSlotPosition;
+                    int need = data == 0 ? 0 : data + framing();
+                    int toHttp = need > targetWindow ? targetWindow - framing() : data;
+                    if (toHttp < 0)
+                    {
+                        toHttp = 0;
+                    }
+                    int toSlab = data - toHttp;
+
+                    System.out.println("throttleSlab toHttp="+toHttp+" toSlab="+toSlab);
+
+
+                    MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
+
+                    if (toHttp > 0)
+                    {
+                        route.target().doHttpData(targetId, targetBuffer, 0, toHttp);
+                    }
+
+                    if (toSlab > 0)
+                    {
+                        targetBuffer.putBytes(0, targetBuffer, toHttp, toSlab);
+                        throw new UnsupportedOperationException("TODO shift");
+                    }
+                    else
+                    {
+                        releaseSlot();
+                        streamState = this::streamNoSlab;
+                        throttleState = this::throttleNoSlab;
+                        if (endStream)
+                        {
+                            // since there is no data is pending in slab, we can send END frame right away
+                            route.target().doHttpEnd(targetId);
+                        }
+                    }
+
+                    //source.doWindow(sourceId, update + framing(update));
+                    break;
+                case ResetFW.TYPE_ID:
+                    //processReset(buffer, index, length);
+                    break;
+                default:
+                    // ignore
+                    break;
+            }
+        }
+
+        private void throttleIgnore(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case ResetFW.TYPE_ID:
+                    // TODO
+                    //processReset(buffer, index, length);
+                    break;
+                default:
+                    // ignore
+                    break;
+            }
+        }
+
+        private boolean acquireSlot(long streamId)
+        {
+            if (targetSlotPosition == 0)
+            {
+                assert targetSlotIndex == NO_SLOT;
+                targetSlotIndex = frameSlab.acquire(streamId);
+                return targetSlotIndex != NO_SLOT;
+            }
+            return true;
+        }
+
+        private void releaseSlot()
+        {
+            if (targetSlotIndex != NO_SLOT)
+            {
+                frameSlab.release(targetSlotIndex);
+                targetSlotIndex = NO_SLOT;
+                targetSlotPosition = 0;
+            }
+        }
+
+        int framing()
+        {
+            return 4 + 8 + 2;   // +4 for frame type, +8 for streamId, +2 for length
         }
 
     }
