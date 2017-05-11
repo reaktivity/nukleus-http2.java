@@ -228,7 +228,7 @@ public final class SourceInputStreamFactory
         private SourceInputStream()
         {
             this.streamState = this::streamBeforeBegin;
-            this.throttleState = this::throttleSkipNextWindow;
+            this.throttleState = this::throttleNextWindow;
             sourceOutputEstId = supplyStreamId.getAsLong();
             http2Streams = new Int2ObjectHashMap<>();
             localSettings = new Settings();
@@ -362,7 +362,6 @@ public final class SourceInputStreamFactory
 
             this.decoderState = this::decodePreface;
             this.streamState = this::streamAfterReplyOrReset;
-            this.throttleState = this::throttleSkipNextWindow;
             this.sourceUpdateDeferred = requestBytes - payload.capacity();
         }
 
@@ -383,6 +382,9 @@ public final class SourceInputStreamFactory
             final int initial = localSettings.maxFrameSize + 9;
             this.window += initial;
             source.doWindow(sourceId, initial);
+
+            replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
+            replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
         }
 
         private void processData(
@@ -453,11 +455,7 @@ public final class SourceInputStreamFactory
             this.decoderState = this::decodeHttp2Frame;
             source.doWindow(sourceId, prefaceRO.sizeof());
 
-            // TODO: replace with connection pool (start)
-            replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
-            replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-            // TODO: replace with connection pool (end)
-
+            // TODO send settings only when window is available
             replyTarget.doSettings(sourceOutputEstId, localSettings.maxConcurrentStreams);
             return length;
         }
@@ -889,7 +887,6 @@ public final class SourceInputStreamFactory
             newTarget.addThrottle(stream.targetId, this::handleThrottle);
 
             source.doWindow(sourceId, http2RO.sizeof());
-            throttleState = this::throttleSkipNextWindow;
 
             if (headersRO.endStream())
             {
@@ -1153,26 +1150,6 @@ public final class SourceInputStreamFactory
             throttleState.onMessage(msgTypeId, buffer, index, length);
         }
 
-        void throttleSkipNextWindow(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            switch (msgTypeId)
-            {
-            case WindowFW.TYPE_ID:
-                processSkipNextWindow(buffer, index, length);
-                break;
-            case ResetFW.TYPE_ID:
-                processReset(buffer, index, length);
-                break;
-            default:
-                // ignore
-                break;
-            }
-        }
-
         private void throttleNextWindow(
             int msgTypeId,
             DirectBuffer buffer,
@@ -1191,16 +1168,6 @@ public final class SourceInputStreamFactory
                 // ignore
                 break;
             }
-        }
-
-        private void processSkipNextWindow(
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            windowRO.wrap(buffer, index, index + length);
-
-            throttleState = this::throttleNextWindow;
         }
 
         private void processNextWindow(
@@ -1491,21 +1458,23 @@ public final class SourceInputStreamFactory
                                        boolean incrementalIndexing,
                                        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
         {
+            int index;
+            DirectBuffer name = null;
+            DirectBuffer value = null;
+
             switch (hf.type())
             {
                 case INDEXED :
-                {
-                    int index = hf.index();
+                    index = hf.index();
                     if (!decodeContext.valid(index))
                     {
                         headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                         return;
                     }
-                    DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
-                    DirectBuffer valueBuffer = decodeContext.valueBuffer(index);
-                    nameValue.accept(nameBuffer, valueBuffer);
-                }
-                break;
+                    name = decodeContext.nameBuffer(index);
+                    value = decodeContext.valueBuffer(index);
+                    nameValue.accept(name, value);
+                    break;
 
                 case LITERAL :
                     HpackLiteralHeaderFieldFW literalRO = hf.literal();
@@ -1518,70 +1487,66 @@ public final class SourceInputStreamFactory
                     {
                         case INDEXED:
                         {
-                            int index = literalRO.nameIndex();
-                            DirectBuffer nameBuffer = decodeContext.nameBuffer(index);
+                            index = literalRO.nameIndex();
+                            name = decodeContext.nameBuffer(index);
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
+                            value = valueRO.payload();
                             if (valueRO.huffman())
                             {
                                 MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
-                                int length = HpackHuffman.decode(valuePayload, dst);
+                                int length = HpackHuffman.decode(value, dst);
                                 if (length == -1)
                                 {
                                     headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                                     return;
                                 }
-                                valuePayload = new UnsafeBuffer(dst, 0, length);
+                                value = new UnsafeBuffer(dst, 0, length);
                             }
-                            DirectBuffer valueBuffer = valuePayload;
-                            nameValue.accept(nameBuffer, valueBuffer);
+                            nameValue.accept(name, value);
                         }
                         break;
                         case NEW:
                         {
                             HpackStringFW nameRO = literalRO.nameLiteral();
-                            DirectBuffer namePayload = nameRO.payload();
+                            name = nameRO.payload();
                             if (nameRO.huffman())
                             {
                                 MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
-                                int length = HpackHuffman.decode(namePayload, dst);
+                                int length = HpackHuffman.decode(name, dst);
                                 if (length == -1)
                                 {
                                     headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                                     return;
                                 }
-                                namePayload = new UnsafeBuffer(dst, 0, length);
+                                name = new UnsafeBuffer(dst, 0, length);
                             }
-                            DirectBuffer nameBuffer = namePayload;
 
                             HpackStringFW valueRO = literalRO.valueLiteral();
-                            DirectBuffer valuePayload = valueRO.payload();
+                            value = valueRO.payload();
                             if (valueRO.huffman())
                             {
                                 MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
-                                int length = HpackHuffman.decode(valuePayload, dst);
+                                int length = HpackHuffman.decode(value, dst);
                                 if (length == -1)
                                 {
                                     headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                                     return;
                                 }
-                                valuePayload = new UnsafeBuffer(dst, 0, length);
+                                value = new UnsafeBuffer(dst, 0, length);
                             }
-                            DirectBuffer valueBuffer = valuePayload;
-                            nameValue.accept(nameBuffer, valueBuffer);
-
-                            if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
-                            {
-                                // make a copy for name and value as they go into dynamic table (outlives current frame)
-                                MutableDirectBuffer name = new UnsafeBuffer(new byte[namePayload.capacity()]);
-                                name.putBytes(0, namePayload, 0, namePayload.capacity());
-                                MutableDirectBuffer value = new UnsafeBuffer(new byte[valuePayload.capacity()]);
-                                value.putBytes(0, valuePayload, 0, valuePayload.capacity());
-                                decodeContext.add(name, value);
-                            }
+                            nameValue.accept(name, value);
                         }
                         break;
+                    }
+                    if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
+                    {
+                        // make a copy for name and value as they go into dynamic table (outlives current frame)
+                        MutableDirectBuffer nameCopy = new UnsafeBuffer(new byte[name.capacity()]);
+                        nameCopy.putBytes(0, name, 0, name.capacity());
+                        MutableDirectBuffer valueCopy = new UnsafeBuffer(new byte[value.capacity()]);
+                        valueCopy.putBytes(0, value, 0, value.capacity());
+                        decodeContext.add(nameCopy, valueCopy);
                     }
                     break;
             }
