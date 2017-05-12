@@ -85,4 +85,14 @@ public class ConnectionManagement1IT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/connection.has.two.streams/client",
+            "${nukleus}/connection.has.two.streams/server" })
+    public void connectionHasTwoStreams() throws Exception
+    {
+        k3po.finish();
+    }
+
 }

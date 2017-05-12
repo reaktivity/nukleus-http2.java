@@ -1750,7 +1750,7 @@ System.out.println("--> " + http2RO);
                     if (toSlab > 0)
                     {
                         targetBuffer.putBytes(0, targetBuffer, toHttp, toSlab);
-                        throw new UnsupportedOperationException("TODO shift");
+                        targetSlotPosition = toSlab;
                     }
                     else
                     {
