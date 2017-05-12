@@ -31,20 +31,17 @@ public class MessageFormatIT
 {
     private final K3poRule k3po = new K3poRule()
             .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("streams", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format");
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/message.format")
+            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format");
 
-    private final TestRule timeout = new DisableOnDebug(new Timeout(5, SECONDS));
+    private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
     private final NukleusRule nukleus = new NukleusRule("http2")
-        .directory("target/nukleus-itests")
-        .commandBufferCapacity(1024)
-        .responseBufferCapacity(1024)
-        .counterValuesBufferCapacity(1024)
-        .streams("http2", "source")
-        .streams("source", "http2#source")
-        .streams("target", "http2#source")
-        .streams("http2", "target")
-        .streams("source", "http2#target");
+            .directory("target/nukleus-itests")
+            .commandBufferCapacity(1024)
+            .responseBufferCapacity(1024)
+            .counterValuesBufferCapacity(1024)
+            .clean();
 
     @Rule
     public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
@@ -52,13 +49,10 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/continuation.frames/source",
-            "${streams}/continuation.frames/target" })
+            "${spec}/continuation.frames/client",
+            "${nukleus}/continuation.frames/server" })
     public void continuationFrames() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 }

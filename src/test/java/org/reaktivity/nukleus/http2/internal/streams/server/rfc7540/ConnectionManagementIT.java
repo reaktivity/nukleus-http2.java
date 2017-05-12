@@ -52,19 +52,6 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/http.push.promise/source",
-            "${streams}/http.push.promise/target" })
-    public void pushResources() throws Exception
-    {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-            "${route}/input/new/controller",
             "${streams}/push.promise.on.different.stream/source",
             "${streams}/push.promise.on.different.stream/target" })
     public void pushPromiseOnDifferentStream() throws Exception

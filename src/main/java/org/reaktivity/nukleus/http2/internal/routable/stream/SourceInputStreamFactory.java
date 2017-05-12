@@ -1280,6 +1280,7 @@ System.out.println("--> " + http2RO);
             Map<String, String> headersMap = new HashMap<>();
             headers.forEach(
                     httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
+            System.out.println("Promised request headers "+headersMap);
             Optional<Route> optional = resolveTarget(sourceRef, headersMap);
             Route route = optional.get();
             Target newTarget = route.target();
@@ -1628,12 +1629,7 @@ System.out.println("--> " + http2RO);
             endStream = http2DataRO.endStream();
 
             int data = http2DataRO.dataLength();
-            int need = data == 0 ? 0 : data + framing();
-            int toHttp = need > targetWindow ? targetWindow - framing() : data;
-            if (toHttp < 0)
-            {
-                toHttp = 0;
-            }
+            int toHttp = data > targetWindow ? targetWindow : data;
             int toSlab = data - toHttp;
 
             System.out.println("streamNoSlab toHttp="+toHttp+" toSlab="+toSlab);
@@ -1729,12 +1725,7 @@ System.out.println("--> " + http2RO);
                     targetWindow += update;
 
                     int data = targetSlotPosition;
-                    int need = data == 0 ? 0 : data + framing();
-                    int toHttp = need > targetWindow ? targetWindow - framing() : data;
-                    if (toHttp < 0)
-                    {
-                        toHttp = 0;
-                    }
+                    int toHttp = data > targetWindow ? targetWindow : data;
                     int toSlab = data - toHttp;
 
                     System.out.println("throttleSlab toHttp="+toHttp+" toSlab="+toSlab);
@@ -1822,11 +1813,6 @@ System.out.println("--> " + http2RO);
             resetRO.wrap(buffer, index, index + length);
             releaseSlot();
             //source.doReset(sourceId);
-        }
-
-        int framing()
-        {
-            return 4 + 8 + 2;   // +4 for frame type, +8 for streamId, +2 for length
         }
 
     }

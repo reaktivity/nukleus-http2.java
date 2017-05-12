@@ -252,7 +252,7 @@ public final class TargetOutputEstablishedStreamFactory
                         .endHeaders()
                         .set(beginEx.headers(), this::mapHeader)
                         .build();
-
+System.out.println("BEGIN extension= " + extension.sizeof());
                 target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
                         http2HeadersRO.limit());
 
@@ -277,9 +277,11 @@ public final class TargetOutputEstablishedStreamFactory
 
             OctetsFW extension = dataRO.extension();
             OctetsFW payload = dataRO.payload();
+            System.out.printf("data  size =%d extension size =%d\n ", payload.sizeof(), extension.sizeof());
 
             if (extension.sizeof() > 0)
             {
+
                 int pushStreamId = pushStreamIds.applyAsInt(http2StreamId);
                 if (pushStreamId != -1)
                 {
@@ -292,7 +294,7 @@ public final class TargetOutputEstablishedStreamFactory
                             .endHeaders()
                             .set(dataEx.headers(), this::mapHeader)
                             .build();
-
+System.out.println("PUSH_PROMISE size = " + pushPromise.limit());
                     // TODO remove the following and throttle based on HTTP2_WINDOW update
                     target.addThrottle(sourceOutputEstId, this::handleThrottle);
                     target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());

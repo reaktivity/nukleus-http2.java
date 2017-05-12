@@ -95,4 +95,14 @@ public class ConnectionManagement1IT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/http.push.promise/client",
+            "${nukleus}/http.push.promise/server" })
+    public void pushResources() throws Exception
+    {
+        k3po.finish();
+    }
+
 }
