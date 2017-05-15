@@ -245,16 +245,20 @@ public final class TargetOutputEstablishedStreamFactory
                 this.encodeContext = correlation.encodeContext();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-                HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                Http2HeadersFW http2HeadersRO = http2HeadersRW
-                        .wrap(writeBuffer, 0, writeBuffer.capacity())
-                        .streamId(http2StreamId)
-                        .endHeaders()
-                        .set(beginEx.headers(), this::mapHeader)
-                        .build();
-System.out.println("BEGIN extension= " + extension.sizeof());
-                target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
-                        http2HeadersRO.limit());
+                System.out.println("BEGIN extension= " + extension.sizeof());
+
+                if (extension.sizeof() > 0)
+                {
+                    HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
+                    Http2HeadersFW http2HeadersRO = http2HeadersRW
+                            .wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(http2StreamId)
+                            .endHeaders()
+                            .set(beginEx.headers(), this::mapHeader)
+                            .build();
+                    target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
+                            http2HeadersRO.limit());
+                }
 
                 this.streamState = this::afterBeginOrData;
                 source.doWindow(sourceId, 512);
