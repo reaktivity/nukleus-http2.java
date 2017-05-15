@@ -31,20 +31,17 @@ public class ConnectionManagementIT
 {
     private final K3poRule k3po = new K3poRule()
             .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("streams", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/connection.management");
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/connection.management")
+            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/connection.management");
 
-    private final TestRule timeout = new DisableOnDebug(new Timeout(5, SECONDS));
+    private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
     private final NukleusRule nukleus = new NukleusRule("http2")
-        .directory("target/nukleus-itests")
-        .commandBufferCapacity(1024)
-        .responseBufferCapacity(1024)
-        .counterValuesBufferCapacity(1024)
-        .streams("http2", "source")
-        .streams("source", "http2#source")
-        .streams("target", "http2#source")
-        .streams("http2", "target")
-        .streams("source", "http2#target");
+            .directory("target/nukleus-itests")
+            .commandBufferCapacity(1024)
+            .responseBufferCapacity(1024)
+            .counterValuesBufferCapacity(1024)
+            .clean();
 
     @Rule
     public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
@@ -52,13 +49,69 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/input/new/controller",
-            "${streams}/push.promise.on.different.stream/source",
-            "${streams}/push.promise.on.different.stream/target" })
+            "${spec}/connection.established/client" })
+    public void connectionEstablished() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/http.get.exchange/client",
+            "${nukleus}/http.get.exchange/server" })
+    public void httpGetExchange() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/http.post.exchange/client",
+            "${nukleus}/http.post.exchange/server" })
+    public void httpPostExchange() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/multiple.data.frames/client",
+            "${nukleus}/multiple.data.frames/server" })
+    public void multipleDataFrames() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/connection.has.two.streams/client",
+            "${nukleus}/connection.has.two.streams/server" })
+    public void connectionHasTwoStreams() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/http.push.promise/client",
+            "${nukleus}/http.push.promise/server" })
+    public void pushResources() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/push.promise.on.different.stream/client",
+            "${nukleus}/push.promise.on.different.stream/server" })
     public void pushPromiseOnDifferentStream() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 

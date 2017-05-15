@@ -956,12 +956,12 @@ System.out.println("--> " + http2RO);
             }
             if (streamId != 0)
             {
-                Http2Stream stream = http2Streams.get(streamId);
-                if (stream == null || stream.state == State.IDLE)
-                {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
-                    return;
-                }
+//                Http2Stream stream = http2Streams.get(streamId);
+//                if (stream == null || stream.state == State.IDLE)
+//                {
+//                    error(Http2ErrorCode.PROTOCOL_ERROR);
+//                    return;
+//                }
             }
             http2WindowRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
 
@@ -1485,6 +1485,8 @@ System.out.println("--> " + http2RO);
                     }
                     name = decodeContext.nameBuffer(index);
                     value = decodeContext.valueBuffer(index);
+                    System.out.println("Accept name = " + name.getStringWithoutLengthUtf8(0, name.capacity())+
+                        " value="+value.getStringWithoutLengthUtf8(0, value.capacity()));
                     nameValue.accept(name, value);
                     break;
 
@@ -1515,6 +1517,8 @@ System.out.println("--> " + http2RO);
                                 }
                                 value = new UnsafeBuffer(dst, 0, length);
                             }
+                            System.out.println("Accept name = " + name.getStringWithoutLengthUtf8(0, name.capacity())+
+                                    " value="+value.getStringWithoutLengthUtf8(0, value.capacity()));
                             nameValue.accept(name, value);
                         }
                         break;
@@ -1547,6 +1551,8 @@ System.out.println("--> " + http2RO);
                                 }
                                 value = new UnsafeBuffer(dst, 0, length);
                             }
+                            System.out.println("Accept name = " + name.getStringWithoutLengthUtf8(0, name.capacity())+
+                                    " value="+value.getStringWithoutLengthUtf8(0, value.capacity()));
                             nameValue.accept(name, value);
                         }
                         break;

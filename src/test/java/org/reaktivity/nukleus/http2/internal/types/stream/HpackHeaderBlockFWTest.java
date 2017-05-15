@@ -461,6 +461,7 @@ public class HpackHeaderBlockFWTest
                     int index = x.index();
                     name = context.name(index);
                     value = context.value(index);
+                    System.out.println("name = " + name+" value="+value);
                     headers.put(name, value);
                     break;
                 case LITERAL :
@@ -472,6 +473,7 @@ public class HpackHeaderBlockFWTest
                             index = literalRO.nameIndex();
                             name = context.name(index);
                             value = string(literalRO.valueLiteral());
+                            System.out.println("name = " + name+" value="+value);
                             headers.put(name, value);
                         }
                         break;
@@ -479,6 +481,7 @@ public class HpackHeaderBlockFWTest
                         {
                             name = string(literalRO.nameLiteral());
                             value = string(literalRO.valueLiteral());
+                            System.out.println("name = " + name+" value="+value);
                             headers.put(name, value);
                         }
                         break;
@@ -509,6 +512,26 @@ public class HpackHeaderBlockFWTest
         {
             return valuePayload.getStringWithoutLengthUtf8(0, valuePayload.capacity());
         }
+    }
+
+    @Test
+    public void foo()
+    {
+        byte[] bytes = DatatypeConverter.parseHexBinary(
+                "00" +  // +00 to test offset
+                        // Header list begin
+                        "87824186a0e41d139d09448960bdcb5256426c28e9" +
+                        "8782bf448561043d8547408bf2b567a2858d524b6771d10135" +
+
+                // Header list end
+                        "00");
+        DirectBuffer buffer = new UnsafeBuffer(bytes);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+
+        Map<String, String> headers = new LinkedHashMap<>();
+        fw.forEach(getHeaders(new HpackContext(), headers));
+        System.out.println("headers = " + headers);
+
     }
 
 }
