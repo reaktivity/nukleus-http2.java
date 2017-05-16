@@ -889,7 +889,7 @@ System.out.println("--> " + http2RO);
             final long targetRef = route.targetRef();
 
             newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId,
-                    hs -> blockRO.forEach(hf -> decodeHeaderField(hf, hs)));
+                    hs -> headersContext.headers.forEach((k, v) -> decodeHeaderField(hs, k, v)));
             newTarget.addThrottle(stream.targetId, stream::onThrottle);
 
             source.doWindow(sourceId, http2RO.sizeof());
@@ -1454,14 +1454,16 @@ System.out.println("--> " + http2RO);
             }
         }
 
-        private void decodeHeaderField(HpackHeaderFieldFW hf,
-                                       ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder)
+        private void decodeHeaderField(
+                ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
+                String name,
+                String value)
         {
             if (!headersContext.error())
             {
-                decodeHeaderField(hf, false, (name, value) -> builder.item(i -> i.representation((byte) 0)
-                                                                                 .name(name, 0, name.capacity())
-                                                                                 .value(value, 0, value.capacity())));
+                builder.item(i -> i.representation((byte) 0)
+                                   .name(name)
+                                   .value(value));
             }
 
         }
