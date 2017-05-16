@@ -49,6 +49,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
@@ -97,6 +98,8 @@ public final class SourceInputStreamFactory
     private final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
     private final Http2WindowUpdateFW http2WindowRO = new Http2WindowUpdateFW();
     private final Http2PriorityFW priorityRO = new Http2PriorityFW();
+    private final UnsafeBuffer scratch = new UnsafeBuffer(new byte[8192]);  // TODO
+    private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
 
     private final Http2PingFW pingRO = new Http2PingFW();
 
@@ -240,6 +243,7 @@ public final class SourceInputStreamFactory
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
             BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                     ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
+                            .andThen(this::mapToHttp)
                             .andThen(this::validatePseudoHeaders)
                             .andThen(this::uppercaseHeaders)
                             .andThen(this::connectionHeaders)
@@ -857,7 +861,7 @@ System.out.println("--> " + http2RO);
 
             headersContext.reset();
 
-
+            httpBeginExRW.wrap(scratch, 0, scratch.capacity());
 
             blockRO.forEach(headerFieldConsumer);
             // All HTTP/2 requests MUST include exactly one valid value for the
@@ -888,8 +892,9 @@ System.out.println("--> " + http2RO);
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
 
-            newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId,
-                    hs -> headersContext.headers.forEach((k, v) -> decodeHeaderField(hs, k, v)));
+            HttpBeginExFW beginEx = httpBeginExRW.build();
+            newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId, beginEx.buffer(), beginEx.offset(),
+                    beginEx.sizeof());
             newTarget.addThrottle(stream.targetId, stream::onThrottle);
 
             source.doWindow(sourceId, http2RO.sizeof());
@@ -1454,18 +1459,15 @@ System.out.println("--> " + http2RO);
             }
         }
 
-        private void decodeHeaderField(
-                ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> builder,
-                String name,
-                String value)
+        // Writes HPACK header field to http representation in a buffer
+        private void mapToHttp(DirectBuffer name, DirectBuffer value)
         {
             if (!headersContext.error())
             {
-                builder.item(i -> i.representation((byte) 0)
-                                   .name(name)
-                                   .value(value));
+                httpBeginExRW.headers(b -> b.item(item -> item.representation((byte) 0)
+                                                              .name(name, 0, name.capacity())
+                                                              .value(value, 0, value.capacity())));
             }
-
         }
 
         private void decodeHeaderField(HpackHeaderFieldFW hf,

@@ -204,6 +204,25 @@ public final class Target implements Nukleus
         streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
+    // HTTP begin frame's extension data is written using the given buffer
+    public void doHttpBegin(
+            long targetId,
+            long targetRef,
+            long correlationId,
+            DirectBuffer extBuffer,
+            int extOffset,
+            int extLength)
+    {
+        BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                               .streamId(targetId)
+                               .referenceId(targetRef)
+                               .correlationId(correlationId)
+                               .extension(e -> e.set(extBuffer, extOffset, extLength))
+                               .build();
+
+        streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
+    }
+
     public void doHttpData(
         long targetId,
         DirectBuffer payload,
