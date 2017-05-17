@@ -55,4 +55,14 @@ public class MessageFormatIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/dynamic.table.requests/client",
+            "${nukleus}/dynamic.table.requests/server" })
+    public void dynamicTableRequests() throws Exception
+    {
+        k3po.finish();
+    }
 }

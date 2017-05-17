@@ -196,11 +196,6 @@ public final class Target implements Nukleus
                 .extension(e -> e.set(visitHttpBeginEx(mutator)))
                 .build();
 
-        for(int i=0; i < begin.sizeof(); i++)
-        {
-            System.out.printf("%02x ", begin.buffer().getByte(begin.offset()+i));
-        }
-        System.out.println();
         streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
