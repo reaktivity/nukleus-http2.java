@@ -256,6 +256,18 @@ public final class Target implements Nukleus
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
     }
 
+    public void doHttp2(
+            long targetId,
+            Flyweight.Builder.Visitor visitor)
+    {
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitor))
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
     public void doSettingsAck(
             long targetId)
     {
@@ -315,7 +327,7 @@ public final class Target implements Nukleus
                          .sizeof();
     }
 
-    private Flyweight.Builder.Visitor visitSettings(
+    public Flyweight.Builder.Visitor visitSettings(
             int maxConcurrentStreams)
     {
         return (buffer, offset, limit) ->
@@ -325,7 +337,7 @@ public final class Target implements Nukleus
                           .sizeof();
     }
 
-    private Flyweight.Builder.Visitor visitSettingsAck()
+    public Flyweight.Builder.Visitor visitSettingsAck()
     {
         return (buffer, offset, limit) ->
                 settingsRW.wrap(buffer, offset, limit)
@@ -334,7 +346,7 @@ public final class Target implements Nukleus
                           .sizeof();
     }
 
-    private Flyweight.Builder.Visitor visitRst(
+    public Flyweight.Builder.Visitor visitRst(
             int streamId,
             Http2ErrorCode errorCode)
     {
@@ -346,7 +358,7 @@ public final class Target implements Nukleus
                        .sizeof();
     }
 
-    private Flyweight.Builder.Visitor visitGoaway(
+    public Flyweight.Builder.Visitor visitGoaway(
             int lastStreamId,
             Http2ErrorCode errorCode)
     {
@@ -358,7 +370,7 @@ public final class Target implements Nukleus
                         .sizeof();
     }
 
-    private Flyweight.Builder.Visitor visitPingAck(
+    public Flyweight.Builder.Visitor visitPingAck(
             DirectBuffer payload)
     {
         return (buffer, offset, limit) ->

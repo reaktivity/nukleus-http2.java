@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
+import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
@@ -24,6 +25,7 @@ import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Route;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
@@ -167,7 +169,7 @@ public final class SourceInputStreamFactory
         this.correlateNew = correlateNew;
         // Actually, we need only DEFAULT_MAX_FRAME_SIZE + 9 bytes for frame header, but
         // slab needs power of two
-        int slotCapacity = 1 << -Integer.numberOfLeadingZeros(Settings.DEFAULT_MAX_FRAME_SIZE + 9 - 1);
+        int slotCapacity = BitUtil.findNextPositivePowerOfTwo(Settings.DEFAULT_MAX_FRAME_SIZE + 9);
         int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
@@ -199,7 +201,8 @@ public final class SourceInputStreamFactory
         long sourceRef;
         private long correlationId;
         private int window;
-        private int replyTargetWindow;
+
+        private final WriteScheduler writeScheduler;
 
         private int sourceUpdateDeferred;
         final long sourceOutputEstId;
@@ -213,6 +216,8 @@ public final class SourceInputStreamFactory
         private int noClientStreams;
         private int noPromisedStreams;
         private int maxClientStreamId;
+        private int maxPushPromiseStreamId;
+
         private boolean goaway;
         private Settings localSettings;
         private Settings remoteSettings;
@@ -241,6 +246,7 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
+            writeScheduler = new BufferingWriteScheduler(frameSlab, replyTarget, sourceOutputEstId);
             BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                     ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
                             .andThen(this::mapToHttp)
@@ -252,7 +258,7 @@ public final class SourceInputStreamFactory
 
             Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
             consumer = consumer.andThen(this::dynamicTableSizeUpdate);
-            this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, true, nameValue));
+            this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, nameValue));
         }
 
         private void handleStream(
@@ -382,9 +388,6 @@ public final class SourceInputStreamFactory
             this.sourceId = beginRO.streamId();
             this.sourceRef = beginRO.referenceId();
             this.correlationId = beginRO.correlationId();
-
-            System.out.printf("BEGIN sourceId:%x sourceRef:%d correlationId:%x\n", sourceId, sourceRef, correlationId);
-
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;
 
@@ -394,6 +397,9 @@ public final class SourceInputStreamFactory
 
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
+
+            Flyweight.Builder.Visitor settings = replyTarget.visitSettings(localSettings.maxConcurrentStreams);
+            writeScheduler.doHttp2(9+6, 0, settings);    // +9 for HTTP2 framing, +6 for a setting
         }
 
         private void processData(
@@ -458,14 +464,11 @@ public final class SourceInputStreamFactory
             }
             if (!prefaceRO.matches())
             {
-                processUnexpected(sourceId);
-                return length;
+                writeScheduler.doEnd();
+                return limit-offset;
             }
             this.decoderState = this::decodeHttp2Frame;
             source.doWindow(sourceId, prefaceRO.sizeof());
-
-            // TODO send settings only when window is available
-            replyTarget.doSettings(sourceOutputEstId, localSettings.maxConcurrentStreams);
             return length;
         }
 
@@ -961,12 +964,19 @@ System.out.println("--> " + http2RO);
             }
             if (streamId != 0)
             {
-//                Http2Stream stream = http2Streams.get(streamId);
-//                if (stream == null || stream.state == State.IDLE)
-//                {
-//                    error(Http2ErrorCode.PROTOCOL_ERROR);
-//                    return;
-//                }
+                State state = state(streamId);
+                if (state == State.IDLE)
+                {
+                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    return;
+                }
+                Http2Stream stream = http2Streams.get(streamId);
+                if (stream == null)
+                {
+                    // A receiver could receive a WINDOW_UPDATE frame on a "half-closed (remote)" or "closed" stream.
+                    // A receiver MUST NOT treat this as an error
+                    return;
+                }
             }
             http2WindowRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
 
@@ -1077,7 +1087,8 @@ System.out.println("--> " + http2RO);
             if (!settingsRO.ack())
             {
                 settingsRO.accept(this::doSetting);
-                replyTarget.doSettingsAck(sourceOutputEstId);
+                Flyweight.Builder.Visitor settings = replyTarget.visitSettingsAck();
+                writeScheduler.doHttp2(9, 0, settings);    // +9 for HTTP2 framing
             }
         }
 
@@ -1141,8 +1152,33 @@ System.out.println("--> " + http2RO);
 
             if (!pingRO.ack())
             {
-                replyTarget.doPingAck(sourceOutputEstId, pingRO.payload());
+                Flyweight.Builder.Visitor ping = replyTarget.visitPingAck(pingRO.payload());
+                writeScheduler.doHttp2(9+8, 0, ping);    // +9 for HTTP2 framing, +8 for a ping
             }
+        }
+
+        private State state(int streamId)
+        {
+            Http2Stream stream = http2Streams.get(streamId);
+            if (stream != null)
+            {
+                return stream.state;
+            }
+            if (streamId%2 == 1)
+            {
+                if (streamId <= maxClientStreamId)
+                {
+                    return State.CLOSED;
+                }
+            }
+            else
+            {
+                if (streamId <= maxPushPromiseStreamId)
+                {
+                    return State.CLOSED;
+                }
+            }
+            return State.IDLE;
         }
 
         Optional<Route> resolveTarget(
@@ -1194,6 +1230,7 @@ System.out.println("--> " + http2RO);
             windowRO.wrap(buffer, index, index + length);
 
             int update = windowRO.update();
+            writeScheduler.flush(update);
 
             if (sourceUpdateDeferred != 0)
             {
@@ -1229,13 +1266,15 @@ System.out.println("--> " + http2RO);
 
         void error(Http2ErrorCode errorCode)
         {
-            replyTarget.doGoaway(sourceOutputEstId, lastStreamId, errorCode);
-            replyTarget.doEnd(sourceOutputEstId);
+            Flyweight.Builder.Visitor goaway = replyTarget.visitGoaway(lastStreamId, errorCode);
+            writeScheduler.doHttp2(9+8, 0, goaway);    // +9 for HTTP2 framing, +8 for goway payload
+            writeScheduler.doEnd();
         }
 
         void streamError(int streamId, Http2ErrorCode errorCode)
         {
-            replyTarget.doRst(sourceOutputEstId, streamId, errorCode);
+            Flyweight.Builder.Visitor rst = replyTarget.visitRst(streamId, errorCode);
+            writeScheduler.doHttp2(9+4, streamId, rst);    // +9 for HTTP2 framing, +4 for RST_STREAM payload
         }
 
         private int nextPromisedId()
@@ -1285,7 +1324,6 @@ System.out.println("--> " + http2RO);
             Map<String, String> headersMap = new HashMap<>();
             headers.forEach(
                     httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
-            System.out.println("Promised request headers "+headersMap);
             Optional<Route> optional = resolveTarget(sourceRef, headersMap);
             Route route = optional.get();
             Target newTarget = route.target();
@@ -1471,7 +1509,6 @@ System.out.println("--> " + http2RO);
         }
 
         private void decodeHeaderField(HpackHeaderFieldFW hf,
-                                       boolean incrementalIndexing,
                                        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
         {
             int index;
@@ -1489,8 +1526,6 @@ System.out.println("--> " + http2RO);
                     }
                     name = decodeContext.nameBuffer(index);
                     value = decodeContext.valueBuffer(index);
-                    System.out.println("Accept name = " + name.getStringWithoutLengthUtf8(0, name.capacity())+
-                        " value="+value.getStringWithoutLengthUtf8(0, value.capacity()));
                     nameValue.accept(name, value);
                     break;
 
@@ -1521,8 +1556,6 @@ System.out.println("--> " + http2RO);
                                 }
                                 value = new UnsafeBuffer(dst, 0, length);
                             }
-                            System.out.println("Accept name = " + name.getStringWithoutLengthUtf8(0, name.capacity())+
-                                    " value="+value.getStringWithoutLengthUtf8(0, value.capacity()));
                             nameValue.accept(name, value);
                         }
                         break;
@@ -1555,13 +1588,11 @@ System.out.println("--> " + http2RO);
                                 }
                                 value = new UnsafeBuffer(dst, 0, length);
                             }
-                            System.out.println("Accept name = " + name.getStringWithoutLengthUtf8(0, name.capacity())+
-                                    " value="+value.getStringWithoutLengthUtf8(0, value.capacity()));
                             nameValue.accept(name, value);
                         }
                         break;
                     }
-                    if (incrementalIndexing && literalRO.literalType() == INCREMENTAL_INDEXING)
+                    if (literalRO.literalType() == INCREMENTAL_INDEXING)
                     {
                         // make a copy for name and value as they go into dynamic table (outlives current frame)
                         MutableDirectBuffer nameCopy = new UnsafeBuffer(new byte[name.capacity()]);
@@ -1737,9 +1768,6 @@ System.out.println("--> " + http2RO);
                     int data = targetSlotPosition;
                     int toHttp = data > targetWindow ? targetWindow : data;
                     int toSlab = data - toHttp;
-
-                    System.out.println("throttleSlab toHttp="+toHttp+" toSlab="+toSlab);
-
 
                     MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
 

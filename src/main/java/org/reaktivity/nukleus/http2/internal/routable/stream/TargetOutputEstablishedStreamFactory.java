@@ -245,7 +245,6 @@ public final class TargetOutputEstablishedStreamFactory
                 this.encodeContext = correlation.encodeContext();
 
                 newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-                System.out.println("BEGIN extension= " + extension.sizeof());
 
                 if (extension.sizeof() > 0)
                 {
@@ -298,7 +297,6 @@ public final class TargetOutputEstablishedStreamFactory
                             .endHeaders()
                             .set(dataEx.headers(), this::mapHeader)
                             .build();
-System.out.println("PUSH_PROMISE size = " + pushPromise.limit());
                     // TODO remove the following and throttle based on HTTP2_WINDOW update
                     target.addThrottle(sourceOutputEstId, this::handleThrottle);
                     target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());

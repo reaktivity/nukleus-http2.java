@@ -461,7 +461,6 @@ public class HpackHeaderBlockFWTest
                     int index = x.index();
                     name = context.name(index);
                     value = context.value(index);
-                    System.out.println("name = " + name+" value="+value);
                     headers.put(name, value);
                     break;
                 case LITERAL :
