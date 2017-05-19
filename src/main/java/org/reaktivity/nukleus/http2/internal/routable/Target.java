@@ -380,4 +380,17 @@ public final class Target implements Nukleus
                       .build()
                       .sizeof();
     }
+
+    public Flyweight.Builder.Visitor visitPayload(
+            DirectBuffer payload,
+            int payloadOffset,
+            int payloadLength)
+    {
+        return (buffer, offset, limit) ->
+        {
+            buffer.putBytes(offset, payload, payloadOffset, payloadLength);
+            return payloadLength;
+        };
+
+    }
 }

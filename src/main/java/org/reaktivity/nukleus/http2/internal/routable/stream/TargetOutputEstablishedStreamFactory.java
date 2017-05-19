@@ -22,6 +22,7 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
@@ -52,7 +53,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 public final class TargetOutputEstablishedStreamFactory
 {
-
     private final FrameFW frameRO = new FrameFW();
 
     private final BeginFW beginRO = new BeginFW();
@@ -71,7 +71,6 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
-
 
     private final Source source;
     private final Function<String, Target> supplyTarget;
@@ -110,6 +109,7 @@ public final class TargetOutputEstablishedStreamFactory
         private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
         private IntSupplier promisedStreamIds;
         private IntUnaryOperator pushStreamIds;
+        private WriteScheduler writeScheduler;
 
         @Override
         public String toString()
@@ -241,10 +241,9 @@ public final class TargetOutputEstablishedStreamFactory
                 this.sourceId = newSourceId;
                 this.target = newTarget;
                 this.http2StreamId = correlation.http2StreamId();
+                this.writeScheduler = correlation.writeScheduler();
                 this.pushHandler = correlation.pushHandler();
                 this.encodeContext = correlation.encodeContext();
-
-                newTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
 
                 if (extension.sizeof() > 0)
                 {
@@ -255,13 +254,14 @@ public final class TargetOutputEstablishedStreamFactory
                             .endHeaders()
                             .set(beginEx.headers(), this::mapHeader)
                             .build();
-                    target.doData(sourceOutputEstId, http2HeadersRO.buffer(), http2HeadersRO.offset(),
+                    System.out.println("HEADERS");
+                    Flyweight.Builder.Visitor payload = target.visitPayload(http2HeadersRO.buffer(), http2HeadersRO.offset(),
                             http2HeadersRO.limit());
+                    writeScheduler.doHttp2(http2HeadersRO.sizeof(), http2StreamId, payload);
                 }
 
                 this.streamState = this::afterBeginOrData;
                 source.doWindow(sourceId, 512);
-
             }
             else
             {
@@ -297,9 +297,9 @@ public final class TargetOutputEstablishedStreamFactory
                             .endHeaders()
                             .set(dataEx.headers(), this::mapHeader)
                             .build();
-                    // TODO remove the following and throttle based on HTTP2_WINDOW update
-                    target.addThrottle(sourceOutputEstId, this::handleThrottle);
-                    target.doData(sourceOutputEstId, pushPromise.buffer(), pushPromise.offset(), pushPromise.limit());
+                    Flyweight.Builder.Visitor pppayload = target.visitPayload(pushPromise.buffer(), pushPromise.offset(),
+                            pushPromise.limit());
+                    writeScheduler.doHttp2(pushPromise.sizeof(), pushStreamId, pppayload);
                     pushHandler.accept(promisedStreamId, dataEx.headers());
                 }
             }
@@ -309,9 +309,10 @@ public final class TargetOutputEstablishedStreamFactory
                                               .streamId(http2StreamId)
                                               .payload(payload.buffer(), payload.offset(), payload.sizeof())
                                               .build();
-                // TODO remove the following and throttle based on HTTP2_WINDOW update
-                target.addThrottle(sourceOutputEstId, this::handleThrottle);
-                target.doData(sourceOutputEstId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
+System.out.println("DATA");
+                Flyweight.Builder.Visitor pppayload = target.visitPayload(http2Data.buffer(), http2Data.offset(),
+                        http2Data.limit());
+                writeScheduler.doHttp2(http2Data.sizeof(), http2StreamId, pppayload);
             }
         }
 
@@ -326,32 +327,13 @@ public final class TargetOutputEstablishedStreamFactory
                                           .streamId(http2StreamId)
                                           .endStream()
                                           .build();
-            // TODO remove the following and throttle based on HTTP2_WINDOW update
-            //target.addThrottle(sourceOutputEstId, this::handleThrottle);
-            target.doData(sourceOutputEstId, http2Data.buffer(), http2Data.offset(), http2Data.limit());
+            System.out.println("DATA + HTTP2 EOS");
 
-            target.removeThrottle(sourceOutputEstId);
+            Flyweight.Builder.Visitor payload = target.visitPayload(
+                    http2Data.buffer(), http2Data.offset(), http2Data.limit());
+            writeScheduler.doHttp2(http2Data.sizeof(), http2StreamId, payload);
+
             source.removeStream(sourceId);
-        }
-
-        private void handleThrottle(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            switch (msgTypeId)
-            {
-                case WindowFW.TYPE_ID:
-                    processWindow(buffer, index, length);
-                    break;
-                case ResetFW.TYPE_ID:
-                    processReset(buffer, index, length);
-                    break;
-                default:
-                    // ignore
-                    break;
-            }
         }
 
         private void processWindow(
@@ -415,6 +397,5 @@ public final class TargetOutputEstablishedStreamFactory
             builder.value(valueRO, 0, valueRO.capacity());
         }
     }
-
 
 }

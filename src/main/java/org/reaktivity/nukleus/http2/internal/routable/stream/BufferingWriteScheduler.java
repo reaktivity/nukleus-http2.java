@@ -39,6 +39,8 @@ public class BufferingWriteScheduler implements WriteScheduler
 
         if (slot == NO_SLOT && length <= window)
         {
+            assert entries.isEmpty();
+
             target.doHttp2(targetId, visitor);
             window -= length;
         }

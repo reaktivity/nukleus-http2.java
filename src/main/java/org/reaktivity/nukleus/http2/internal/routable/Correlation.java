@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.function.IntSupplier;
 import java.util.function.IntUnaryOperator;
 
+import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 import org.reaktivity.nukleus.http2.internal.router.RouteKind;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -38,10 +39,12 @@ public class Correlation
     private final long sourceOutputEstId;
     private final HpackContext encodeContext;
     private final IntUnaryOperator pushStreamIds;
+    private final WriteScheduler writeScheduler;
 
     public Correlation(
         long id,
         long sourceOutputEstId,
+        WriteScheduler writeScheduler,
         IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler,
         int http2StreamId,
         HpackContext encodeContext,
@@ -52,6 +55,7 @@ public class Correlation
     {
         this.id = id;
         this.sourceOutputEstId = sourceOutputEstId;
+        this.writeScheduler = writeScheduler;
         this.pushHandler = pushHandler;
         this.http2StreamId = http2StreamId;
         this.encodeContext = encodeContext;
@@ -69,6 +73,11 @@ public class Correlation
     public long id()
     {
         return id;
+    }
+
+    public WriteScheduler writeScheduler()
+    {
+        return writeScheduler;
     }
 
     public long getSourceOutputEstId()

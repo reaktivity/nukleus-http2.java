@@ -19,21 +19,20 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 /*
- Strategy to send data to replyTarget/Source. When there is replyWindow available, there are many
- ways to send the data to replyTarget.
-
- For e.g some strategies are:
- * Select a HTTP2 stream (that has pending data to be sent) sequentially in available streams.
- * Select HTTP2 streams (that has pending data to be sent) based on the priority
- * Select a HTTP2 stream (that has pending data to be sent) in a round-robin way in available streams.
+ * Writes HTTP2 frames to a connection. There are multiple streams multiplexed in
+ * a connection, there are different ways to send data on the connection
+ * (when there is a window). For e.g some implementations are:
+ *
+ * 1. HTTP2 streams are selected randomly
+ * 2. HTTP2 streams are selected based on the priority of streams
+ * 3. HTTP2 streams are selected in a round-robin way
  ...
  */
-interface WriteScheduler
+public interface WriteScheduler
 {
     void doHttp2(int length, int http2StreamId, Flyweight.Builder.Visitor visitor);
 
     void doEnd();
 
     void flush(int windowUpdate);
-
 }

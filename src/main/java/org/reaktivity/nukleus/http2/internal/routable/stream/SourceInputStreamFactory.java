@@ -1212,6 +1212,7 @@ System.out.println("--> " + http2RO);
                 processNextWindow(buffer, index, length);
                 break;
             case ResetFW.TYPE_ID:
+                System.out.println("processReset");
                 processReset(buffer, index, length);
                 break;
             default:
@@ -1230,6 +1231,8 @@ System.out.println("--> " + http2RO);
             windowRO.wrap(buffer, index, index + length);
 
             int update = windowRO.update();
+            System.out.println("window update = " + update + " window " + (window+update));
+
             writeScheduler.flush(update);
 
             if (sourceUpdateDeferred != 0)
@@ -1334,7 +1337,7 @@ System.out.println("--> " + http2RO);
                                                              .name(h.name())
                                                              .value(h.value()))));
             newTarget.doHttpEnd(targetId);
-            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
+            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, writeScheduler, this::doPromisedRequest,
                     http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
                     source.routableName(), OUTPUT_ESTABLISHED);
 
@@ -1349,7 +1352,7 @@ System.out.println("--> " + http2RO);
             Http2Stream http2Stream = new Http2Stream(this, http2StreamId, state);
             http2Streams.put(http2StreamId, http2Stream);
 
-            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, this::doPromisedRequest,
+            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, writeScheduler, this::doPromisedRequest,
                     http2RO.streamId(), encodeContext, this::nextPromisedId, this::findPushId,
                     source.routableName(), OUTPUT_ESTABLISHED);
 
