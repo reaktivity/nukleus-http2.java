@@ -944,6 +944,8 @@ System.out.println("--> " + http2RO);
                 noPromisedStreams--;
             }
             http2Streams.remove(stream.http2StreamId);
+
+            stream.route.target().doHttpEnd(stream.targetId);
         }
 
         private void doWindow()

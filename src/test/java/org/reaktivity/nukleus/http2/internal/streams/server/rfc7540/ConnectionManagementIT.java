@@ -115,4 +115,14 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+            "${route}/input/new/controller",
+            "${spec}/reset.http2.stream/client",
+            "${nukleus}/reset.http2.stream/server" })
+    public void resetHttp2Stream() throws Exception
+    {
+        k3po.finish();
+    }
+
 }
