@@ -38,6 +38,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 
 public final class Target implements Nukleus
@@ -53,6 +54,7 @@ public final class Target implements Nukleus
     private final Http2RstStreamFW.Builder resetRW = new Http2RstStreamFW.Builder();
     private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
     private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
+    private final Http2WindowUpdateFW.Builder windowRW = new Http2WindowUpdateFW.Builder();
 
     private final String name;
     private final StreamsLayout layout;
@@ -391,6 +393,17 @@ public final class Target implements Nukleus
             buffer.putBytes(offset, payload, payloadOffset, payloadLength);
             return payloadLength;
         };
+    }
 
+    public Flyweight.Builder.Visitor visitWindowUpdate(
+            int streamId,
+            int update)
+    {
+        return (buffer, offset, limit) ->
+                windowRW.wrap(buffer, offset, limit)
+                        .streamId(streamId)
+                        .size(update)
+                        .build()
+                        .sizeof();
     }
 }

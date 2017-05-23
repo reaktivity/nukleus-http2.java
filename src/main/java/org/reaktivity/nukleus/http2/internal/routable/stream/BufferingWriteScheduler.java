@@ -114,7 +114,7 @@ public class BufferingWriteScheduler implements WriteScheduler
         {
             releaseBuffer();
         }
-        System.out.println("flush: No of entries = " + entries.size());
+        System.out.println("flush: " + i + " No of entries = " + entries.size());
     }
 
     private boolean acquireBuffer(long streamId)
