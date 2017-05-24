@@ -15,9 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable;
 
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
@@ -26,11 +23,9 @@ import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.ringbuffer.RingBuffer;
 import org.reaktivity.nukleus.Nukleus;
 import org.reaktivity.nukleus.http2.internal.layouts.StreamsLayout;
-import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -46,6 +41,9 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
 
 public final class Target implements Nukleus
 {
@@ -149,7 +147,6 @@ public final class Target implements Nukleus
                 .streamId(targetId)
                 .referenceId(targetRef)
                 .correlationId(correlationId)
-                .extension(e -> e.reset())
                 .build();
 
         streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
@@ -164,20 +161,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(targetId)
                 .payload(p -> p.set(payload, offset, length))
-                .extension(e -> e.reset())
-                .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doData(
-        long targetId,
-        OctetsFW payload)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .payload(p -> p.set(payload))
-                .extension(e -> e.reset())
                 .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -188,7 +171,6 @@ public final class Target implements Nukleus
     {
         EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(targetId)
-                .extension(e -> e.reset())
                 .build();
 
         streamsBuffer.write(end.typeId(), end.buffer(), end.offset(), end.sizeof());
@@ -238,7 +220,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(targetId)
                 .payload(p -> p.set(payload, offset, length))
-                .extension(e -> e.reset())
                 .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -249,35 +230,9 @@ public final class Target implements Nukleus
     {
         EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(targetId)
-                .extension(e -> e.reset())
                 .build();
 
         streamsBuffer.write(end.typeId(), end.buffer(), end.offset(), end.sizeof());
-    }
-
-    public void doSettings(
-            long targetId,
-            int maxConcurrentStreams)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitSettings(maxConcurrentStreams)))
-                            .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doHttp2(
-            long targetId,
-            WriteScheduler.Visitor visitor)
-    {
-        Flyweight.Builder.Visitor visitor1 = (b, o, l) -> visitor.visit(b, o, l).sizeof();
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitor1))
-                            .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
     }
 
     public void doHttp2(
@@ -287,43 +242,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitor))
-                            .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doSettingsAck(
-            long targetId)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitSettingsAck()))
-                            .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doRst(
-            long targetId,
-            int streamId,
-            Http2ErrorCode errorCode)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitRst(streamId, errorCode)))
-                            .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doGoaway(
-            long targetId,
-            int lastStreamId,
-            Http2ErrorCode errorCode)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitGoaway(lastStreamId, errorCode)))
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -391,18 +309,6 @@ public final class Target implements Nukleus
                       .payload(payloadBuffer, payloadOffset, payloadLength)
                       .build()
                       .sizeof();
-    }
-
-    public Flyweight.Builder.Visitor visitPayload(
-            DirectBuffer payload,
-            int payloadOffset,
-            int payloadLength)
-    {
-        return (buffer, offset, limit) ->
-        {
-            buffer.putBytes(offset, payload, payloadOffset, payloadLength);
-            return payloadLength;
-        };
     }
 
     public Flyweight.Builder.Visitor visitWindowUpdate(
