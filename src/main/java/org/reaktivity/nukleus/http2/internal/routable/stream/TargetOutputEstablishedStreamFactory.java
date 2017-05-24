@@ -22,7 +22,6 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
@@ -35,9 +34,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -64,10 +60,6 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final HttpBeginExFW beginExRO = new HttpBeginExFW();
     private final Http2DataExFW dataExRO = new Http2DataExFW();
-
-    private final Http2DataFW.Builder dataRW = new Http2DataFW.Builder();
-    private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
-    private final Http2PushPromiseFW.Builder pushPromiseRW = new Http2PushPromiseFW.Builder();
 
     private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
@@ -248,16 +240,8 @@ public final class TargetOutputEstablishedStreamFactory
                 if (extension.sizeof() > 0)
                 {
                     HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    Http2HeadersFW http2HeadersRO = http2HeadersRW
-                            .wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(http2StreamId)
-                            .endHeaders()
-                            .set(beginEx.headers(), this::mapHeader)
-                            .build();
                     System.out.println("HEADERS");
-                    Flyweight.Builder.Visitor payload = target.visitPayload(http2HeadersRO.buffer(), http2HeadersRO.offset(),
-                            http2HeadersRO.limit());
-                    writeScheduler.doHttp2(http2HeadersRO.sizeof(), http2StreamId, payload);
+                    writeScheduler.headers(http2StreamId, beginEx.headers(), this::mapHeader);
                 }
 
                 this.streamState = this::afterBeginOrData;
@@ -290,29 +274,14 @@ public final class TargetOutputEstablishedStreamFactory
                 {
                     int promisedStreamId = promisedStreamIds.getAsInt();
                     Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                    Http2PushPromiseFW pushPromise = pushPromiseRW
-                            .wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(pushStreamId)
-                            .promisedStreamId(promisedStreamId)
-                            .endHeaders()
-                            .set(dataEx.headers(), this::mapHeader)
-                            .build();
-                    Flyweight.Builder.Visitor pppayload = target.visitPayload(pushPromise.buffer(), pushPromise.offset(),
-                            pushPromise.limit());
-                    writeScheduler.doHttp2(pushPromise.sizeof(), pushStreamId, pppayload);
+                    writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), this::mapHeader);
                     pushHandler.accept(promisedStreamId, dataEx.headers());
                 }
             }
             if (payload.sizeof() > 0)
             {
-                Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                              .streamId(http2StreamId)
-                                              .payload(payload.buffer(), payload.offset(), payload.sizeof())
-                                              .build();
 System.out.println("DATA");
-                Flyweight.Builder.Visitor pppayload = target.visitPayload(http2Data.buffer(), http2Data.offset(),
-                        http2Data.limit());
-                writeScheduler.doHttp2(http2Data.sizeof(), http2StreamId, pppayload);
+                writeScheduler.data(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
             }
         }
 
@@ -323,15 +292,9 @@ System.out.println("DATA");
         {
             endRO.wrap(buffer, index, index + length);
 
-            Http2DataFW http2Data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                          .streamId(http2StreamId)
-                                          .endStream()
-                                          .build();
             System.out.println("DATA + HTTP2 EOS");
 
-            Flyweight.Builder.Visitor payload = target.visitPayload(
-                    http2Data.buffer(), http2Data.offset(), http2Data.limit());
-            writeScheduler.doHttp2(http2Data.sizeof(), http2StreamId, payload);
+            writeScheduler.dataEos(http2StreamId);
 
             source.removeStream(sourceId);
         }

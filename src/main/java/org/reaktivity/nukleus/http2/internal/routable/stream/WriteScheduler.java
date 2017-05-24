@@ -16,7 +16,15 @@
 
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+
+import java.util.function.BiFunction;
 
 /*
  * Writes HTTP2 frames to a connection. There are multiple streams multiplexed in
@@ -30,9 +38,35 @@ import org.reaktivity.nukleus.http2.internal.types.Flyweight;
  */
 public interface WriteScheduler
 {
-    void doHttp2(int length, int http2StreamId, Flyweight.Builder.Visitor visitor);
+
+    boolean windowUpdate(int streamId, int update);
+
+    boolean pingAck(DirectBuffer buffer, int offset, int length);
+
+    boolean goaway(int lastStreamId, Http2ErrorCode errorCode);
+
+    boolean rst(int streamId, Http2ErrorCode errorCode);
+
+    boolean settings(int maxConcurrentStreams);
+
+    boolean settingsAck();
+
+    boolean headers(int streamId, ListFW<HttpHeaderFW> headers,
+                    BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper);
+
+    boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
+                        BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper);
+
+    boolean data(int streamId, DirectBuffer buffer, int offset, int length);
+
+    boolean dataEos(int streamId);
 
     void doEnd();
 
     void flush(int windowUpdate);
+
+    interface Visitor
+    {
+        Http2FrameFW visit(MutableDirectBuffer buffer, int offset, int maxLimit);
+    }
 }

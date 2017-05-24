@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable;
 
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 import org.agrona.DirectBuffer;
@@ -25,6 +26,7 @@ import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.ringbuffer.RingBuffer;
 import org.reaktivity.nukleus.Nukleus;
 import org.reaktivity.nukleus.http2.internal.layouts.StreamsLayout;
+import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
@@ -33,9 +35,13 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
@@ -55,6 +61,9 @@ public final class Target implements Nukleus
     private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
     private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
     private final Http2WindowUpdateFW.Builder windowRW = new Http2WindowUpdateFW.Builder();
+    private final Http2DataFW.Builder http2DataRW = new Http2DataFW.Builder();
+    private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
+    private final Http2PushPromiseFW.Builder pushPromiseRW = new Http2PushPromiseFW.Builder();
 
     private final String name;
     private final StreamsLayout layout;
@@ -260,6 +269,19 @@ public final class Target implements Nukleus
 
     public void doHttp2(
             long targetId,
+            WriteScheduler.Visitor visitor)
+    {
+        Flyweight.Builder.Visitor visitor1 = (b, o, l) -> visitor.visit(b, o, l).sizeof();
+        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                            .streamId(targetId)
+                            .payload(p -> p.set(visitor1))
+                            .build();
+
+        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    public void doHttp2(
+            long targetId,
             Flyweight.Builder.Visitor visitor)
     {
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
@@ -302,18 +324,6 @@ public final class Target implements Nukleus
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(visitGoaway(lastStreamId, errorCode)))
-                            .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doPingAck(
-            long targetId,
-            DirectBuffer payload)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitPingAck(payload)))
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
@@ -373,12 +383,12 @@ public final class Target implements Nukleus
     }
 
     public Flyweight.Builder.Visitor visitPingAck(
-            DirectBuffer payload)
+            DirectBuffer payloadBuffer, int payloadOffset, int payloadLength)
     {
         return (buffer, offset, limit) ->
                 pingRW.wrap(buffer, offset, limit)
                       .ack()
-                      .payload(payload)
+                      .payload(payloadBuffer, payloadOffset, payloadLength)
                       .build()
                       .sizeof();
     }
@@ -406,4 +416,59 @@ public final class Target implements Nukleus
                         .build()
                         .sizeof();
     }
+
+    public Flyweight.Builder.Visitor visitData(
+            int streamId,
+            DirectBuffer payloadBuffer,
+            int payloadOffset,
+            int payloadLength)
+    {
+        return (buffer, offset, limit) ->
+                http2DataRW.wrap(buffer, offset, limit)
+                           .streamId(streamId)
+                           .payload(payloadBuffer, payloadOffset, payloadLength)
+                           .build()
+                           .sizeof();
+    }
+
+    public Flyweight.Builder.Visitor visitDataEos(int streamId)
+    {
+        return (buffer, offset, limit) ->
+                http2DataRW.wrap(buffer, offset, limit)
+                      .streamId(streamId)
+                      .endStream()
+                      .build()
+                      .sizeof();
+    }
+
+    public Flyweight.Builder.Visitor visitHeaders(
+            int streamId,
+            ListFW<HttpHeaderFW> headers,
+            BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader)
+    {
+        return (buffer, offset, limit) ->
+                http2HeadersRW.wrap(buffer, offset, limit)
+                              .streamId(streamId)
+                              .endHeaders()
+                              .set(headers, mapHeader)
+                              .build()
+                              .sizeof();
+    }
+
+    public Flyweight.Builder.Visitor visitPushPromise(
+            int streamId,
+            int promisedStreamId,
+            ListFW<HttpHeaderFW> headers,
+            BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader)
+    {
+        return (buffer, offset, limit) ->
+                pushPromiseRW.wrap(buffer, offset, limit)
+                             .streamId(streamId)
+                             .promisedStreamId(promisedStreamId)
+                             .endHeaders()
+                             .set(headers, mapHeader)
+                             .build()
+                             .sizeof();
+    }
+
 }

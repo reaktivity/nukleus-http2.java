@@ -25,7 +25,6 @@ import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Route;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
@@ -246,7 +245,7 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-            writeScheduler = new BufferingWriteScheduler(frameSlab, replyTarget, sourceOutputEstId);
+            writeScheduler = new SimpleWriteScheduler(frameSlab, replyTarget, sourceOutputEstId);
             http2InWindow = localSettings.initialWindowSize;
             http2OutWindow = remoteSettings.initialWindowSize;
 
@@ -405,9 +404,7 @@ public final class SourceInputStreamFactory
 
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
-
-            Flyweight.Builder.Visitor settings = replyTarget.visitSettings(localSettings.maxConcurrentStreams);
-            writeScheduler.doHttp2(9+6, 0, settings);    // +9 for HTTP2 framing, +6 for a setting
+            writeScheduler.settings(localSettings.maxConcurrentStreams);
         }
 
         private void processData(
@@ -817,6 +814,7 @@ System.out.println("--> " + http2RO);
             {
                 goaway = true;
                 Http2ErrorCode errorCode = (streamId != 0) ? Http2ErrorCode.PROTOCOL_ERROR : Http2ErrorCode.NO_ERROR;
+                remoteSettings.enablePush = false;      // no new streams
                 error(errorCode);
             }
         }
@@ -1109,8 +1107,7 @@ System.out.println("--> " + http2RO);
             if (!settingsRO.ack())
             {
                 settingsRO.accept(this::doSetting);
-                Flyweight.Builder.Visitor settings = replyTarget.visitSettingsAck();
-                writeScheduler.doHttp2(9, 0, settings);    // +9 for HTTP2 framing
+                writeScheduler.settingsAck();
             }
         }
 
@@ -1192,8 +1189,7 @@ System.out.println("--> " + http2RO);
 
             if (!pingRO.ack())
             {
-                Flyweight.Builder.Visitor ping = replyTarget.visitPingAck(pingRO.payload());
-                writeScheduler.doHttp2(9+8, 0, ping);    // +9 for HTTP2 framing, +8 for a ping
+                writeScheduler.pingAck(pingRO.payload(), 0, pingRO.payload().capacity());
             }
         }
 
@@ -1296,15 +1292,13 @@ System.out.println("--> " + http2RO);
 
         void error(Http2ErrorCode errorCode)
         {
-            Flyweight.Builder.Visitor goaway = replyTarget.visitGoaway(lastStreamId, errorCode);
-            writeScheduler.doHttp2(9+8, 0, goaway);    // +9 for HTTP2 framing, +8 for goway payload
+            writeScheduler.goaway(lastStreamId, errorCode);
             writeScheduler.doEnd();
         }
 
         void streamError(int streamId, Http2ErrorCode errorCode)
         {
-            Flyweight.Builder.Visitor rst = replyTarget.visitRst(streamId, errorCode);
-            writeScheduler.doHttp2(9+4, streamId, rst);    // +9 for HTTP2 framing, +4 for RST_STREAM payload
+            writeScheduler.rst(streamId, errorCode);
         }
 
         private int nextPromisedId()
@@ -1362,8 +1356,8 @@ System.out.println("--> " + http2RO);
                                                              .name(h.name())
                                                              .value(h.value()))));
             newTarget.doHttpEnd(targetId);
-            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, writeScheduler, this::doPromisedRequest,
-                    http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
+            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, writeScheduler,
+                    this::doPromisedRequest, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
                     source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
@@ -1377,8 +1371,8 @@ System.out.println("--> " + http2RO);
             Http2Stream http2Stream = new Http2Stream(this, http2StreamId, state, route);
             http2Streams.put(http2StreamId, http2Stream);
 
-            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, writeScheduler, this::doPromisedRequest,
-                    http2RO.streamId(), encodeContext, this::nextPromisedId, this::findPushId,
+            Correlation correlation = new Correlation(correlationId, sourceOutputEstId, writeScheduler,
+                    this::doPromisedRequest, http2RO.streamId(), encodeContext, this::nextPromisedId, this::findPushId,
                     source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(http2Stream.targetId, correlation);
@@ -1635,13 +1629,6 @@ System.out.println("--> " + http2RO);
 
     }
 
-    private static int framing(
-        int payloadSize)
-    {
-        // TODO: consider chunks
-        return 0;
-    }
-
     @FunctionalInterface
     private interface DecoderState
     {
@@ -1839,24 +1826,6 @@ System.out.println("--> " + http2RO);
             }
         }
 
-        private void throttleIgnore(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
-        {
-            switch (msgTypeId)
-            {
-                case ResetFW.TYPE_ID:
-                    // TODO
-                    //processReset(buffer, index, length);
-                    break;
-                default:
-                    // ignore
-                    break;
-            }
-        }
-
         private boolean acquireSlot(long streamId)
         {
             if (targetSlotPosition == 0)
@@ -1894,12 +1863,10 @@ System.out.println("--> " + http2RO);
             connection.http2InWindow += update;
 
             // connection-level flow-control
-            Flyweight.Builder.Visitor window = replyTarget.visitWindowUpdate(0, update);
-            connection.writeScheduler.doHttp2(9+4, 0, window);    // +9 for HTTP2 framing, +4 window size increment
+            connection.writeScheduler.windowUpdate(0, update);
 
             // stream-level flow-control
-            window = replyTarget.visitWindowUpdate(http2StreamId, update);
-            connection.writeScheduler.doHttp2(9+4, http2StreamId, window);    // +9 for HTTP2 framing, +4 window size increment
+            connection.writeScheduler.windowUpdate(http2StreamId, update);
         }
 
     }
