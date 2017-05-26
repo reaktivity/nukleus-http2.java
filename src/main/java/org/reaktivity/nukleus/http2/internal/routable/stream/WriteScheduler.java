@@ -17,12 +17,10 @@
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 
 import java.util.function.BiFunction;
 
@@ -63,10 +61,6 @@ public interface WriteScheduler
 
     void doEnd();
 
-    void flush(int windowUpdate);
+    void flush();
 
-    interface Visitor
-    {
-        Http2FrameFW visit(MutableDirectBuffer buffer, int offset, int maxLimit);
-    }
 }

@@ -235,7 +235,7 @@ public final class Target implements Nukleus
         streamsBuffer.write(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
-    public void doHttp2(
+    public int doHttp2(
             long targetId,
             Flyweight.Builder.Visitor visitor)
     {
@@ -245,6 +245,7 @@ public final class Target implements Nukleus
                             .build();
 
         streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+        return data.length();
     }
 
     private Flyweight.Builder.Visitor visitHttpBeginEx(

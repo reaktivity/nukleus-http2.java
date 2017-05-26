@@ -23,133 +23,173 @@ import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.BiFunction;
 
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
 public class SimpleWriteScheduler implements WriteScheduler
 {
-    private final Slab slab;
-
     private final long targetId;
-    private final List<WriteEntry> entries;
-
-    private int slot = NO_SLOT;
-    private int slotPosition;
-    private MutableDirectBuffer buffer;
+    private final SourceInputStreamFactory.SourceInputStream connection;
 
     private Target target;
     private boolean eos;
-    private int window;
+    private int noEntries;
 
-    SimpleWriteScheduler(Slab slab, Target target, long targetId)
+    SimpleWriteScheduler(
+            SourceInputStreamFactory.SourceInputStream connection,
+            Target target,
+            long targetId)
     {
-        this.slab = slab;
+        this.connection = connection;
         this.target = target;
         this.targetId = targetId;
-        this.entries = new ArrayList<>();
     }
 
-    public boolean http2(int length, Flyweight.Builder.Visitor visitor)
+    public boolean http2(int streamId, boolean direct, Http2FrameType type, Flyweight.Builder.Visitor visitor)
     {
         assert !eos;
-        boolean error = false;
 
-        if (slot == NO_SLOT && length <= window)
+        if (direct)
         {
-            assert entries.isEmpty();
+            int actualLength = target.doHttp2(targetId, visitor);
+            connection.outWindow -= actualLength;
+System.out.printf("direct length = %d nuklei-window = %d http2-out-window = %d\n", actualLength, connection.outWindow,
+        connection.http2OutWindow);
 
-            target.doHttp2(targetId, visitor);
-            window -= length;
+            return true;
         }
         else
         {
-            boolean acquired = acquireBuffer(targetId);
-            if (acquired)
+            MutableDirectBuffer buffer;
+            int offset;
+            int actualLength;
+
+            if (streamId == 0)
             {
-                length = visitor.visit(buffer, slotPosition, buffer.capacity());
-                slotPosition += length;
-                entries.add(new WriteEntry(length, false));
-                System.out.println("doHttp2: No of entries = " + entries.size());
+                connection.acquireReplyBuffer(targetId);
+                buffer = connection.replyBuffer;
+                offset = connection.replySlotPosition;
+                actualLength = visitor.visit(buffer, offset, buffer.capacity());
+                connection.replySlotPosition += actualLength;
+                WriteEntry entry = new WriteEntry(null, buffer, offset, actualLength, type);
+                connection.replyQueue.add(entry);
             }
             else
             {
-                error = true;
+                SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+                stream.acquireReplyBuffer();
+                buffer = stream.replyBuffer;
+                offset = stream.replySlotPosition;
+                actualLength = visitor.visit(buffer, offset, buffer.capacity());
+                stream.replySlotPosition += actualLength;
+                WriteEntry entry = new WriteEntry(stream, buffer, offset, actualLength, type);
+                stream.replyQueue.add(entry);
             }
+            return buffer != null;
         }
-        return error;
     }
 
     @Override
     public boolean windowUpdate(int streamId, int update)
     {
         Flyweight.Builder.Visitor window = target.visitWindowUpdate(streamId, update);
-        return http2(9+4, window);    // +9 for HTTP2 framing, +4 window size increment
+        int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 window size increment
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
+        return http2(streamId, direct, WINDOW_UPDATE, window);
     }
 
     @Override
     public boolean pingAck(DirectBuffer buffer, int offset, int length)
     {
+        int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for a ping
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor ping = target.visitPingAck(buffer, offset, length);
-        return http2(9+8, ping);    // +9 for HTTP2 framing, +8 for a ping
+        return http2(0, direct, PING, ping);
     }
 
     @Override
     public boolean goaway(int lastStreamId, Http2ErrorCode errorCode)
     {
+        int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for goaway payload
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
+
         Flyweight.Builder.Visitor goaway = target.visitGoaway(lastStreamId, errorCode);
-        return http2(9+8, goaway);    // +9 for HTTP2 framing, +8 for goaway payload
+        return http2(0, direct, GO_AWAY, goaway);
     }
 
     @Override
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
+        int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 for RST_STREAM payload
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
+
         Flyweight.Builder.Visitor rst = target.visitRst(streamId, errorCode);
-        return http2(9+4, rst);    // +9 for HTTP2 framing, +4 for RST_STREAM payload
+        return http2(streamId, direct, RST_STREAM, rst);
     }
 
     @Override
     public boolean settings(int maxConcurrentStreams)
     {
+        int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor settings = target.visitSettings(maxConcurrentStreams);
-        return http2(9+6, settings);    // +9 for HTTP2 framing, +6 for a setting
+        return http2(0, direct, SETTINGS, settings);
     }
 
     @Override
     public boolean settingsAck()
     {
+        int sizeof = 9;                 // +9 for HTTP2 framing
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor settings = target.visitSettingsAck();
-        return http2(9, settings);    // +9 for HTTP2 framing
+        return http2(0, direct, SETTINGS, settings);
     }
 
     @Override
     public boolean headers(int streamId, ListFW<HttpHeaderFW> headers,
                            BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
     {
-        int length = headersLength(headers);
-
+        int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, mapper);
-        return http2(9 + length, data);      // +9 for HTTP2 framing
+        return http2(streamId, direct, HEADERS, data);
     }
 
     @Override
     public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
                                BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
     {
-        int length = headersLength(headers);
-
+        int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, mapper);
-        return http2(9 + 4 + length, data);      // +9 for HTTP2 framing, +4 for promised stream id
+        return http2(streamId, direct, PUSH_PROMISE, data);
     }
 
     @Override
     public boolean data(int streamId, DirectBuffer buffer, int offset, int length)
     {
+        int sizeof = 9 + length;    // +9 for HTTP2 framing
+        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow && length <= connection.http2OutWindow &&
+                length <= stream.http2OutWindow;
+        if (direct)
+        {
+            stream.http2OutWindow -= length;
+        }
+
         Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
-        return http2(9 + length, data);      // +9 for HTTP2 framing
+        return http2(streamId, direct, DATA, data);
     }
 
     // Since it is not encoding, this gives an approximate length of header block
@@ -163,107 +203,125 @@ public class SimpleWriteScheduler implements WriteScheduler
     @Override
     public boolean dataEos(int streamId)
     {
+        int sizeof = 9;    // +9 for HTTP2 framing
+        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+
+        boolean direct = noEntries == 0 && sizeof <= connection.outWindow && 0 <= connection.http2OutWindow &&
+                0 <= stream.http2OutWindow;
+
         Flyweight.Builder.Visitor data = target.visitDataEos(streamId);
-        return http2(9, data);      // +9 for HTTP2 framing
+        return http2(streamId, direct, DATA, data);
     }
 
     public void doEnd()
     {
         eos = true;
-        if (entries.isEmpty())
+        if (noEntries == 0)
         {
             target.doEnd(targetId);
         }
     }
 
-    public void flush(int windowUpdate)
+    public void flush()
     {
-        int i = 0;
-        int offset = 0;
+        WriteEntry entry;
 
-        window += windowUpdate;
-        while (i < entries.size())
+        while((entry = pop()) != null)
         {
-            WriteEntry entry = entries.get(i);
-            if (entry.length <= window)
+            noEntries--;
+            target.doData(targetId, entry.buffer, entry.offset, entry.length);
+            entry.adjustWindows();
+        }
+        if (noEntries == 0 && eos)
+        {
+            target.doEnd(targetId);
+        }
+    }
+
+    private WriteEntry pop()
+    {
+        // First, select a frame (like SETTINGS, PING, etc) on connection
+        if (connection.replyQueue != null)
+        {
+            WriteEntry entry = (WriteEntry) connection.replyQueue.peek();
+            if (entry != null && entry.fits())
             {
-                MutableDirectBuffer buffer = slab.buffer(slot);
-                target.doData(targetId, buffer, offset, entry.length);
-                window -= entry.length;
-            }
-            else
-            {
-                if (entry.splittable)
+                entry = (WriteEntry) connection.replyQueue.poll();
+                if (connection.replyQueue.isEmpty())
                 {
-                    // Can break big DATA frames and write them out
-                    throw new UnsupportedOperationException("TODO break big DATA frames");
+                    connection.releaseReplyBuffer();
                 }
-
-                // Also, can make progress on other streams, but this simple scheduler doesn't do it
-                break;
+                return entry;
             }
-            i++;
-            offset += entry.length;
         }
 
-        if (i > 0)
+        // TODO randomly pick a stream
+        // Select a frame on a HTTP2 stream that can be written
+        for(SourceInputStreamFactory.Http2Stream stream : connection.http2Streams.values())
         {
-            MutableDirectBuffer buffer = slab.buffer(slot);
-            slotPosition -= offset;
-            buffer.putBytes(0, buffer, offset, slotPosition);       // shift remaining bytes in the buffer
-            entries.subList(0, i).clear();
-        }
-
-        if (entries.isEmpty() && eos)
-        {
-            target.doEnd(targetId);
-        }
-
-        if (entries.isEmpty())
-        {
-            releaseBuffer();
-        }
-        System.out.println("flush: " + i + " No of entries = " + entries.size());
-    }
-
-    /*
-     * @return true if there is a buffer
-     *         false if all slots are taken
-     */
-    private boolean acquireBuffer(long streamId)
-    {
-        if (slot == NO_SLOT)
-        {
-            slot = slab.acquire(streamId);
-            if (slot != NO_SLOT)
+            if (stream.replyQueue != null)
             {
-                buffer = slab.buffer(slot);
-                slotPosition = 0;
+                WriteEntry entry = (WriteEntry) stream.replyQueue.peek();
+                if (entry != null && entry.fits())
+                {
+                    entry = (WriteEntry) stream.replyQueue.poll();
+                    if (stream.replyQueue.isEmpty())
+                    {
+                        stream.releaseReplyBuffer();
+                    }
+                    return entry;
+                }
             }
         }
-        return slot != NO_SLOT;
+
+        return null;
     }
 
-    private void releaseBuffer()
+    private class WriteEntry
     {
-        if (slot != NO_SLOT)
-        {
-            slab.release(slot);
-            slot = NO_SLOT;
-            slotPosition = 0;
-            buffer = null;
-        }
-    }
+        final SourceInputStreamFactory.Http2Stream stream;
+        final DirectBuffer buffer;
+        final int offset;
+        final int length;
+        final Http2FrameType type;
 
-    private static class WriteEntry
-    {
-        boolean splittable;
-        int length;
-
-        WriteEntry(int length, boolean splittable)
+        WriteEntry(
+                SourceInputStreamFactory.Http2Stream stream,
+                DirectBuffer buffer,
+                int offset,
+                int length,
+                Http2FrameType type)
         {
+            this.stream = stream;
+            this.buffer = buffer;
+            this.offset = offset;
             this.length = length;
-            this.splittable = splittable;
+            this.type = type;
+            noEntries++;
+        }
+
+        boolean fits()
+        {
+            // TODO split DATA so that it fits
+            boolean fits = length <= connection.outWindow;
+            if (fits && type == DATA)
+            {
+                fits = length <= connection.http2OutWindow && length <= stream.http2OutWindow;
+            }
+            return fits;
+        }
+
+        void adjustWindows()
+        {
+            connection.outWindow -= length;
+System.out.printf("adjust length = %d nuklei-window = %d http2-out-window = %d\n", length, connection.outWindow,
+        connection.http2OutWindow);
+
+            if (type == DATA)
+            {
+                connection.http2OutWindow -= (length - 9);
+                stream.http2OutWindow -= (length - 9);
+            }
         }
 
     }

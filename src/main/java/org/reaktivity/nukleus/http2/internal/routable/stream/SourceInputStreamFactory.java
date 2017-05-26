@@ -55,7 +55,9 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -178,7 +180,7 @@ public final class SourceInputStreamFactory
         return new SourceInputStream()::handleStream;
     }
 
-    private final class SourceInputStream
+    final class SourceInputStream
     {
         private MessageHandler streamState;
         private MessageHandler throttleState;
@@ -188,17 +190,24 @@ public final class SourceInputStreamFactory
         // no need for separate slab per HTTP2 stream as the frames are not fragmented
         private int frameSlotIndex = NO_SLOT;
         private int frameSlotPosition;
+
         // slab to assemble a complete HTTP2 headers frame(including its continuation frames)
         // no need for separate slab per HTTP2 stream as no interleaved frames of any other type
         // or from any other stream
         private int headersSlotIndex = NO_SLOT;
         private int headersSlotPosition;
 
+        private int replySlotIndex = NO_SLOT;
+        int replySlotPosition;
+        MutableDirectBuffer replyBuffer;
+        Deque replyQueue;
+
         long sourceId;
         int lastStreamId;
         long sourceRef;
         private long correlationId;
-        private int window;
+        int window;
+        int outWindow;
 
         private final WriteScheduler writeScheduler;
 
@@ -206,7 +215,7 @@ public final class SourceInputStreamFactory
         private final HpackContext decodeContext;
         private final HpackContext encodeContext;
 
-        private final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
+        final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
         private int lastPromisedStreamId;
 
@@ -221,7 +230,7 @@ public final class SourceInputStreamFactory
         private boolean expectContinuation;
         private int expectContinuationStreamId;
         private boolean expectDynamicTableSizeUpdate = true;
-        private long http2OutWindow;
+        long http2OutWindow;
         private long http2InWindow;
 
         private boolean prefaceAvailable;
@@ -245,7 +254,7 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-            writeScheduler = new SimpleWriteScheduler(frameSlab, replyTarget, sourceOutputEstId);
+            writeScheduler = new SimpleWriteScheduler(this, replyTarget, sourceOutputEstId);
             http2InWindow = localSettings.initialWindowSize;
             http2OutWindow = remoteSettings.initialWindowSize;
 
@@ -626,6 +635,37 @@ public final class SourceInputStreamFactory
                 frameSlab.release(frameSlotIndex);
                 frameSlotIndex = NO_SLOT;
                 frameSlotPosition = 0;
+            }
+        }
+
+        /*
+         * @return true if there is a buffer
+         *         false if all slots are taken
+         */
+        boolean acquireReplyBuffer(long streamId)
+        {
+            if (replySlotIndex == NO_SLOT)
+            {
+                replySlotIndex = frameSlab.acquire(streamId);
+                if (replySlotIndex != NO_SLOT)
+                {
+                    replyBuffer = frameSlab.buffer(replySlotIndex);
+                    replySlotPosition = 0;
+                    replyQueue = new LinkedList();
+                }
+            }
+            return replySlotIndex != NO_SLOT;
+        }
+
+        void releaseReplyBuffer()
+        {
+            if (replySlotIndex != NO_SLOT)
+            {
+                frameSlab.release(replySlotIndex);
+                replySlotIndex = NO_SLOT;
+                replySlotPosition = 0;
+                replyBuffer = null;
+                replyQueue = null;
             }
         }
 
@@ -1266,10 +1306,10 @@ System.out.println("--> " + http2RO);
         {
             windowRO.wrap(buffer, index, index + length);
             int update = windowRO.update();
-            System.out.println("window update = " + update + " window " + (window+update));
+            outWindow += update;
 
-            writeScheduler.flush(update);
-            window += update;
+System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window = %d\n", update, outWindow, http2OutWindow);
+            writeScheduler.flush();
         }
 
 
@@ -1642,7 +1682,7 @@ System.out.println("--> " + http2RO);
         private final long targetId;
         private final Route route;
         private State state;
-        private long http2OutWindow;
+        long http2OutWindow;
         private long http2InWindow;
 
         private long contentLength;
@@ -1650,6 +1690,12 @@ System.out.println("--> " + http2RO);
         private int targetWindow;
         private int targetSlotIndex = NO_SLOT;
         private int targetSlotPosition;
+
+        private int replySlotIndex = NO_SLOT;
+        int replySlotPosition;
+        MutableDirectBuffer replyBuffer;
+        Deque replyQueue;
+
         private MessageHandler streamState;
         private MessageHandler throttleState;
         private boolean endStream;
@@ -1847,6 +1893,35 @@ System.out.println("--> " + http2RO);
             }
         }
 
+        /*
+         * @return true if there is a buffer
+         *         false if all slots are taken
+         */
+        boolean acquireReplyBuffer()
+        {
+            if (replySlotIndex == NO_SLOT)
+            {
+                replySlotIndex = frameSlab.acquire(connection.sourceOutputEstId);
+                if (replySlotIndex != NO_SLOT)
+                {
+                    replyBuffer = frameSlab.buffer(replySlotIndex);
+                    replySlotPosition = 0;
+                }
+            }
+            return replySlotIndex != NO_SLOT;
+        }
+
+        void releaseReplyBuffer()
+        {
+            if (replySlotIndex != NO_SLOT)
+            {
+                frameSlab.release(replySlotIndex);
+                replySlotIndex = NO_SLOT;
+                replySlotPosition = 0;
+                replyBuffer = null;
+            }
+        }
+
         private void doReset(
                 DirectBuffer buffer,
                 int index,
@@ -1854,6 +1929,7 @@ System.out.println("--> " + http2RO);
         {
             resetRO.wrap(buffer, index, index + length);
             releaseSlot();
+            releaseReplyBuffer();
             //source.doReset(sourceId);
         }
 
