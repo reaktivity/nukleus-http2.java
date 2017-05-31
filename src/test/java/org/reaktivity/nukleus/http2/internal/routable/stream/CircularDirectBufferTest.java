@@ -25,8 +25,8 @@ import java.util.List;
 import java.util.Random;
 import java.util.stream.IntStream;
 
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
 
 public class CircularDirectBufferTest {
 
@@ -37,16 +37,29 @@ public class CircularDirectBufferTest {
         CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
 
         for(int i=0; i < 100; i++) {
-            assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-            assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-            assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-            assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-            assertFalse(cb.add(new UnsafeBuffer(new byte[20])));
+            int offset = cb.writeOffset(20);
+            assertNotEquals(-1, offset);
+            cb.write(offset, 20);
 
-            cb.remove(20);
-            cb.remove(20);
-            cb.remove(20);
-            cb.remove(20);
+            offset = cb.writeOffset(20);
+            assertNotEquals(-1, offset);
+            cb.write(offset, 20);
+
+            offset = cb.writeOffset(20);
+            assertNotEquals(-1, offset);
+            cb.write(offset, 20);
+
+            offset = cb.writeOffset(20);
+            assertNotEquals(-1, offset);
+            cb.write(offset, 20);
+
+            offset = cb.writeOffset(20);
+            assertEquals(-1, offset);
+
+            cb.read(20);
+            cb.read(20);
+            cb.read(20);
+            cb.read(20);
         }
     }
 
@@ -56,15 +69,33 @@ public class CircularDirectBufferTest {
         MutableDirectBuffer buffer = new UnsafeBuffer(new byte[100]);
         CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
 
-        assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-        assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-        assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-        assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-        assertFalse(cb.add(new UnsafeBuffer(new byte[20])));
+        int offset = cb.writeOffset(20);
+        assertNotEquals(-1, offset);
+        cb.write(offset, 20);
 
-        cb.remove(20);
-        assertFalse(cb.add(new UnsafeBuffer(new byte[20])));
-        assertTrue(cb.add(new UnsafeBuffer(new byte[19])));
+        offset = cb.writeOffset(20);
+        assertNotEquals(-1, offset);
+        cb.write(offset, 20);
+
+        offset = cb.writeOffset(20);
+        assertNotEquals(-1, offset);
+        cb.write(offset, 20);
+
+        offset = cb.writeOffset(20);
+        assertNotEquals(-1, offset);
+        cb.write(offset, 20);
+
+        offset = cb.writeOffset(20);
+        assertEquals(-1, offset);
+
+        cb.read(20);
+
+        offset = cb.writeOffset(20);
+        assertEquals(-1, offset);
+
+        offset = cb.writeOffset(19);
+        assertNotEquals(-1, offset);
+        cb.write(offset, 19);
     }
 
     @Test
@@ -75,8 +106,11 @@ public class CircularDirectBufferTest {
 
         for(int i=0; i < 100; i++)
         {
-            assertTrue(cb.add(new UnsafeBuffer(new byte[20])));
-            cb.remove(20);
+            int offset = cb.writeOffset(20);
+            assertNotEquals(-1, offset);
+            cb.write(offset, 20);
+
+            cb.read(20);
         }
     }
 
@@ -93,10 +127,10 @@ public class CircularDirectBufferTest {
             for(int i=0; i < adds; i++)
             {
                 int no = random.nextInt(30) + 1;
-                DirectBuffer buf = buf(no);
-                boolean added = cb.add(buf);
-                if (added)
+                int offset = cb.writeOffset(no);
+                if (offset != -1)
                 {
+                    cb.write(offset, no);
                     list.add(no);
                 }
             }
@@ -104,7 +138,7 @@ public class CircularDirectBufferTest {
             int removes = random.nextInt(10) + 1;
             for(int i=0; i < removes && !list.isEmpty(); i++)
             {
-                cb.remove(list.remove(0));
+                cb.read(list.remove(0));
             }
         });
     }

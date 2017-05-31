@@ -16,12 +16,11 @@
 
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
 public class CircularDirectBuffer
 {
-    private final MutableDirectBuffer buffer;
+    final MutableDirectBuffer buffer;
 
     /*
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -47,65 +46,56 @@ public class CircularDirectBuffer
         this.buffer = buffer;
     }
 
-    boolean add(DirectBuffer data)
-    {
-        return add(data, 0, data.capacity());
-    }
-
     /*
-     * Copies the bytes from the given buffer into this buffer contiguously.
-     *
-     * @return true if the data is copied
-     *         false if it is not copied (not enough contiguous space)
+     * @return offset at which data of given length can be written
+     *         -1 if there is no space to write
      */
-    boolean add(DirectBuffer data, int offset, int length)
+    int writeOffset(int length)
     {
+        int prevEnd = end;
         if (start == end)                   // empty
         {
             start = end = 0;
             if (length < buffer.capacity())
             {
-                buffer.putBytes(0, data, offset, length);
-                end = length;
-                return true;
+                return 0;
             }
         }
         else if (start < end)
         {
             if (end + length < buffer.capacity())
             {
-                buffer.putBytes(end, data, offset, length);
-                end += length;
-                return true;
+                return prevEnd;
             }
             else if (length < start)
             {
-                buffer.putBytes(0, data, offset, length);
-                end = length;
-                return true;
+                return 0;
             }
         }
         else                        // wrapped
         {
             if (end + length < start)
             {
-                buffer.putBytes(end, data, offset, length);
-                end += length;
-                return true;
+                return prevEnd;
             }
         }
 
-        return false;
+        return -1;
     }
 
-    private int start(int length)
+    void write(int offset, int length)
+    {
+        end = offset + length;
+    }
+
+    private int readOffset(int length)
     {
         return start + length < buffer.capacity() ? start : 0;
     }
 
-    void remove(int length)
+    void read(int length)
     {
-        start = start(length) + length;
+        start = readOffset(length) + length;
     }
 
 }

@@ -61,6 +61,10 @@ public interface WriteScheduler
 
     void doEnd();
 
-    void flush();
+    void onWindow();
+
+    void onHttp2Window();
+
+    void onHttp2Window(int streamId);
 
 }

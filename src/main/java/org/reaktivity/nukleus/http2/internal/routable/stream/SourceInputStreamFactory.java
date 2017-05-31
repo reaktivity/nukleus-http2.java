@@ -199,7 +199,7 @@ public final class SourceInputStreamFactory
 
         private int replySlotIndex = NO_SLOT;
         int replySlotPosition;
-        MutableDirectBuffer replyBuffer;
+        CircularDirectBuffer replyBuffer;
         Deque replyQueue;
 
         long sourceId;
@@ -254,7 +254,7 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-            writeScheduler = new SimpleWriteScheduler(this, replyTarget, sourceOutputEstId);
+            writeScheduler = new RandomWriteScheduler(this, replyTarget, sourceOutputEstId);
             http2InWindow = localSettings.initialWindowSize;
             http2OutWindow = remoteSettings.initialWindowSize;
 
@@ -649,8 +649,7 @@ public final class SourceInputStreamFactory
                 replySlotIndex = frameSlab.acquire(streamId);
                 if (replySlotIndex != NO_SLOT)
                 {
-                    replyBuffer = frameSlab.buffer(replySlotIndex);
-                    replySlotPosition = 0;
+                    replyBuffer = new CircularDirectBuffer(frameSlab.buffer(replySlotIndex));
                     replyQueue = new LinkedList();
                 }
             }
@@ -663,7 +662,6 @@ public final class SourceInputStreamFactory
             {
                 frameSlab.release(replySlotIndex);
                 replySlotIndex = NO_SLOT;
-                replySlotPosition = 0;
                 replyBuffer = null;
                 replyQueue = null;
             }
@@ -1309,7 +1307,7 @@ System.out.println("--> " + http2RO);
             outWindow += update;
 
 System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window = %d\n", update, outWindow, http2OutWindow);
-            writeScheduler.flush();
+            writeScheduler.onWindow();
         }
 
 
@@ -1678,7 +1676,7 @@ System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window
     class Http2Stream
     {
         private final SourceInputStream connection;
-        private final int http2StreamId;
+        final int http2StreamId;
         private final long targetId;
         private final Route route;
         private State state;
@@ -1693,7 +1691,7 @@ System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window
 
         private int replySlotIndex = NO_SLOT;
         int replySlotPosition;
-        MutableDirectBuffer replyBuffer;
+        CircularDirectBuffer replyBuffer;
         Deque replyQueue;
 
         private MessageHandler streamState;
@@ -1904,8 +1902,7 @@ System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window
                 replySlotIndex = frameSlab.acquire(connection.sourceOutputEstId);
                 if (replySlotIndex != NO_SLOT)
                 {
-                    replyBuffer = frameSlab.buffer(replySlotIndex);
-                    replySlotPosition = 0;
+                    replyBuffer = new CircularDirectBuffer(frameSlab.buffer(replySlotIndex));
                 }
             }
             return replySlotIndex != NO_SLOT;
@@ -1917,7 +1914,6 @@ System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window
             {
                 frameSlab.release(replySlotIndex);
                 replySlotIndex = NO_SLOT;
-                replySlotPosition = 0;
                 replyBuffer = null;
             }
         }
