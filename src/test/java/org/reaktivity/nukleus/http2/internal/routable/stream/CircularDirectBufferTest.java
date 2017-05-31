@@ -28,7 +28,8 @@ import java.util.stream.IntStream;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
-public class CircularDirectBufferTest {
+public class CircularDirectBufferTest
+{
 
     @Test
     public void add()
@@ -36,7 +37,8 @@ public class CircularDirectBufferTest {
         MutableDirectBuffer buffer = new UnsafeBuffer(new byte[100]);
         CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
 
-        for(int i=0; i < 100; i++) {
+        for(int i=0; i < 100; i++)
+        {
             int offset = cb.writeOffset(20);
             assertNotEquals(-1, offset);
             cb.write(offset, 20);

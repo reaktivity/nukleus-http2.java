@@ -254,7 +254,7 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-            writeScheduler = new RandomWriteScheduler(this, replyTarget, sourceOutputEstId);
+            writeScheduler = new Http2WriteScheduler(this, replyTarget, sourceOutputEstId);
             http2InWindow = localSettings.initialWindowSize;
             http2OutWindow = remoteSettings.initialWindowSize;
 
