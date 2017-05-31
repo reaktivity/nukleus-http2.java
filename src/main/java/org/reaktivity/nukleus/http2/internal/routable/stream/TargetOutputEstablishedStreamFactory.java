@@ -90,13 +90,11 @@ public final class TargetOutputEstablishedStreamFactory
 
         private long sourceId;
 
-        private Target target;
         private long sourceOutputEstId;
         private int http2StreamId;
 
         private int window;
-        // TODO size ??
-        private final MutableDirectBuffer writeBuffer = new UnsafeBuffer(new byte[4096]);
+
         private HpackContext encodeContext;
         private IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
         private IntSupplier promisedStreamIds;
@@ -223,15 +221,12 @@ public final class TargetOutputEstablishedStreamFactory
 
             if (sourceRef == 0L && correlation != null)
             {
-                Target newTarget = supplyTarget.apply(correlation.source());
                 sourceOutputEstId = correlation.getSourceOutputEstId();
-                long sourceCorrelationId = correlation.id();
                 promisedStreamIds = correlation.promisedStreamIds();
                 pushStreamIds = correlation.pushStreamIds();
 
 
                 this.sourceId = newSourceId;
-                this.target = newTarget;
                 this.http2StreamId = correlation.http2StreamId();
                 this.writeScheduler = correlation.writeScheduler();
                 this.pushHandler = correlation.pushHandler();
@@ -245,7 +240,8 @@ public final class TargetOutputEstablishedStreamFactory
                 }
 
                 this.streamState = this::afterBeginOrData;
-                source.doWindow(sourceId, 512);
+                this.window = 8192;
+                source.doWindow(sourceId, window);
             }
             else
             {
@@ -262,9 +258,11 @@ public final class TargetOutputEstablishedStreamFactory
 
             window -= dataRO.length();
 
+            System.out.printf("TargetOutput::processData window=%d update=%d\n", window, dataRO.length());
+
             OctetsFW extension = dataRO.extension();
             OctetsFW payload = dataRO.payload();
-            System.out.printf("data  size =%d extension size =%d\n ", payload.sizeof(), extension.sizeof());
+            System.out.printf("data  size = %d extension size =%d\n ", payload.sizeof(), extension.sizeof());
 
             if (extension.sizeof() > 0)
             {
@@ -274,14 +272,15 @@ public final class TargetOutputEstablishedStreamFactory
                 {
                     int promisedStreamId = promisedStreamIds.getAsInt();
                     Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                    writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), this::mapHeader);
+                    writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), this::mapHeader,
+                            this::sendWindow);
                     pushHandler.accept(promisedStreamId, dataEx.headers());
                 }
             }
             if (payload.sizeof() > 0)
             {
 System.out.println("DATA");
-                writeScheduler.data(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
+                writeScheduler.data(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof(), this::sendWindow);
             }
         }
 
@@ -299,16 +298,6 @@ System.out.println("DATA");
             source.removeStream(sourceId);
         }
 
-        private void processWindow(
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            windowRO.wrap(buffer, index, index + length);
-
-            source.doWindow(sourceId, windowRO.update());
-        }
-
         private void processReset(
             DirectBuffer buffer,
             int index,
@@ -317,6 +306,14 @@ System.out.println("DATA");
             resetRO.wrap(buffer, index, index + length);
 
             source.doReset(sourceId);
+        }
+
+        private void sendWindow(int update)
+        {
+            window += update;
+            System.out.printf("TargetOutput::sendWindow window=%d update=%d\n", window, update);
+
+            source.doWindow(sourceId, update);
         }
 
         // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request

@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 
 /*
  * Writes HTTP2 frames to a connection. There are multiple streams multiplexed in
@@ -53,9 +54,10 @@ public interface WriteScheduler
                     BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper);
 
     boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
-                        BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper);
+                        BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper,
+                        Consumer<Integer> progress);
 
-    boolean data(int streamId, DirectBuffer buffer, int offset, int length);
+    boolean data(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress);
 
     boolean dataEos(int streamId);
 

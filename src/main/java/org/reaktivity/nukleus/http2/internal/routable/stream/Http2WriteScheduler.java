@@ -25,6 +25,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 
@@ -47,7 +48,8 @@ public class Http2WriteScheduler implements WriteScheduler
         this.writer = new NukleusWriteScheduler(connection, target, targetId);
     }
 
-    public boolean http2(int streamId, int sizeof, Http2FrameType type, Flyweight.Builder.Visitor visitor)
+    public boolean http2(int streamId, int sizeof, Http2FrameType type, Flyweight.Builder.Visitor visitor,
+                         Consumer<Integer> progress)
     {
         assert !eos;
 
@@ -59,7 +61,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             int actualLength = visitor.visit(cb.buffer, offset, sizeof);
             cb.write(offset, actualLength);
-            StreamEntry entry = new StreamEntry(stream, cb.buffer, offset, actualLength, type);
+            StreamEntry entry = new StreamEntry(stream, cb.buffer, offset, actualLength, type, progress);
             stream.replyQueue.add(entry);
         }
 
@@ -111,16 +113,18 @@ public class Http2WriteScheduler implements WriteScheduler
 
     @Override
     public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
-                               BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
+                               BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper,
+                               Consumer<Integer> progress)
     {
-        return writer.pushPromise(streamId, promisedStreamId, headers, mapper);
+        return writer.pushPromise(streamId, promisedStreamId, headers, mapper, progress);
     }
 
     @Override
-    public boolean data(int streamId, DirectBuffer buffer, int offset, int length)
+    public boolean data(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
     {
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        if (stream == null) {
+        if (stream == null)
+        {
             return true;
         }
         boolean direct = stream.replyBuffer == null && length <= connection.http2OutWindow &&
@@ -129,12 +133,12 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             connection.http2OutWindow -= length;
             stream.http2OutWindow -= length;
-            return writer.data(streamId, buffer, offset, length);
+            return writer.data(streamId, buffer, offset, length, progress);
         }
         else
         {
             Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
-            return http2(streamId, length + 9, DATA, data);
+            return http2(streamId, length + 9, DATA, data, progress);
         }
     }
 
@@ -142,7 +146,8 @@ public class Http2WriteScheduler implements WriteScheduler
     public boolean dataEos(int streamId)
     {
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        if (stream == null) {
+        if (stream == null)
+        {
             return true;
         }
         boolean direct = stream.replyBuffer == null &&
@@ -156,10 +161,11 @@ public class Http2WriteScheduler implements WriteScheduler
         else
         {
             Flyweight.Builder.Visitor data = target.visitDataEos(streamId);
-            return http2(streamId, 9, DATA, data);
+            return http2(streamId, 9, DATA, data, null);
         }
     }
 
+    @Override
     public void doEnd()
     {
         eos = true;
@@ -169,6 +175,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
     }
 
+    @Override
     public void onHttp2Window()
     {
         boolean found = false;
@@ -176,7 +183,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         while((entry = pop()) != null)
         {
-            writer.data(entry.stream.http2StreamId, entry.buffer, entry.offset, entry.length);
+            writer.data(entry.stream.http2StreamId, entry.buffer, entry.offset, entry.length, entry.progress);
             found = true;
         }
         if (found)
@@ -185,6 +192,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
     }
 
+    @Override
     public void onHttp2Window(int streamId)
     {
         boolean found = false;
@@ -193,7 +201,7 @@ public class Http2WriteScheduler implements WriteScheduler
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
         while ((entry = pop(stream)) != null)
         {
-            writer.data(streamId, entry.buffer, entry.offset, entry.length);
+            writer.data(streamId, entry.buffer, entry.offset, entry.length, entry.progress);
             found = true;
         }
 
@@ -203,6 +211,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
     }
 
+    @Override
     public void onWindow()
     {
         writer.onWindow();
@@ -253,19 +262,22 @@ public class Http2WriteScheduler implements WriteScheduler
         final int offset;
         final int length;
         final Http2FrameType type;
+        private final Consumer<Integer> progress;
 
         StreamEntry(
                 SourceInputStreamFactory.Http2Stream stream,
                 DirectBuffer buffer,
                 int offset,
                 int length,
-                Http2FrameType type)
+                Http2FrameType type,
+                Consumer<Integer> progress)
         {
             this.stream = stream;
             this.buffer = buffer;
             this.offset = offset;
             this.length = length;
             this.type = type;
+            this.progress = progress;
             noEntries++;
         }
 
