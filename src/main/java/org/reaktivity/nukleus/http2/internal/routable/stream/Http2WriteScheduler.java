@@ -290,8 +290,6 @@ public class Http2WriteScheduler implements WriteScheduler
 
         void adjustWindows()
         {
-System.out.printf("adjust length = %d nuklei-window = %d con.http2-out-window = %d stream.http2-out-window=%d\n",
-        length, connection.outWindow, connection.http2OutWindow, stream.http2OutWindow);
             assert type == DATA;
 
             connection.http2OutWindow -= (length - 9);

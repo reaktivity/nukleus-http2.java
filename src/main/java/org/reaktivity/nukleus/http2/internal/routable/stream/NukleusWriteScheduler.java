@@ -64,8 +64,6 @@ class NukleusWriteScheduler implements WriteScheduler
         {
             int actualLength = target.doHttp2(targetId, visitor);
             connection.outWindow -= actualLength;
-            System.out.printf("NukleusWriter direct length = %d nuklei-window = %d con.http2-out-window = %d\n",
-                    actualLength, connection.outWindow, connection.http2OutWindow);
             if (progress != null)
             {
                 progress.accept(actualLength - 9);
@@ -281,8 +279,6 @@ class NukleusWriteScheduler implements WriteScheduler
         void adjustWindows()
         {
             connection.outWindow -= length;
-            System.out.printf("adjust length = %d nuklei-window = %d con.http2-out-window = %d\n", length, connection.outWindow,
-                    connection.http2OutWindow);
         }
 
     }

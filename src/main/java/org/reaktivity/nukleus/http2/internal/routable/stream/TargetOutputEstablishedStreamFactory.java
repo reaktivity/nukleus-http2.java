@@ -35,8 +35,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
 import java.util.function.Function;
@@ -55,9 +53,6 @@ public final class TargetOutputEstablishedStreamFactory
     private final DataFW dataRO = new DataFW();
     private final EndFW endRO = new EndFW();
 
-    private final WindowFW windowRO = new WindowFW();
-    private final ResetFW resetRO = new ResetFW();
-
     private final HttpBeginExFW beginExRO = new HttpBeginExFW();
     private final Http2DataExFW dataExRO = new Http2DataExFW();
 
@@ -65,7 +60,6 @@ public final class TargetOutputEstablishedStreamFactory
     private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
 
     private final Source source;
-    private final Function<String, Target> supplyTarget;
     private final LongFunction<Correlation> correlateEstablished;
 
     public TargetOutputEstablishedStreamFactory(
@@ -75,7 +69,6 @@ public final class TargetOutputEstablishedStreamFactory
         LongFunction<Correlation> correlateEstablished)
     {
         this.source = source;
-        this.supplyTarget = supplyTarget;
         this.correlateEstablished = correlateEstablished;
     }
 
@@ -235,7 +228,6 @@ public final class TargetOutputEstablishedStreamFactory
                 if (extension.sizeof() > 0)
                 {
                     HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    System.out.println("HEADERS");
                     writeScheduler.headers(http2StreamId, beginEx.headers(), this::mapHeader);
                 }
 
@@ -258,11 +250,8 @@ public final class TargetOutputEstablishedStreamFactory
 
             window -= dataRO.length();
 
-            System.out.printf("TargetOutput::processData window=%d update=%d\n", window, dataRO.length());
-
             OctetsFW extension = dataRO.extension();
             OctetsFW payload = dataRO.payload();
-            System.out.printf("data  size = %d extension size =%d\n ", payload.sizeof(), extension.sizeof());
 
             if (extension.sizeof() > 0)
             {
@@ -279,7 +268,6 @@ public final class TargetOutputEstablishedStreamFactory
             }
             if (payload.sizeof() > 0)
             {
-System.out.println("DATA");
                 writeScheduler.data(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof(), this::sendWindow);
             }
         }
@@ -290,29 +278,13 @@ System.out.println("DATA");
             int length)
         {
             endRO.wrap(buffer, index, index + length);
-
-            System.out.println("DATA + HTTP2 EOS");
-
             writeScheduler.dataEos(http2StreamId);
-
             source.removeStream(sourceId);
-        }
-
-        private void processReset(
-            DirectBuffer buffer,
-            int index,
-            int length)
-        {
-            resetRO.wrap(buffer, index, index + length);
-
-            source.doReset(sourceId);
         }
 
         private void sendWindow(int update)
         {
             window += update;
-            System.out.printf("TargetOutput::sendWindow window=%d update=%d\n", window, update);
-
             source.doWindow(sourceId, update);
         }
 

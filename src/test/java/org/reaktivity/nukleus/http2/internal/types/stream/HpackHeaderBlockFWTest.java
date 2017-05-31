@@ -514,24 +514,4 @@ public class HpackHeaderBlockFWTest
         }
     }
 
-    @Test
-    public void foo()
-    {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
-                "00" +  // +00 to test offset
-                        // Header list begin
-                        "87824186a0e41d139d09448960bdcb5256426c28e9" +
-                        "8782bf448561043d8547408bf2b567a2858d524b6771d10135" +
-
-                // Header list end
-                        "00");
-        DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
-
-        Map<String, String> headers = new LinkedHashMap<>();
-        fw.forEach(getHeaders(new HpackContext(), headers));
-        System.out.println("headers = " + headers);
-
-    }
-
 }

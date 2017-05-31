@@ -1286,7 +1286,6 @@ System.out.println("--> " + http2RO);
                 processNextWindow(buffer, index, length);
                 break;
             case ResetFW.TYPE_ID:
-                System.out.println("processReset");
                 processReset(buffer, index, length);
                 break;
             default:
@@ -1294,8 +1293,6 @@ System.out.println("--> " + http2RO);
                 break;
             }
         }
-
-
 
         private void processNextWindow(
             DirectBuffer buffer,
@@ -1305,8 +1302,6 @@ System.out.println("--> " + http2RO);
             windowRO.wrap(buffer, index, index + length);
             int update = windowRO.update();
             outWindow += update;
-
-System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window = %d\n", update, outWindow, http2OutWindow);
             writeScheduler.onWindow();
         }
 
@@ -1736,8 +1731,6 @@ System.out.printf("nuklei-window-update = %d nuklei-window = %d http2-out-window
             int data = http2DataRO.dataLength();
             int toHttp = data > targetWindow ? targetWindow : data;
             int toSlab = data - toHttp;
-
-            System.out.println("streamNoSlab toHttp="+toHttp+" toSlab="+toSlab);
 
             if (toHttp > 0)
             {
