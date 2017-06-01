@@ -20,11 +20,9 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
@@ -105,18 +103,16 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean headers(int streamId, ListFW<HttpHeaderFW> headers,
-                           BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
+    public boolean headers(int streamId, ListFW<HttpHeaderFW> headers)
     {
-        return writer.headers(streamId, headers, mapper);
+        return writer.headers(streamId, headers);
     }
 
     @Override
     public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
-                               BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper,
                                Consumer<Integer> progress)
     {
-        return writer.pushPromise(streamId, promisedStreamId, headers, mapper, progress);
+        return writer.pushPromise(streamId, promisedStreamId, headers, progress);
     }
 
     @Override

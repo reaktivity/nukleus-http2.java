@@ -25,14 +25,11 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
-import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
@@ -42,8 +39,6 @@ import java.util.function.IntSupplier;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
-
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 public final class TargetOutputEstablishedStreamFactory
 {
@@ -228,7 +223,7 @@ public final class TargetOutputEstablishedStreamFactory
                 if (extension.sizeof() > 0)
                 {
                     HttpBeginExFW beginEx = extension.get(beginExRO::wrap);
-                    writeScheduler.headers(http2StreamId, beginEx.headers(), this::mapHeader);
+                    writeScheduler.headers(http2StreamId, beginEx.headers());
                 }
 
                 this.streamState = this::afterBeginOrData;
@@ -261,8 +256,7 @@ public final class TargetOutputEstablishedStreamFactory
                 {
                     int promisedStreamId = promisedStreamIds.getAsInt();
                     Http2DataExFW dataEx = extension.get(dataExRO::wrap);
-                    writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), this::mapHeader,
-                            this::sendWindow);
+                    writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), this::sendWindow);
                     pushHandler.accept(promisedStreamId, dataEx.headers());
                 }
             }
@@ -288,46 +282,6 @@ public final class TargetOutputEstablishedStreamFactory
             source.doWindow(sourceId, update);
         }
 
-        // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
-        private HpackHeaderFieldFW mapHeader(HttpHeaderFW httpHeader, HpackHeaderFieldFW.Builder builder)
-        {
-            StringFW name = httpHeader.name();
-            StringFW value = httpHeader.value();
-            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
-            valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
-
-            int index = encodeContext.index(nameRO, valueRO);
-            if (index != -1)
-            {
-                // Indexed
-                builder.indexed(index);
-            }
-            else
-            {
-                // Literal
-                builder.literal(literalBuilder -> buildLiteral(literalBuilder, encodeContext));
-            }
-            return builder.build();
-        }
-
-        // Building Literal representation of header field
-        // TODO dynamic table, huffman, never indexed
-        private void buildLiteral(
-                HpackLiteralHeaderFieldFW.Builder builder,
-                HpackContext hpackContext)
-        {
-            int nameIndex = hpackContext.index(nameRO);
-            builder.type(WITHOUT_INDEXING);
-            if (nameIndex != -1)
-            {
-                builder.name(nameIndex);
-            }
-            else
-            {
-                builder.name(nameRO, 0, nameRO.capacity());
-            }
-            builder.value(valueRO, 0, valueRO.capacity());
-        }
     }
 
 }

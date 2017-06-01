@@ -20,11 +20,9 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
-import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
@@ -144,23 +142,21 @@ class NukleusWriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean headers(int streamId, ListFW<HttpHeaderFW> headers,
-                           BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
+    public boolean headers(int streamId, ListFW<HttpHeaderFW> headers)
     {
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
         boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, mapper);
+        Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, connection::mapHeader);
         return http2(streamId, sizeof, direct, HEADERS, data, null);
     }
 
     @Override
     public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
-                               BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper,
                                Consumer<Integer> progress)
     {
         int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
         boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, mapper);
+        Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapHeader);
         return http2(streamId, sizeof, direct, PUSH_PROMISE, data, null);
     }
 

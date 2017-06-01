@@ -28,6 +28,7 @@ import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -77,6 +78,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 public final class SourceInputStreamFactory
@@ -102,6 +104,8 @@ public final class SourceInputStreamFactory
     private final Http2PriorityFW priorityRO = new Http2PriorityFW();
     private final UnsafeBuffer scratch = new UnsafeBuffer(new byte[8192]);  // TODO
     private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
+    private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
+    private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
 
     private final Http2PingFW pingRO = new Http2PingFW();
 
@@ -1658,6 +1662,55 @@ System.out.println("--> " + http2RO);
                     }
                     break;
             }
+        }
+
+        void mapHeader(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
+        {
+            httpHeaders.forEach(h ->
+            {
+                builder.header(b -> mapHeader(h, b));
+            });
+
+        }
+
+        // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
+        private void mapHeader(HttpHeaderFW httpHeader, HpackHeaderFieldFW.Builder builder)
+        {
+            StringFW name = httpHeader.name();
+            StringFW value = httpHeader.value();
+            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+            valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+
+            int index = encodeContext.index(nameRO, valueRO);
+            if (index != -1)
+            {
+                // Indexed
+                builder.indexed(index);
+            }
+            else
+            {
+                // Literal
+                builder.literal(literalBuilder -> buildLiteral(literalBuilder, encodeContext));
+            }
+        }
+
+        // Building Literal representation of header field
+        // TODO dynamic table, huffman, never indexed
+        private void buildLiteral(
+                HpackLiteralHeaderFieldFW.Builder builder,
+                HpackContext hpackContext)
+        {
+            int nameIndex = hpackContext.index(nameRO);
+            builder.type(WITHOUT_INDEXING);
+            if (nameIndex != -1)
+            {
+                builder.name(nameIndex);
+            }
+            else
+            {
+                builder.name(nameRO, 0, nameRO.capacity());
+            }
+            builder.value(valueRO, 0, valueRO.capacity());
         }
 
     }

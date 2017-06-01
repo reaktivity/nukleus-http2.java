@@ -30,7 +30,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
@@ -42,7 +42,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 
-import java.util.function.BiFunction;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 public final class Target implements Nukleus
@@ -351,13 +351,13 @@ public final class Target implements Nukleus
     public Flyweight.Builder.Visitor visitHeaders(
             int streamId,
             ListFW<HttpHeaderFW> headers,
-            BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader)
+            BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
         return (buffer, offset, limit) ->
                 http2HeadersRW.wrap(buffer, offset, limit)
                               .streamId(streamId)
                               .endHeaders()
-                              .set(headers, mapHeader)
+                              .headers(b -> builder.accept(headers, b))
                               .build()
                               .sizeof();
     }
@@ -366,14 +366,14 @@ public final class Target implements Nukleus
             int streamId,
             int promisedStreamId,
             ListFW<HttpHeaderFW> headers,
-            BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapHeader)
+            BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
         return (buffer, offset, limit) ->
                 pushPromiseRW.wrap(buffer, offset, limit)
                              .streamId(streamId)
                              .promisedStreamId(promisedStreamId)
                              .endHeaders()
-                             .set(headers, mapHeader)
+                             .headers(b -> builder.accept(headers, b))
                              .build()
                              .sizeof();
     }
