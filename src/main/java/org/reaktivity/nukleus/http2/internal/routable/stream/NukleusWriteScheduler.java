@@ -146,7 +146,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
         boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, connection::mapHeader);
+        Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, connection::mapHeaders);
         return http2(streamId, sizeof, direct, HEADERS, data, null);
     }
 
@@ -156,7 +156,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
         boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapHeader);
+        Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromize);
         return http2(streamId, sizeof, direct, PUSH_PROMISE, data, null);
     }
 

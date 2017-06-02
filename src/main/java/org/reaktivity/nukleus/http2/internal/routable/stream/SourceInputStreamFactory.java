@@ -110,6 +110,8 @@ public final class SourceInputStreamFactory
     private final Http2PingFW pingRO = new Http2PingFW();
 
     private final HeadersContext headersContext = new HeadersContext();
+    private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
+
 
     private final Source source;
     private final LongFunction<List<Route>> supplyRoutes;
@@ -157,6 +159,17 @@ public final class SourceInputStreamFactory
         {
             return streamError != null || connectionError != null;
         }
+    }
+
+    private static final class EncodeHeadersContext
+    {
+        boolean status;
+
+        void reset()
+        {
+            status = false;
+        }
+
     }
 
     public SourceInputStreamFactory(
@@ -797,7 +810,6 @@ public final class SourceInputStreamFactory
             {
                 return length;
             }
-System.out.println("--> " + http2RO);
             Http2FrameType http2FrameType = http2RO.type();
             // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
             if (!http2HeadersAvailable())
@@ -944,7 +956,6 @@ System.out.println("--> " + http2RO);
             final Optional<Route> optional = resolveTarget(sourceRef, headersContext.headers);
             Route route = optional.get();   // TODO
             stream = newStream(streamId, state, route);
-
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
 
@@ -1057,6 +1068,7 @@ System.out.println("--> " + http2RO);
                     error(Http2ErrorCode.FLOW_CONTROL_ERROR);
                     return;
                 }
+                writeScheduler.onHttp2Window();
             }
             else
             {
@@ -1067,6 +1079,7 @@ System.out.println("--> " + http2RO);
                     streamError(streamId, Http2ErrorCode.FLOW_CONTROL_ERROR);
                     return;
                 }
+                writeScheduler.onHttp2Window(streamId);
             }
 
         }
@@ -1664,13 +1677,63 @@ System.out.println("--> " + http2RO);
             }
         }
 
-        void mapHeader(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
+
+        void mapPushPromize(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
         {
+            httpHeaders.forEach(h -> builder.header(b -> mapHeader(h, b)));
+        }
+
+        void mapHeaders(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
+        {
+            encodeHeadersContext.reset();
+
+            httpHeaders.forEach(this::status);
+            if (!encodeHeadersContext.status)
+            {
+                builder.header(b -> b.indexed(8));          // no mandatory :status header, add :status: 200
+            }
+
             httpHeaders.forEach(h ->
             {
-                builder.header(b -> mapHeader(h, b));
+                if (validHeader(h))
+                {
+                    builder.header(b -> mapHeader(h, b));
+                }
             });
+        }
 
+        void status(HttpHeaderFW httpHeader)
+        {
+            if (!encodeHeadersContext.status)
+            {
+                StringFW name = httpHeader.name();
+                StringFW value = httpHeader.value();
+                nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+                valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+
+                if (nameRO.equals(encodeContext.nameBuffer(8)))
+                {
+                    encodeHeadersContext.status = true;
+                }
+            }
+        }
+
+        boolean validHeader(HttpHeaderFW httpHeader)
+        {
+            StringFW name = httpHeader.name();
+            StringFW value = httpHeader.value();
+            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+            valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+
+            if (nameRO.equals(encodeContext.nameBuffer(1)) ||
+                    nameRO.equals(encodeContext.nameBuffer(2)) ||
+                    nameRO.equals(encodeContext.nameBuffer(4)) ||
+                    nameRO.equals(encodeContext.nameBuffer(6)))
+            {
+                return false;                             // ignore :authority, :method, :path, :scheme
+            }
+
+            return true;
         }
 
         // Map http1.1 header to http2 header field in HEADERS, PUSH_PROMISE request
@@ -1738,7 +1801,6 @@ System.out.println("--> " + http2RO);
         private int targetSlotPosition;
 
         private int replySlotIndex = NO_SLOT;
-        int replySlotPosition;
         CircularDirectBuffer replyBuffer;
         Deque replyQueue;
 
@@ -1949,6 +2011,7 @@ System.out.println("--> " + http2RO);
                 if (replySlotIndex != NO_SLOT)
                 {
                     replyBuffer = new CircularDirectBuffer(frameSlab.buffer(replySlotIndex));
+                    replyQueue = new LinkedList();
                 }
             }
             return replySlotIndex != NO_SLOT;
@@ -1961,6 +2024,7 @@ System.out.println("--> " + http2RO);
                 frameSlab.release(replySlotIndex);
                 replySlotIndex = NO_SLOT;
                 replyBuffer = null;
+                replyQueue = null;
             }
         }
 

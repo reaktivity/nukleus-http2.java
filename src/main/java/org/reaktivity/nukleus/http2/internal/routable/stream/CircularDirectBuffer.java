@@ -16,6 +16,7 @@
 
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
 public class CircularDirectBuffer
@@ -86,6 +87,17 @@ public class CircularDirectBuffer
     void write(int offset, int length)
     {
         end = offset + length;
+    }
+
+    int write(DirectBuffer srcBuffer, int srcIndex, int length)
+    {
+        int index = writeOffset(length);
+        if (index != -1)
+        {
+            buffer.putBytes(index, srcBuffer, srcIndex, length);
+            end = index + length;
+        }
+        return index;
     }
 
     private int readOffset(int length)
