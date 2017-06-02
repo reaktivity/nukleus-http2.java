@@ -120,6 +120,8 @@ public final class SourceInputStreamFactory
     private final LongObjectBiConsumer<Correlation> correlateNew;
     private final Slab frameSlab;
     private final Slab headersSlab;
+    private final Slab streamsSlab;
+
 
     enum State
     {
@@ -190,6 +192,7 @@ public final class SourceInputStreamFactory
         int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
+        this.streamsSlab = new Slab(totalCapacity, slotCapacity);
     }
 
     public MessageHandler newStream()
@@ -214,8 +217,7 @@ public final class SourceInputStreamFactory
         private int headersSlotIndex = NO_SLOT;
         private int headersSlotPosition;
 
-        private int replySlotIndex = NO_SLOT;
-        int replySlotPosition;
+        private int replySlot = NO_SLOT;
         CircularDirectBuffer replyBuffer;
         Deque replyQueue;
 
@@ -659,26 +661,27 @@ public final class SourceInputStreamFactory
          * @return true if there is a buffer
          *         false if all slots are taken
          */
-        boolean acquireReplyBuffer(long streamId)
+        MutableDirectBuffer acquireReplyBuffer()
         {
-            if (replySlotIndex == NO_SLOT)
+            if (replySlot == NO_SLOT)
             {
-                replySlotIndex = frameSlab.acquire(streamId);
-                if (replySlotIndex != NO_SLOT)
+                replySlot = frameSlab.acquire(sourceOutputEstId);
+                if (replySlot != NO_SLOT)
                 {
-                    replyBuffer = new CircularDirectBuffer(frameSlab.buffer(replySlotIndex));
+                    int capacity = frameSlab.buffer(replySlot).capacity();
+                    replyBuffer = new CircularDirectBuffer(capacity);
                     replyQueue = new LinkedList();
                 }
             }
-            return replySlotIndex != NO_SLOT;
+            return replySlot != NO_SLOT ? frameSlab.buffer(replySlot) : null;
         }
 
         void releaseReplyBuffer()
         {
-            if (replySlotIndex != NO_SLOT)
+            if (replySlot != NO_SLOT)
             {
-                frameSlab.release(replySlotIndex);
-                replySlotIndex = NO_SLOT;
+                frameSlab.release(replySlot);
+                replySlot = NO_SLOT;
                 replyBuffer = null;
                 replyQueue = null;
             }
@@ -816,7 +819,7 @@ public final class SourceInputStreamFactory
             {
                 return length;
             }
-
+System.out.println("---> " + http2RO);
             switch (http2FrameType)
             {
                 case DATA:
@@ -1800,7 +1803,7 @@ public final class SourceInputStreamFactory
         private int targetSlotIndex = NO_SLOT;
         private int targetSlotPosition;
 
-        private int replySlotIndex = NO_SLOT;
+        private int replySlot = NO_SLOT;
         CircularDirectBuffer replyBuffer;
         Deque replyQueue;
 
@@ -1967,7 +1970,6 @@ public final class SourceInputStreamFactory
                         }
                     }
 
-                    //source.doWindow(sourceId, update + framing(update));
                     break;
                 case ResetFW.TYPE_ID:
                     doReset(buffer, index, length);
@@ -2003,26 +2005,27 @@ public final class SourceInputStreamFactory
          * @return true if there is a buffer
          *         false if all slots are taken
          */
-        boolean acquireReplyBuffer()
+        MutableDirectBuffer acquireReplyBuffer()
         {
-            if (replySlotIndex == NO_SLOT)
+            if (replySlot == NO_SLOT)
             {
-                replySlotIndex = frameSlab.acquire(connection.sourceOutputEstId);
-                if (replySlotIndex != NO_SLOT)
+                replySlot = streamsSlab.acquire(connection.sourceOutputEstId);
+                if (replySlot != NO_SLOT)
                 {
-                    replyBuffer = new CircularDirectBuffer(frameSlab.buffer(replySlotIndex));
+                    int capacity = streamsSlab.buffer(replySlot).capacity();
+                    replyBuffer = new CircularDirectBuffer(capacity);
                     replyQueue = new LinkedList();
                 }
             }
-            return replySlotIndex != NO_SLOT;
+            return replySlot != NO_SLOT ? streamsSlab.buffer(replySlot) : null;
         }
 
         void releaseReplyBuffer()
         {
-            if (replySlotIndex != NO_SLOT)
+            if (replySlot != NO_SLOT)
             {
-                frameSlab.release(replySlotIndex);
-                replySlotIndex = NO_SLOT;
+                streamsSlab.release(replySlot);
+                replySlot = NO_SLOT;
                 replyBuffer = null;
                 replyQueue = null;
             }

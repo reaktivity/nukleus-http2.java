@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -71,13 +72,12 @@ class NukleusWriteScheduler implements WriteScheduler
         }
         else
         {
-            connection.acquireReplyBuffer(targetId);
+            MutableDirectBuffer dst = connection.acquireReplyBuffer();    // TODO return value
             CircularDirectBuffer cb = connection.replyBuffer;
-
             int offset = cb.writeOffset(lengthGuess);
-            int length = visitor.visit(cb.buffer, offset, lengthGuess);
+            int length = visitor.visit(dst, offset, lengthGuess);
             cb.write(offset, length);
-            ConnectionEntry entry = new ConnectionEntry(cb.buffer, offset, length, lengthGuess, type, progress);
+            ConnectionEntry entry = new ConnectionEntry(streamId, offset, length, type, progress);
             connection.replyQueue.add(entry);
 
             return offset != -1;
@@ -199,11 +199,10 @@ class NukleusWriteScheduler implements WriteScheduler
 
         while ((entry = pop()) != null)
         {
-            target.doData(targetId, connection.replyBuffer.buffer, entry.offset, entry.length);
+            target.doData(targetId, entry.buffer(), entry.offset, entry.length);
             if (entry.progress != null)
             {
-                assert entry.length >= 9;
-                entry.progress.accept(entry.length - 9);
+                entry.progress.accept(entry.length - 9);        // TODO when entry is split, length would be < 9
             }
         }
         if (connection.replyQueue != null && connection.replyQueue.isEmpty())
@@ -220,7 +219,7 @@ class NukleusWriteScheduler implements WriteScheduler
             if (entry != null && entry.fits())
             {
                 entry = (ConnectionEntry) connection.replyQueue.poll();
-                connection.replyBuffer.read(entry.lengthGuess);
+                connection.replyBuffer.read(entry.offset, entry.length);
                 entry.adjustWindows();
                 return entry;
             }
@@ -243,38 +242,59 @@ class NukleusWriteScheduler implements WriteScheduler
 
     private class ConnectionEntry
     {
-        final DirectBuffer buffer;
+        final int streamId;
         final int offset;
         final int length;
-        final int lengthGuess;
         final Http2FrameType type;
         private final Consumer<Integer> progress;
 
         ConnectionEntry(
-                DirectBuffer buffer,
+                int streamId,
                 int offset,
                 int length,
-                int lengthGuess,
                 Http2FrameType type,
                 Consumer<Integer> progress)
         {
-            this.buffer = buffer;
+            this.streamId = streamId;
             this.offset = offset;
             this.length = length;
-            this.lengthGuess = lengthGuess;
             this.type = type;
             this.progress = progress;
         }
 
         boolean fits()
         {
-            // TODO split DATA so that it fits
-            return length <= connection.outWindow;
+            int min = Math.min(length, connection.outWindow);
+            if (min > 0)
+            {
+                int remaining = length - min;
+                if (remaining > 0)
+                {
+                    connection.replyQueue.poll();
+                    ConnectionEntry entry1 = new ConnectionEntry(streamId, offset, min, type, progress);
+                    ConnectionEntry entry2 = new ConnectionEntry(streamId, offset + min, remaining, type, progress);
+
+                    connection.replyQueue.addFirst(entry2);
+                    connection.replyQueue.addFirst(entry1);
+                }
+            }
+
+            return min > 0;
         }
 
         void adjustWindows()
         {
             connection.outWindow -= length;
+        }
+
+        DirectBuffer buffer()
+        {
+            return connection.acquireReplyBuffer();
+        }
+
+        public String toString()
+        {
+            return String.format("streamId=%d type=%s offset=%d length=%d", streamId, type, offset, length);
         }
 
     }

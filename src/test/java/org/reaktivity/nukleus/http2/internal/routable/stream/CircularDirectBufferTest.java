@@ -15,9 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
 import java.util.LinkedList;
@@ -34,8 +31,7 @@ public class CircularDirectBufferTest
     @Test
     public void add()
     {
-        MutableDirectBuffer buffer = new UnsafeBuffer(new byte[100]);
-        CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
+        CircularDirectBuffer cb = new CircularDirectBuffer(100);
 
         for(int i=0; i < 100; i++)
         {
@@ -68,8 +64,7 @@ public class CircularDirectBufferTest
     @Test
     public void add2()
     {
-        MutableDirectBuffer buffer = new UnsafeBuffer(new byte[100]);
-        CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
+        CircularDirectBuffer cb = new CircularDirectBuffer(100);
 
         int offset = cb.writeOffset(20);
         assertNotEquals(-1, offset);
@@ -103,8 +98,7 @@ public class CircularDirectBufferTest
     @Test
     public void remove()
     {
-        MutableDirectBuffer buffer = new UnsafeBuffer(new byte[100]);
-        CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
+        CircularDirectBuffer cb = new CircularDirectBuffer(100);
 
         for(int i=0; i < 100; i++)
         {
@@ -119,8 +113,7 @@ public class CircularDirectBufferTest
     @Test
     public void testRandom()
     {
-        MutableDirectBuffer buffer = new UnsafeBuffer(new byte[100]);
-        CircularDirectBuffer cb = new CircularDirectBuffer(buffer);
+        CircularDirectBuffer cb = new CircularDirectBuffer(100);
         Random random = new Random(System.currentTimeMillis());
         List<Integer> list = new LinkedList<>();
         IntStream.range(1, 1000).forEach(x ->
@@ -143,16 +136,6 @@ public class CircularDirectBufferTest
                 cb.read(list.remove(0));
             }
         });
-    }
-
-    private DirectBuffer buf(int no)
-    {
-        byte[] bytes = new byte[no];
-        for(int i=0; i < bytes.length; i++)
-        {
-            bytes[i] = (byte) no;
-        }
-        return new UnsafeBuffer(bytes);
     }
 
 }

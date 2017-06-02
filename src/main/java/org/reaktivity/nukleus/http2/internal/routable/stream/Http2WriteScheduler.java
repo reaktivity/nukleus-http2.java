@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -50,12 +51,12 @@ public class Http2WriteScheduler implements WriteScheduler
         assert !eos;
 
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        stream.acquireReplyBuffer();
+        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer();
         CircularDirectBuffer cb = stream.replyBuffer;
-        int cbOffset = cb.write(buffer, offset, length);
+        int cbOffset = cb.write(dstBuffer, buffer, offset, length);
         if (cbOffset != -1)
         {
-            StreamEntry entry = new StreamEntry(stream, cb.buffer, cbOffset, length, eos, progress);
+            StreamEntry entry = new StreamEntry(stream, cbOffset, length, eos, progress);
             stream.replyQueue.add(entry);
         }
 
@@ -186,7 +187,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         while((entry = pop()) != null)
         {
-            writer.data(entry.stream.http2StreamId, entry.buffer, entry.offset, entry.length, entry.progress);
+            writer.data(entry.stream.http2StreamId, entry.buffer(), entry.offset, entry.length, entry.progress);
             found = true;
         }
         if (found)
@@ -210,7 +211,7 @@ public class Http2WriteScheduler implements WriteScheduler
             }
             else
             {
-                writer.data(streamId, entry.buffer, entry.offset, entry.length, entry.progress);
+                writer.data(streamId, entry.buffer(), entry.offset, entry.length, entry.progress);
             }
             found = true;
         }
@@ -268,7 +269,6 @@ public class Http2WriteScheduler implements WriteScheduler
     private class StreamEntry
     {
         final SourceInputStreamFactory.Http2Stream stream;
-        final DirectBuffer buffer;
         final int offset;
         final int length;
         private final Consumer<Integer> progress;
@@ -276,14 +276,12 @@ public class Http2WriteScheduler implements WriteScheduler
 
         StreamEntry(
                 SourceInputStreamFactory.Http2Stream stream,
-                DirectBuffer buffer,
                 int offset,
                 int length,
                 boolean eos,
                 Consumer<Integer> progress)
         {
             this.stream = stream;
-            this.buffer = buffer;
             this.offset = offset;
             this.length = length;
             this.eos = eos;
@@ -305,8 +303,8 @@ public class Http2WriteScheduler implements WriteScheduler
                 if (remaining > 0)
                 {
                     stream.replyQueue.poll();
-                    StreamEntry entry1 = new StreamEntry(stream, buffer, offset, min, eos, progress);
-                    StreamEntry entry2 = new StreamEntry(stream, buffer, offset + min, remaining, eos, progress);
+                    StreamEntry entry1 = new StreamEntry(stream, offset, min, eos, progress);
+                    StreamEntry entry2 = new StreamEntry(stream, offset + min, remaining, eos, progress);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
@@ -320,6 +318,16 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             connection.http2OutWindow -= length;
             stream.http2OutWindow -= length;
+        }
+
+        DirectBuffer buffer()
+        {
+            return stream.acquireReplyBuffer();
+        }
+
+        public String toString()
+        {
+            return String.format("offset=%d length=%d", offset, length);
         }
 
     }

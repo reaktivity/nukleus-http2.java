@@ -19,10 +19,9 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-public class CircularDirectBuffer
+class CircularDirectBuffer
 {
-    final MutableDirectBuffer buffer;
-
+    private final int capacity;
     /*
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      *  |   |x x x x x x x x x x|         |
@@ -42,9 +41,9 @@ public class CircularDirectBuffer
     private int start;
     private int end;
 
-    CircularDirectBuffer(MutableDirectBuffer buffer)
+    CircularDirectBuffer(int capacity)
     {
-        this.buffer = buffer;
+        this.capacity = capacity;
     }
 
     /*
@@ -57,14 +56,14 @@ public class CircularDirectBuffer
         if (start == end)                   // empty
         {
             start = end = 0;
-            if (length < buffer.capacity())
+            if (length < capacity)
             {
                 return 0;
             }
         }
         else if (start < end)
         {
-            if (end + length < buffer.capacity())
+            if (end + length < capacity)
             {
                 return prevEnd;
             }
@@ -73,7 +72,7 @@ public class CircularDirectBuffer
                 return 0;
             }
         }
-        else                        // wrapped
+        else                                // wrapped
         {
             if (end + length < start)
             {
@@ -89,12 +88,12 @@ public class CircularDirectBuffer
         end = offset + length;
     }
 
-    int write(DirectBuffer srcBuffer, int srcIndex, int length)
+    int write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
         int index = writeOffset(length);
         if (index != -1)
         {
-            buffer.putBytes(index, srcBuffer, srcIndex, length);
+            dstBuffer.putBytes(index, srcBuffer, srcIndex, length);
             end = index + length;
         }
         return index;
@@ -102,12 +101,17 @@ public class CircularDirectBuffer
 
     private int readOffset(int length)
     {
-        return start + length < buffer.capacity() ? start : 0;
+        return start + length < capacity ? start : 0;
     }
 
     void read(int length)
     {
         start = readOffset(length) + length;
+    }
+
+    void read(int offset, int length)
+    {
+        start = offset + length;
     }
 
 }
