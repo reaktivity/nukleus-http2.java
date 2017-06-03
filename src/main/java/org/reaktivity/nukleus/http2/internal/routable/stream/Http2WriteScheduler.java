@@ -29,6 +29,8 @@ public class Http2WriteScheduler implements WriteScheduler
 {
     private static final DirectBuffer EMPTY = new UnsafeBuffer(new byte[0]);
 
+    private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
+    private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final NukleusWriteScheduler writer;
     private final Target target;
@@ -51,7 +53,7 @@ public class Http2WriteScheduler implements WriteScheduler
         assert !eos;
 
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer();
+        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::write);
         CircularDirectBuffer cb = stream.replyBuffer;
         int cbOffset = cb.write(dstBuffer, buffer, offset, length);
         if (cbOffset != -1)
@@ -187,7 +189,8 @@ public class Http2WriteScheduler implements WriteScheduler
 
         while((entry = pop()) != null)
         {
-            writer.data(entry.stream.http2StreamId, entry.buffer(), entry.offset, entry.length, entry.progress);
+            DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
+            writer.data(entry.stream.http2StreamId, read, entry.offset, entry.length, entry.progress);
             found = true;
         }
         if (found)
@@ -211,7 +214,8 @@ public class Http2WriteScheduler implements WriteScheduler
             }
             else
             {
-                writer.data(streamId, entry.buffer(), entry.offset, entry.length, entry.progress);
+                DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
+                writer.data(streamId, read, entry.offset, entry.length, entry.progress);
             }
             found = true;
         }
@@ -266,6 +270,18 @@ public class Http2WriteScheduler implements WriteScheduler
         return null;
     }
 
+    MutableDirectBuffer read(MutableDirectBuffer buffer)
+    {
+        read.wrap(buffer.addressOffset(), buffer.capacity());
+        return read;
+    }
+
+    MutableDirectBuffer write(MutableDirectBuffer buffer)
+    {
+        write.wrap(buffer.addressOffset(), buffer.capacity());
+        return write;
+    }
+
     private class StreamEntry
     {
         final SourceInputStreamFactory.Http2Stream stream;
@@ -318,11 +334,6 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             connection.http2OutWindow -= length;
             stream.http2OutWindow -= length;
-        }
-
-        DirectBuffer buffer()
-        {
-            return stream.acquireReplyBuffer();
         }
 
         public String toString()

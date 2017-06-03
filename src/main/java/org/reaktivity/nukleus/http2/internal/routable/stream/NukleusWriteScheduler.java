@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -37,6 +38,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
 
 class NukleusWriteScheduler implements WriteScheduler
 {
+    private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
+    private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final Target target;
     private final long targetId;
@@ -72,7 +75,7 @@ class NukleusWriteScheduler implements WriteScheduler
         }
         else
         {
-            MutableDirectBuffer dst = connection.acquireReplyBuffer();    // TODO return value
+            MutableDirectBuffer dst = connection.acquireReplyBuffer(this::write);    // TODO return value
             CircularDirectBuffer cb = connection.replyBuffer;
             int offset = cb.writeOffset(lengthGuess);
             int length = visitor.visit(dst, offset, lengthGuess);
@@ -199,7 +202,8 @@ class NukleusWriteScheduler implements WriteScheduler
 
         while ((entry = pop()) != null)
         {
-            target.doData(targetId, entry.buffer(), entry.offset, entry.length);
+            DirectBuffer read = connection.acquireReplyBuffer(this::read);
+            target.doData(targetId, read, entry.offset, entry.length);
             if (entry.progress != null)
             {
                 entry.progress.accept(entry.length - 9);        // TODO when entry is split, length would be < 9
@@ -238,6 +242,18 @@ class NukleusWriteScheduler implements WriteScheduler
     public void onHttp2Window(int streamId)
     {
         throw new IllegalStateException();
+    }
+
+    MutableDirectBuffer read(MutableDirectBuffer buffer)
+    {
+        read.wrap(buffer.addressOffset(), buffer.capacity());
+        return read;
+    }
+
+    MutableDirectBuffer write(MutableDirectBuffer buffer)
+    {
+        write.wrap(buffer.addressOffset(), buffer.capacity());
+        return write;
     }
 
     private class ConnectionEntry
@@ -285,11 +301,6 @@ class NukleusWriteScheduler implements WriteScheduler
         void adjustWindows()
         {
             connection.outWindow -= length;
-        }
-
-        DirectBuffer buffer()
-        {
-            return connection.acquireReplyBuffer();
         }
 
         public String toString()

@@ -20,6 +20,7 @@ import static org.agrona.BitUtil.isPowerOfTwo;
 
 import java.nio.ByteBuffer;
 import java.util.BitSet;
+import java.util.function.UnaryOperator;
 
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Hashing;
@@ -110,6 +111,27 @@ public final class Slab
         final long slotAddressOffset = buffer.addressOffset() + (slot << bitsPerSlot);
         mutableFW.wrap(slotAddressOffset, slotCapacity);
         return mutableFW;
+    }
+
+    /**
+     * Gets a buffer which can be used to write data into the given slot.
+     * @param slot - Id of a previously acquired slot
+     * @param change function to process the supplied buffer
+     * @return A buffer suitable for <b>one-time use only</b>
+     */
+    public MutableDirectBuffer buffer(int slot, UnaryOperator<MutableDirectBuffer> change)
+    {
+        if (SHOULD_SLOT_CHECK)
+        {
+            // BitSet.get will throw IndexOutOfBoundsException if slot is out of range
+            if (!used.get(slot))
+            {
+                throw new IllegalArgumentException(format("slot %d was not acquired", slot));
+            }
+        }
+        final long slotAddressOffset = buffer.addressOffset() + (slot << bitsPerSlot);
+        mutableFW.wrap(slotAddressOffset, slotCapacity);
+        return change.apply(mutableFW);
     }
 
     /**

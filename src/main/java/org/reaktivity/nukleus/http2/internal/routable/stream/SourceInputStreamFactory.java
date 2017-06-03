@@ -67,6 +67,7 @@ import java.util.function.Consumer;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Predicate;
+import java.util.function.UnaryOperator;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
@@ -120,8 +121,6 @@ public final class SourceInputStreamFactory
     private final LongObjectBiConsumer<Correlation> correlateNew;
     private final Slab frameSlab;
     private final Slab headersSlab;
-    private final Slab streamsSlab;
-
 
     enum State
     {
@@ -192,7 +191,6 @@ public final class SourceInputStreamFactory
         int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
-        this.streamsSlab = new Slab(totalCapacity, slotCapacity);
     }
 
     public MessageHandler newStream()
@@ -661,7 +659,7 @@ public final class SourceInputStreamFactory
          * @return true if there is a buffer
          *         false if all slots are taken
          */
-        MutableDirectBuffer acquireReplyBuffer()
+        MutableDirectBuffer acquireReplyBuffer(UnaryOperator<MutableDirectBuffer> change)
         {
             if (replySlot == NO_SLOT)
             {
@@ -673,7 +671,7 @@ public final class SourceInputStreamFactory
                     replyQueue = new LinkedList();
                 }
             }
-            return replySlot != NO_SLOT ? frameSlab.buffer(replySlot) : null;
+            return replySlot != NO_SLOT ? frameSlab.buffer(replySlot, change) : null;
         }
 
         void releaseReplyBuffer()
@@ -2005,26 +2003,26 @@ System.out.println("---> " + http2RO);
          * @return true if there is a buffer
          *         false if all slots are taken
          */
-        MutableDirectBuffer acquireReplyBuffer()
+        MutableDirectBuffer acquireReplyBuffer(UnaryOperator<MutableDirectBuffer> change)
         {
             if (replySlot == NO_SLOT)
             {
-                replySlot = streamsSlab.acquire(connection.sourceOutputEstId);
+                replySlot = frameSlab.acquire(connection.sourceOutputEstId);
                 if (replySlot != NO_SLOT)
                 {
-                    int capacity = streamsSlab.buffer(replySlot).capacity();
+                    int capacity = frameSlab.buffer(replySlot).capacity();
                     replyBuffer = new CircularDirectBuffer(capacity);
                     replyQueue = new LinkedList();
                 }
             }
-            return replySlot != NO_SLOT ? streamsSlab.buffer(replySlot) : null;
+            return replySlot != NO_SLOT ? frameSlab.buffer(replySlot, change) : null;
         }
 
         void releaseReplyBuffer()
         {
             if (replySlot != NO_SLOT)
             {
-                streamsSlab.release(replySlot);
+                frameSlab.release(replySlot);
                 replySlot = NO_SLOT;
                 replyBuffer = null;
                 replyQueue = null;
