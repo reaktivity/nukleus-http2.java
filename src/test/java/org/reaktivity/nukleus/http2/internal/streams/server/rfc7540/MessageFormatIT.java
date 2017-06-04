@@ -39,26 +39,18 @@ public class MessageFormatIT
         .directory("target/nukleus-itests")
         .commandBufferCapacity(1024)
         .responseBufferCapacity(1024)
-        .counterValuesBufferCapacity(1024)
-        .streams("http2", "source")
-        .streams("source", "http2#source")
-        .streams("target", "http2#source")
-        .streams("http2", "target")
-        .streams("source", "http2#target");
+        .counterValuesBufferCapacity(1024);
 
     @Rule
     public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/continuation.frames/server/source",
-            "${streams}/continuation.frames/server/target" })
+            "${route}/server/controller",
+            "${streams}/continuation.frames/client",
+            "${streams}/continuation.frames/server" })
     public void continuationFrames() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 }

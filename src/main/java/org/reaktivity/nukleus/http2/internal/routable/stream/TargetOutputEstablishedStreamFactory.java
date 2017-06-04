@@ -52,7 +52,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 public final class TargetOutputEstablishedStreamFactory
 {
-
     private final FrameFW frameRO = new FrameFW();
 
     private final BeginFW beginRO = new BeginFW();
@@ -223,7 +222,7 @@ public final class TargetOutputEstablishedStreamFactory
             beginRO.wrap(buffer, index, index + length);
 
             final long newSourceId = beginRO.streamId();
-            final long sourceRef = beginRO.referenceId();
+            final long sourceRef = beginRO.sourceRef();
             final long targetCorrelationId = beginRO.correlationId();
             final OctetsFW extension = beginRO.extension();
 

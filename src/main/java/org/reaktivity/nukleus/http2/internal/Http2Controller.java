@@ -37,7 +37,6 @@ import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.Role;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RoutedFW;
-import org.reaktivity.nukleus.http2.internal.types.control.State;
 import org.reaktivity.nukleus.http2.internal.types.control.UnrouteFW;
 import org.reaktivity.nukleus.http2.internal.types.control.UnroutedFW;
 
@@ -98,126 +97,45 @@ public final class Http2Controller implements Controller
         return "http2";
     }
 
-    public CompletableFuture<Long> routeInputNone(
+    public CompletableFuture<Long> routeServer(
         String source,
         long sourceRef,
         String target,
         long targetRef,
         Map<String, String> headers)
     {
-        return route(Role.INPUT, State.NONE, source, sourceRef, target, targetRef, headers);
+        return route(Role.SERVER, source, sourceRef, target, targetRef, headers);
     }
 
-    public CompletableFuture<Long> routeInputEstablished(
+    public CompletableFuture<Long> routeClient(
         String source,
         long sourceRef,
         String target,
         long targetRef,
         Map<String, String> headers)
     {
-        return route(Role.INPUT, State.ESTABLISHED, source, sourceRef, target, targetRef, headers);
+        return route(Role.CLIENT, source, sourceRef, target, targetRef, headers);
     }
 
-    public CompletableFuture<Long> routeInputNew(
+    public CompletableFuture<Void> unrouteServer(
         String source,
         long sourceRef,
         String target,
         long targetRef,
         Map<String, String> headers)
     {
-        return route(Role.INPUT, State.NEW, source, sourceRef, target, targetRef, headers);
+        return unroute(Role.SERVER, source, sourceRef, target, targetRef, headers);
     }
 
-    public CompletableFuture<Long> routeOutputNone(
+    public CompletableFuture<Void> unrouteClient(
         String source,
         long sourceRef,
         String target,
         long targetRef,
         Map<String, String> headers)
     {
-        return route(Role.OUTPUT, State.NONE, source, sourceRef, target, targetRef, headers);
+        return unroute(Role.CLIENT, source, sourceRef, target, targetRef, headers);
     }
-
-    public CompletableFuture<Long> routeOutputEstablished(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return route(Role.OUTPUT, State.ESTABLISHED, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Long> routeOutputNew(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return route(Role.OUTPUT, State.NEW, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Void> unrouteInputEstablished(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return unroute(Role.INPUT, State.ESTABLISHED, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Void> unrouteInputNew(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return unroute(Role.INPUT, State.NEW, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Void> unrouteInputNone(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return unroute(Role.INPUT, State.NONE, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Void> unrouteOutputEstablished(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return unroute(Role.OUTPUT, State.ESTABLISHED, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Void> unrouteOutputNew(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return unroute(Role.OUTPUT, State.NEW, source, sourceRef, target, targetRef, headers);
-    }
-
-    public CompletableFuture<Void> unrouteOutputNone(
-        String source,
-        long sourceRef,
-        String target,
-        long targetRef,
-        Map<String, String> headers)
-    {
-        return unroute(Role.OUTPUT, State.NONE, source, sourceRef, target, targetRef, headers);
-    }
-
 
     public HttpStreams streams(
         String source)
@@ -370,7 +288,6 @@ public final class Http2Controller implements Controller
 
     private CompletableFuture<Long> route(
         Role role,
-        State state,
         String source,
         long sourceRef,
         String target,
@@ -384,7 +301,6 @@ public final class Http2Controller implements Controller
         RouteFW routeRO = routeRW.wrap(atomicBuffer, 0, atomicBuffer.capacity())
                                  .correlationId(correlationId)
                                  .role(b -> b.set(role))
-                                 .state(b -> b.set(state))
                                  .source(source)
                                  .sourceRef(sourceRef)
                                  .target(target)
@@ -406,7 +322,6 @@ public final class Http2Controller implements Controller
 
     private CompletableFuture<Void> unroute(
         Role role,
-        State state,
         String source,
         long sourceRef,
         String target,
@@ -420,7 +335,6 @@ public final class Http2Controller implements Controller
         UnrouteFW unrouteRO = unrouteRW.wrap(atomicBuffer, 0, atomicBuffer.capacity())
                                  .correlationId(correlationId)
                                  .role(b -> b.set(role))
-                                 .state(b -> b.set(state))
                                  .source(source)
                                  .sourceRef(sourceRef)
                                  .target(target)

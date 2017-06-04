@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -39,103 +40,78 @@ public class ConnectionManagementIT
         .directory("target/nukleus-itests")
         .commandBufferCapacity(1024)
         .responseBufferCapacity(1024)
-        .counterValuesBufferCapacity(1024)
-        .streams("http2", "source")
-        .streams("source", "http2#source")
-        .streams("target", "http2#source")
-        .streams("http2", "target")
-        .streams("source", "http2#target");
+        .counterValuesBufferCapacity(1024);
 
     @Rule
     public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
 
+    @Ignore("TODO: transport stream->nukleus->http stream")
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/connection.established/server/source" })
+            "${route}/server/controller",
+            "${streams}/connection.established/client" })
     public void connectionEstablished() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/http.get.exchange/server/source",
-            "${streams}/http.get.exchange/server/target" })
+            "${route}/server/controller",
+            "${streams}/http.get.exchange/client",
+            "${streams}/http.get.exchange/server" })
     public void httpGetExchange() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/http.post.exchange/server/source",
-            "${streams}/http.post.exchange/server/target" })
+            "${route}/server/controller",
+            "${streams}/http.post.exchange/client",
+            "${streams}/http.post.exchange/server" })
     public void httpPostExchange() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/connection.has.two.streams/server/source",
-            "${streams}/connection.has.two.streams/server/target" })
+            "${route}/server/controller",
+            "${streams}/connection.has.two.streams/client",
+            "${streams}/connection.has.two.streams/server" })
     public void connectionHasTwoStreams() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/http.push.promise/server/source",
-            "${streams}/http.push.promise/server/target" })
+            "${route}/server/controller",
+            "${streams}/http.push.promise/client",
+            "${streams}/http.push.promise/server" })
     public void pushResources() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/push.promise.on.different.stream/server/source",
-            "${streams}/push.promise.on.different.stream/server/target" })
+            "${route}/server/controller",
+            "${streams}/push.promise.on.different.stream/client",
+            "${streams}/push.promise.on.different.stream/server" })
     public void pushPromiseOnDifferentStream() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
-            "${streams}/multiple.data.frames/server/source",
-            "${streams}/multiple.data.frames/server/target" })
+            "${route}/server/controller",
+            "${streams}/multiple.data.frames/client",
+            "${streams}/multiple.data.frames/server" })
     public void multipleDataFrames() throws Exception
     {
-        k3po.start();
-        k3po.awaitBarrier("ROUTED_INPUT");
-        k3po.notifyBarrier("ROUTED_OUTPUT");
         k3po.finish();
     }
 }
