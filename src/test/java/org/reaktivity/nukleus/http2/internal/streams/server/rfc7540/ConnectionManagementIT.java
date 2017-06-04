@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -122,27 +121,6 @@ public class ConnectionManagementIT
             "${spec}/reset.http2.stream/client",
             "${nukleus}/reset.http2.stream/server" })
     public void resetHttp2Stream() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-            "${route}/input/new/controller",
-            "${spec}/goaway.connection/client",
-            "${nukleus}/goaway.connection/server" })
-    public void goawayConnection() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-            "${route}/input/new/controller",
-            "${spec}/reset.connection/client",
-            "${nukleus}/reset.connection/server" })
-    @Ignore
-    public void resetConnection() throws Exception
     {
         k3po.finish();
     }
