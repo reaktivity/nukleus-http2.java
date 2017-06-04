@@ -37,18 +37,17 @@ public class MessageFormatIT
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
     private final NukleusRule nukleus = new NukleusRule("http2")
-            .directory("target/nukleus-itests")
-            .commandBufferCapacity(1024)
-            .responseBufferCapacity(1024)
-            .counterValuesBufferCapacity(1024)
-            .clean();
+        .directory("target/nukleus-itests")
+        .commandBufferCapacity(1024)
+        .responseBufferCapacity(1024)
+        .counterValuesBufferCapacity(1024);
 
     @Rule
     public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
+            "${route}/server/controller",
             "${spec}/continuation.frames/client",
             "${nukleus}/continuation.frames/server" })
     public void continuationFrames() throws Exception
@@ -58,7 +57,7 @@ public class MessageFormatIT
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
+            "${route}/server/controller",
             "${spec}/dynamic.table.requests/client",
             "${nukleus}/dynamic.table.requests/server" })
     public void dynamicTableRequests() throws Exception

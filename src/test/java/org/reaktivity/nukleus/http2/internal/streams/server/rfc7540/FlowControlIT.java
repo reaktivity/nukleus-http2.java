@@ -48,7 +48,7 @@ public class FlowControlIT
 
     @Test
     @Specification({
-            "${route}/input/new/controller",
+            "${route}/server/controller",
             "${spec}/stream.flow/client",
             "${nukleus}/stream.flow/server" })
     public void streamFlow() throws Exception

@@ -7,7 +7,8 @@
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
   <version>develop-SNAPSHOT</version>
-  <name>Build Template for Java Projects</name>
+  <name>HTTP/2 Nukleus Implementation</name>
+  <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
 
   <licenses>
@@ -42,15 +43,15 @@
     <checkstyle.config.location>src/conf/checkstyle/configuration.xml</checkstyle.config.location>
     <checkstyle.suppressions.location>src/conf/checkstyle/suppressions.xml</checkstyle.suppressions.location>
     <junit.version>4.12</junit.version>
-    <k3po.version>develop-SNAPSHOT</k3po.version>
+    <k3po.version>3.0.0-alpha-73</k3po.version>
     <jmh.version>1.12</jmh.version>
 
     <nukleus.plugin.version>0.7.8</nukleus.plugin.version>
     <nukleus.version>0.2</nukleus.version>
     <nukleus.http2.spec.version>develop-SNAPSHOT</nukleus.http2.spec.version>
-    <reaktor.test.version>develop-SNAPSHOT</reaktor.test.version>
+    <reaktor.test.version>0.4</reaktor.test.version>
     <reaktor.version>0.2.1</reaktor.version>
-    <k3po.nukleus.ext.version>0.4.1</k3po.nukleus.ext.version>
+    <k3po.nukleus.ext.version>0.5</k3po.nukleus.ext.version>
   </properties>
 
   <dependencies>
@@ -110,11 +111,6 @@
       <artifactId>jmh-generator-annprocess</artifactId>
       <version>${jmh.version}</version>
       <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.reaktivity</groupId>
-      <artifactId>nukleus-tcp</artifactId>
-      <version>develop-SNAPSHOT</version>
     </dependency>
   </dependencies>
 

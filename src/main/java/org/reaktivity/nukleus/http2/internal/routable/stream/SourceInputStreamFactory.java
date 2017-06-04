@@ -419,7 +419,7 @@ public final class SourceInputStreamFactory
             beginRO.wrap(buffer, index, index + length);
 
             this.sourceId = beginRO.streamId();
-            this.sourceRef = beginRO.referenceId();
+            this.sourceRef = beginRO.sourceRef();
             this.correlationId = beginRO.correlationId();
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;

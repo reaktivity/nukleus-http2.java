@@ -140,7 +140,7 @@ public class Http2ServerBM
     public void reinit() throws Exception
     {
         reaktor.start();
-        this.sourceInputRef = controller.routeInputNew("source", 0L, "http2", 0L, headers).get();
+        this.sourceInputRef = controller.routeServer("source", 0L, "http2", 0L, headers).get();
 
         this.sourceInputStreams = controller.streams("source");
         // Handshake streams (not used yet)
@@ -172,7 +172,8 @@ public class Http2ServerBM
         BeginFW begin = new BeginFW.Builder()
                 .wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(sourceInputId)
-                .referenceId(sourceInputRef)
+                .source("source")
+                .sourceRef(sourceInputRef)
                 .correlationId(random.nextLong())
                 .build();
         sourceInputStreams.writeStreams(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
@@ -287,7 +288,7 @@ public class Http2ServerBM
     {
         Http2Controller controller = reaktor.controller(Http2Controller.class);
 
-        controller.unrouteInputNew("source", sourceInputRef, "http2", 0L, headers).get();
+        controller.unrouteServer("source", sourceInputRef, "http2", 0L, headers).get();
 
         this.sourceInputStreams.close();
         this.sourceInputStreams = null;

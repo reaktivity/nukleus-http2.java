@@ -24,7 +24,7 @@ import org.reaktivity.nukleus.http2.internal.watcher.Watcher;
 
 public final class Http2Nukleus extends Nukleus.Composite
 {
-    static final String NAME = "http2";
+    public static final String NAME = "http2";
 
     private final Closeable cleanup;
 
