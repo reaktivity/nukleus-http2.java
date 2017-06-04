@@ -7,7 +7,8 @@
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
   <version>develop-SNAPSHOT</version>
-  <name>Build Template for Java Projects</name>
+  <name>HTTP/2 Nukleus Implementation</name>
+  <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
 
   <licenses>
