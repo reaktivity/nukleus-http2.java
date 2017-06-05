@@ -215,10 +215,6 @@ public final class SourceInputStreamFactory
         private int headersSlotIndex = NO_SLOT;
         private int headersSlotPosition;
 
-        private int replySlot = NO_SLOT;
-        CircularDirectBuffer replyBuffer;
-        Deque replyQueue;
-
         long sourceId;
         int lastStreamId;
         long sourceRef;
@@ -271,7 +267,7 @@ public final class SourceInputStreamFactory
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-            writeScheduler = new Http2WriteScheduler(this, replyTarget, sourceOutputEstId);
+            writeScheduler = new Http2WriteScheduler(this, sourceOutputEstId, frameSlab, replyTarget, sourceOutputEstId);
             http2InWindow = localSettings.initialWindowSize;
             http2OutWindow = remoteSettings.initialWindowSize;
 
@@ -655,35 +651,7 @@ public final class SourceInputStreamFactory
             }
         }
 
-        /*
-         * @return true if there is a buffer
-         *         false if all slots are taken
-         */
-        MutableDirectBuffer acquireReplyBuffer(UnaryOperator<MutableDirectBuffer> change)
-        {
-            if (replySlot == NO_SLOT)
-            {
-                replySlot = frameSlab.acquire(sourceOutputEstId);
-                if (replySlot != NO_SLOT)
-                {
-                    int capacity = frameSlab.buffer(replySlot).capacity();
-                    replyBuffer = new CircularDirectBuffer(capacity);
-                    replyQueue = new LinkedList();
-                }
-            }
-            return replySlot != NO_SLOT ? frameSlab.buffer(replySlot, change) : null;
-        }
 
-        void releaseReplyBuffer()
-        {
-            if (replySlot != NO_SLOT)
-            {
-                frameSlab.release(replySlot);
-                replySlot = NO_SLOT;
-                replyBuffer = null;
-                replyQueue = null;
-            }
-        }
 
         /*
          * Assembles a complete HTTP2 headers (including any continuations) if any.

@@ -25,8 +25,12 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
+import java.util.Deque;
+import java.util.LinkedList;
 import java.util.function.Consumer;
+import java.util.function.UnaryOperator;
 
+import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
@@ -43,13 +47,23 @@ class NukleusWriteScheduler implements WriteScheduler
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final Target target;
     private final long targetId;
+    private final long sourceOutputEstId;
+
+    private Deque<ConnectionEntry> replyQueue;
+    private int replySlot = NO_SLOT;
+    private CircularDirectBuffer replyBuffer;
+    private Slab slab;
 
     NukleusWriteScheduler(
             SourceInputStreamFactory.SourceInputStream connection,
+            long sourceOutputEstId,
+            Slab slab,
             Target target,
             long targetId)
     {
         this.connection = connection;
+        this.sourceOutputEstId = sourceOutputEstId;
+        this.slab = slab;
         this.target = target;
         this.targetId = targetId;
     }
@@ -75,13 +89,13 @@ class NukleusWriteScheduler implements WriteScheduler
         }
         else
         {
-            MutableDirectBuffer dst = connection.acquireReplyBuffer(this::write);    // TODO return value
-            CircularDirectBuffer cb = connection.replyBuffer;
+            MutableDirectBuffer dst = acquireReplyBuffer(this::write);    // TODO return value
+            CircularDirectBuffer cb = replyBuffer;
             int offset = cb.writeOffset(lengthGuess);
             int length = visitor.visit(dst, offset, lengthGuess);
             cb.write(offset, length);
             ConnectionEntry entry = new ConnectionEntry(streamId, offset, length, type, progress);
-            connection.replyQueue.add(entry);
+            replyQueue.add(entry);
 
             return offset != -1;
         }
@@ -93,7 +107,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         Flyweight.Builder.Visitor window = target.visitWindowUpdate(streamId, update);
         int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 window size increment
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         return http2(streamId, sizeof, direct, WINDOW_UPDATE, window, null);
     }
 
@@ -101,7 +115,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean pingAck(DirectBuffer buffer, int offset, int length)
     {
         int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for a ping
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor ping = target.visitPingAck(buffer, offset, length);
         return http2(0, sizeof, direct, PING, ping, null);
     }
@@ -110,7 +124,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean goaway(int lastStreamId, Http2ErrorCode errorCode)
     {
         int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for goaway payload
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
 
         Flyweight.Builder.Visitor goaway = target.visitGoaway(lastStreamId, errorCode);
         return http2(0, sizeof, direct, GO_AWAY, goaway, null);
@@ -120,7 +134,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
         int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 for RST_STREAM payload
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
 
         Flyweight.Builder.Visitor rst = target.visitRst(streamId, errorCode);
         return http2(streamId, sizeof, direct, RST_STREAM, rst, null);
@@ -130,7 +144,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean settings(int maxConcurrentStreams)
     {
         int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor settings = target.visitSettings(maxConcurrentStreams);
         return http2(0, sizeof, direct, SETTINGS, settings, null);
     }
@@ -139,7 +153,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean settingsAck()
     {
         int sizeof = 9;                 // +9 for HTTP2 framing
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor settings = target.visitSettingsAck();
         return http2(0, sizeof, direct, SETTINGS, settings, null);
     }
@@ -148,7 +162,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean headers(int streamId, ListFW<HttpHeaderFW> headers)
     {
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, connection::mapHeaders);
         return http2(streamId, sizeof, direct, HEADERS, data, null);
     }
@@ -158,7 +172,7 @@ class NukleusWriteScheduler implements WriteScheduler
                                Consumer<Integer> progress)
     {
         int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromize);
         return http2(streamId, sizeof, direct, PUSH_PROMISE, data, null);
     }
@@ -167,7 +181,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean data(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
     {
         int sizeof = 9 + length;    // +9 for HTTP2 framing
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
         return http2(streamId, sizeof, direct, DATA, data, progress);
     }
@@ -190,7 +204,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean dataEos(int streamId)
     {
         int sizeof = 9;    // +9 for HTTP2 framing
-        boolean direct = connection.replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitDataEos(streamId);
         return http2(streamId, sizeof, direct, DATA, data, null);
     }
@@ -202,28 +216,28 @@ class NukleusWriteScheduler implements WriteScheduler
 
         while ((entry = pop()) != null)
         {
-            DirectBuffer read = connection.acquireReplyBuffer(this::read);
+            DirectBuffer read = acquireReplyBuffer(this::read);
             target.doData(targetId, read, entry.offset, entry.length);
             if (entry.progress != null)
             {
                 entry.progress.accept(entry.payload);
             }
         }
-        if (connection.replyQueue != null && connection.replyQueue.isEmpty())
+        if (replyQueue != null && replyQueue.isEmpty())
         {
-            connection.releaseReplyBuffer();
+            releaseReplyBuffer();
         }
     }
 
     private ConnectionEntry pop()
     {
-        if (connection.replyQueue != null)
+        if (replyQueue != null)
         {
-            ConnectionEntry entry = (ConnectionEntry) connection.replyQueue.peek();
+            ConnectionEntry entry = replyQueue.peek();
             if (entry != null && entry.fits())
             {
-                entry = (ConnectionEntry) connection.replyQueue.poll();
-                connection.replyBuffer.read(entry.offset, entry.length);
+                entry = replyQueue.poll();
+                replyBuffer.read(entry.offset, entry.length);
                 entry.adjustWindows();
                 return entry;
             }
@@ -244,16 +258,46 @@ class NukleusWriteScheduler implements WriteScheduler
         throw new IllegalStateException();
     }
 
-    MutableDirectBuffer read(MutableDirectBuffer buffer)
+    private MutableDirectBuffer read(MutableDirectBuffer buffer)
     {
         read.wrap(buffer.addressOffset(), buffer.capacity());
         return read;
     }
 
-    MutableDirectBuffer write(MutableDirectBuffer buffer)
+    private MutableDirectBuffer write(MutableDirectBuffer buffer)
     {
         write.wrap(buffer.addressOffset(), buffer.capacity());
         return write;
+    }
+
+    /*
+     * @return true if there is a buffer
+     *         false if all slots are taken
+     */
+    private MutableDirectBuffer acquireReplyBuffer(UnaryOperator<MutableDirectBuffer> change)
+    {
+        if (replySlot == NO_SLOT)
+        {
+            replySlot = slab.acquire(sourceOutputEstId);
+            if (replySlot != NO_SLOT)
+            {
+                int capacity = slab.buffer(replySlot).capacity();
+                replyBuffer = new CircularDirectBuffer(capacity);
+                replyQueue = new LinkedList<>();
+            }
+        }
+        return replySlot != NO_SLOT ? slab.buffer(replySlot, change) : null;
+    }
+
+    private void releaseReplyBuffer()
+    {
+        if (replySlot != NO_SLOT)
+        {
+            slab.release(replySlot);
+            replySlot = NO_SLOT;
+            replyBuffer = null;
+            replyQueue = null;
+        }
     }
 
     private class ConnectionEntry
@@ -307,7 +351,7 @@ class NukleusWriteScheduler implements WriteScheduler
                 if (entry2Length > 0)
                 {
                     // Splits this entry into two entries
-                    connection.replyQueue.poll();
+                    replyQueue.poll();
 
                     // Construct such that first entry fits under connection.outWindow
                     int entry1Framing = Math.min(framing, connection.outWindow);
@@ -325,8 +369,8 @@ class NukleusWriteScheduler implements WriteScheduler
                     ConnectionEntry entry2 = new ConnectionEntry(streamId, offset + entry1Length, entry2Length,
                             entry2Framing, entry2Payload, type, progress);
 
-                    connection.replyQueue.addFirst(entry2);
-                    connection.replyQueue.addFirst(entry1);
+                    replyQueue.addFirst(entry2);
+                    replyQueue.addFirst(entry1);
                 }
             }
 

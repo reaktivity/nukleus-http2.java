@@ -40,12 +40,14 @@ public class Http2WriteScheduler implements WriteScheduler
 
     Http2WriteScheduler(
             SourceInputStreamFactory.SourceInputStream connection,
+            long sourceOutputEstId,
+            Slab slab,
             Target target,
             long targetId)
     {
         this.connection = connection;
         this.target = target;
-        this.writer = new NukleusWriteScheduler(connection, target, targetId);
+        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, target, targetId);
     }
 
     public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, boolean eos, Consumer<Integer> progress)
