@@ -206,7 +206,7 @@ class NukleusWriteScheduler implements WriteScheduler
             target.doData(targetId, read, entry.offset, entry.length);
             if (entry.progress != null)
             {
-                entry.progress.accept(entry.length - 9);        // TODO when entry is split, length would be < 9
+                entry.progress.accept(entry.payload);
             }
         }
         if (connection.replyQueue != null && connection.replyQueue.isEmpty())
@@ -261,6 +261,8 @@ class NukleusWriteScheduler implements WriteScheduler
         final int streamId;
         final int offset;
         final int length;
+        final int framing;
+        final int payload;
         final Http2FrameType type;
         private final Consumer<Integer> progress;
 
@@ -271,31 +273,64 @@ class NukleusWriteScheduler implements WriteScheduler
                 Http2FrameType type,
                 Consumer<Integer> progress)
         {
+            this(streamId, offset, length, 9, length - 9, type, progress);
+        }
+
+        ConnectionEntry(
+                int streamId,
+                int offset,
+                int length,
+                int framing,
+                int payload,
+                Http2FrameType type,
+                Consumer<Integer> progress)
+        {
+            assert framing >= 0;
+            assert payload >= 0;
+            assert framing + payload == length;
+
             this.streamId = streamId;
             this.offset = offset;
             this.length = length;
+            this.framing = framing;
+            this.payload = payload;
             this.type = type;
             this.progress = progress;
         }
 
         boolean fits()
         {
-            int min = Math.min(length, connection.outWindow);
-            if (min > 0)
+            int entry1Length = Math.min(length, connection.outWindow);
+            if (entry1Length > 0)
             {
-                int remaining = length - min;
-                if (remaining > 0)
+                int entry2Length = length - entry1Length;
+                if (entry2Length > 0)
                 {
+                    // Splits this entry into two entries
                     connection.replyQueue.poll();
-                    ConnectionEntry entry1 = new ConnectionEntry(streamId, offset, min, type, progress);
-                    ConnectionEntry entry2 = new ConnectionEntry(streamId, offset + min, remaining, type, progress);
+
+                    // Construct such that first entry fits under connection.outWindow
+                    int entry1Framing = Math.min(framing, connection.outWindow);
+                    int entry1Payload = entry1Length - entry1Framing;
+                    assert entry1Framing >= 0;
+                    assert entry1Payload >= 0;
+                    ConnectionEntry entry1 = new ConnectionEntry(streamId, offset, entry1Length,
+                            entry1Framing, entry1Payload, type, progress);
+
+                    // Construct second entry with the remaining
+                    int entry2Framing = framing - entry1Framing;
+                    int entry2Payload = entry2Length - entry2Framing;
+                    assert entry2Framing >= 0;
+                    assert entry2Payload >= 0;
+                    ConnectionEntry entry2 = new ConnectionEntry(streamId, offset + entry1Length, entry2Length,
+                            entry2Framing, entry2Payload, type, progress);
 
                     connection.replyQueue.addFirst(entry2);
                     connection.replyQueue.addFirst(entry1);
                 }
             }
 
-            return min > 0;
+            return entry1Length > 0;
         }
 
         void adjustWindows()
