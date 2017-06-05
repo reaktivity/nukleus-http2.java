@@ -959,6 +959,8 @@ public final class SourceInputStreamFactory
             Target newTarget = route.target();
             final long targetRef = route.targetRef();
 
+            stream.contentLength = headersContext.contentLength;
+
             HttpBeginExFW beginEx = httpBeginExRW.build();
             newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId, beginEx.buffer(), beginEx.offset(),
                     beginEx.sizeof());
@@ -1117,26 +1119,22 @@ public final class SourceInputStreamFactory
             http2InWindow -= http2RO.payloadLength();
             stream.http2InWindow -= http2RO.payloadLength();
 
-//            Target newTarget = stream.route.target();
-//            newTarget.doHttpData(stream.targetId, dataRO.buffer(), dataRO.dataOffset(), dataRO.dataLength());
-//
-//            stream.totalData += http2RO.payloadLength();
-//
-//            if (dataRO.endStream())
-//            {
-//                // 8.1.2.6 A request is malformed if the value of a content-length header field does
-//                // not equal the sum of the DATA frame payload lengths
-//                if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
-//                {
-//                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-//                    newTarget.doEnd(stream.targetId);
-//                    return;
-//                }
-//                newTarget.doHttpEnd(stream.targetId);
-//            }
+            Target newTarget = stream.route.target();
+            stream.totalData += http2RO.payloadLength();
+
+            if (dataRO.endStream())
+            {
+                // 8.1.2.6 A request is malformed if the value of a content-length header field does
+                // not equal the sum of the DATA frame payload lengths
+                if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
+                {
+                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                    newTarget.doEnd(stream.targetId);
+                    return;
+                }
+            }
 
             stream.onData();
-
         }
 
         private void doSettings()
