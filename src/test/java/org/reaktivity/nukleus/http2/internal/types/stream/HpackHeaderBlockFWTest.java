@@ -473,7 +473,6 @@ public class HpackHeaderBlockFWTest
                             index = literalRO.nameIndex();
                             name = context.name(index);
                             value = string(literalRO.valueLiteral());
-                            System.out.println("name = " + name+" value="+value);
                             headers.put(name, value);
                         }
                         break;
@@ -481,7 +480,6 @@ public class HpackHeaderBlockFWTest
                         {
                             name = string(literalRO.nameLiteral());
                             value = string(literalRO.valueLiteral());
-                            System.out.println("name = " + name+" value="+value);
                             headers.put(name, value);
                         }
                         break;

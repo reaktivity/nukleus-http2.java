@@ -817,7 +817,6 @@ public final class SourceInputStreamFactory
             {
                 return length;
             }
-System.out.println("---> " + http2RO);
             switch (http2FrameType)
             {
                 case DATA:
