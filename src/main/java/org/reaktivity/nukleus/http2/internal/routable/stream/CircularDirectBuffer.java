@@ -114,4 +114,9 @@ class CircularDirectBuffer
         start = offset + length;
     }
 
+    public String toString()
+    {
+        return "capacity = " + capacity + " [start = " + start + " end = " + end + "]";
+    }
+
 }

@@ -92,11 +92,13 @@ class NukleusWriteScheduler implements WriteScheduler
             MutableDirectBuffer dst = acquireReplyBuffer(this::write);    // TODO return value
             CircularDirectBuffer cb = replyBuffer;
             int offset = cb.writeOffset(lengthGuess);
-            int length = visitor.visit(dst, offset, lengthGuess);
-            cb.write(offset, length);
-            ConnectionEntry entry = new ConnectionEntry(streamId, offset, length, type, progress);
-            replyQueue.add(entry);
-
+            if (offset != -1)
+            {
+                int length = visitor.visit(dst, offset, lengthGuess);
+                cb.write(offset, length);
+                ConnectionEntry entry = new ConnectionEntry(streamId, offset, length, type, progress);
+                replyQueue.add(entry);
+            }
             return offset != -1;
         }
 

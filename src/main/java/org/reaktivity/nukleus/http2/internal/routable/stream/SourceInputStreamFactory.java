@@ -84,6 +84,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.
 
 public final class SourceInputStreamFactory
 {
+    private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
+    private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
 
     private final FrameFW frameRO = new FrameFW();
 
@@ -444,6 +446,7 @@ public final class SourceInputStreamFactory
             }
             else
             {
+                this.window += length;
                 source.doWindow(sourceId, length);
                 final OctetsFW payload = dataRO.payload();
                 final int limit = payload.limit();
@@ -576,13 +579,13 @@ public final class SourceInputStreamFactory
 
             if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
             {
-                MutableDirectBuffer frameBuffer = SourceInputStreamFactory.this.frameSlab.buffer(frameSlotIndex);
+                MutableDirectBuffer frameBuffer = SourceInputStreamFactory.this.frameSlab.buffer(frameSlotIndex, this::write);
                 if (frameSlotPosition < 3)
                 {
                     frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
                 }
                 int frameLength = http2FrameLength(frameBuffer, 0, 3);
-                if (frameLength > localSettings.maxFrameSize)
+                if (frameLength > localSettings.maxFrameSize + 9)
                 {
                     return -1;
                 }
@@ -599,7 +602,7 @@ public final class SourceInputStreamFactory
             else if (available >= 3)
             {
                 int frameLength = http2FrameLength(buffer, offset, limit);
-                if (frameLength > localSettings.maxFrameSize)
+                if (frameLength > localSettings.maxFrameSize + 9)
                 {
                     return -1;
                 }
@@ -617,7 +620,7 @@ public final class SourceInputStreamFactory
                 return available;
             }
 
-            MutableDirectBuffer frameBuffer = frameSlab.buffer(frameSlotIndex);
+            MutableDirectBuffer frameBuffer = frameSlab.buffer(frameSlotIndex, this::write);
             frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
             frameSlotPosition += available;
             http2FrameAvailable = false;
@@ -712,6 +715,18 @@ public final class SourceInputStreamFactory
             return true;
         }
 
+        private MutableDirectBuffer read(MutableDirectBuffer buffer)
+        {
+            read.wrap(buffer.addressOffset(), buffer.capacity());
+            return read;
+        }
+
+        private MutableDirectBuffer write(MutableDirectBuffer buffer)
+        {
+            write.wrap(buffer.addressOffset(), buffer.capacity());
+            return write;
+        }
+
         /*
          * Assembles a complete HTTP2 headers (including any continuations) and the
          * flyweight is wrapped with the buffer (it could be given buffer or slab)
@@ -725,7 +740,7 @@ public final class SourceInputStreamFactory
             {
                 if (headersSlotPosition > 0)
                 {
-                    MutableDirectBuffer headersBuffer = headersSlab.buffer(headersSlotIndex);
+                    MutableDirectBuffer headersBuffer = headersSlab.buffer(headersSlotIndex, this::write);
                     headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
                     headersSlotPosition += length;
                     buffer = headersBuffer;
@@ -757,7 +772,7 @@ public final class SourceInputStreamFactory
                     }
                     headersSlotPosition = 0;
                 }
-                MutableDirectBuffer headersBuffer = headersSlab.buffer(headersSlotIndex);
+                MutableDirectBuffer headersBuffer = headersSlab.buffer(headersSlotIndex, this::write);
                 headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
                 headersSlotPosition += length;
                 expectContinuation = true;
@@ -1752,6 +1767,9 @@ public final class SourceInputStreamFactory
 
     class Http2Stream
     {
+        private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
+        private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
+
         private final SourceInputStream connection;
         final int http2StreamId;
         private final long targetId;
@@ -1830,7 +1848,7 @@ public final class SourceInputStreamFactory
                     //throttleState = this::throttleIgnore;
                     //return;
                 }
-                MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
+                MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::write);
                 targetBuffer.putBytes(0, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
                 targetSlotPosition = toSlab;
                 streamState = this::streamSlab;
@@ -1854,7 +1872,7 @@ public final class SourceInputStreamFactory
             assert !endStream;
 
             endStream = http2DataRO.endStream();
-            MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
+            MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::write);
             targetBuffer.putBytes(targetSlotPosition, http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
             targetSlotPosition += http2DataRO.dataLength();
         }
@@ -1908,16 +1926,18 @@ public final class SourceInputStreamFactory
                     int toHttp = data > targetWindow ? targetWindow : data;
                     int toSlab = data - toHttp;
 
-                    MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex);
+
 
                     if (toHttp > 0)
                     {
+                        MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::read);
                         route.target().doHttpData(targetId, targetBuffer, 0, toHttp);
                         sendHttp2Window(toHttp);
                     }
 
                     if (toSlab > 0)
                     {
+                        MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::write);
                         targetBuffer.putBytes(0, targetBuffer, toHttp, toSlab);
                         targetSlotPosition = toSlab;
                     }
@@ -2007,6 +2027,8 @@ public final class SourceInputStreamFactory
 
         private void sendHttp2Window(int update)
         {
+            targetWindow -= update;
+
             http2InWindow += update;
             connection.http2InWindow += update;
 
@@ -2015,6 +2037,18 @@ public final class SourceInputStreamFactory
 
             // stream-level flow-control
             connection.writeScheduler.windowUpdate(http2StreamId, update);
+        }
+
+        private MutableDirectBuffer read(MutableDirectBuffer buffer)
+        {
+            read.wrap(buffer.addressOffset(), buffer.capacity());
+            return read;
+        }
+
+        private MutableDirectBuffer write(MutableDirectBuffer buffer)
+        {
+            write.wrap(buffer.addressOffset(), buffer.capacity());
+            return write;
         }
 
     }
