@@ -98,6 +98,7 @@ class NukleusWriteScheduler implements WriteScheduler
                 cb.write(offset, length);
                 ConnectionEntry entry = new ConnectionEntry(streamId, offset, length, type, progress);
                 replyQueue.add(entry);
+                onWindow();                     // check if partial write is possible
             }
             return offset != -1;
         }
@@ -182,6 +183,7 @@ class NukleusWriteScheduler implements WriteScheduler
     @Override
     public boolean data(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
     {
+        assert length > 0;
         int sizeof = 9 + length;    // +9 for HTTP2 framing
         boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
@@ -346,6 +348,11 @@ class NukleusWriteScheduler implements WriteScheduler
 
         boolean fits()
         {
+            // TODO avoid churning for low connection.outWindow ??
+            // if (connection.outWindow < 100)
+            // {
+            //     return false;
+            // }
             int entry1Length = Math.min(length, connection.outWindow);
             if (entry1Length > 0)
             {
@@ -370,6 +377,10 @@ class NukleusWriteScheduler implements WriteScheduler
                     assert entry2Payload >= 0;
                     ConnectionEntry entry2 = new ConnectionEntry(streamId, offset + entry1Length, entry2Length,
                             entry2Framing, entry2Payload, type, progress);
+
+                    assert entry1Length + entry2Length == length;
+                    assert entry1Framing + entry2Framing == framing;
+                    assert entry1Payload + entry2Payload == payload;
 
                     replyQueue.addFirst(entry2);
                     replyQueue.addFirst(entry1);

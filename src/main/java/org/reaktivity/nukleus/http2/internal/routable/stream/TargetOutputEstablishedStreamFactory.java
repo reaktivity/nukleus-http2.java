@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.MessageHandler;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.http2.internal.routable.Source;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
@@ -50,9 +49,6 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final HttpBeginExFW beginExRO = new HttpBeginExFW();
     private final Http2DataExFW dataExRO = new Http2DataExFW();
-
-    private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
-    private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
 
     private final Source source;
     private final LongFunction<Correlation> correlateEstablished;

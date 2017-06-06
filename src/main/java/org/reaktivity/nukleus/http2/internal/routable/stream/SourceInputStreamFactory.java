@@ -187,9 +187,7 @@ public final class SourceInputStreamFactory
         this.supplyStreamId = supplyStreamId;
         this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
-        // Actually, we need only DEFAULT_MAX_FRAME_SIZE + 9 bytes for frame header, but
-        // slab needs power of two
-        int slotCapacity = BitUtil.findNextPositivePowerOfTwo(Settings.DEFAULT_MAX_FRAME_SIZE + 9);
+        int slotCapacity = BitUtil.findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
         int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
