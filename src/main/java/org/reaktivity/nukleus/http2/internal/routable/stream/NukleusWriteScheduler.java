@@ -110,7 +110,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         Flyweight.Builder.Visitor window = target.visitWindowUpdate(streamId, update);
         int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 window size increment
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         return http2(streamId, sizeof, direct, WINDOW_UPDATE, window, null);
     }
 
@@ -118,7 +118,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean pingAck(DirectBuffer buffer, int offset, int length)
     {
         int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for a ping
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor ping = target.visitPingAck(buffer, offset, length);
         return http2(0, sizeof, direct, PING, ping, null);
     }
@@ -127,7 +127,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean goaway(int lastStreamId, Http2ErrorCode errorCode)
     {
         int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for goaway payload
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
 
         Flyweight.Builder.Visitor goaway = target.visitGoaway(lastStreamId, errorCode);
         return http2(0, sizeof, direct, GO_AWAY, goaway, null);
@@ -137,7 +137,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
         int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 for RST_STREAM payload
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
 
         Flyweight.Builder.Visitor rst = target.visitRst(streamId, errorCode);
         return http2(streamId, sizeof, direct, RST_STREAM, rst, null);
@@ -147,7 +147,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean settings(int maxConcurrentStreams)
     {
         int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor settings = target.visitSettings(maxConcurrentStreams);
         return http2(0, sizeof, direct, SETTINGS, settings, null);
     }
@@ -156,7 +156,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean settingsAck()
     {
         int sizeof = 9;                 // +9 for HTTP2 framing
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor settings = target.visitSettingsAck();
         return http2(0, sizeof, direct, SETTINGS, settings, null);
     }
@@ -165,7 +165,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean headers(int streamId, ListFW<HttpHeaderFW> headers)
     {
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, connection::mapHeaders);
         return http2(streamId, sizeof, direct, HEADERS, data, null);
     }
@@ -175,7 +175,7 @@ class NukleusWriteScheduler implements WriteScheduler
                                Consumer<Integer> progress)
     {
         int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromize);
         return http2(streamId, sizeof, direct, PUSH_PROMISE, data, null);
     }
@@ -185,7 +185,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         assert length > 0;
         int sizeof = 9 + length;    // +9 for HTTP2 framing
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
         return http2(streamId, sizeof, direct, DATA, data, progress);
     }
@@ -193,6 +193,7 @@ class NukleusWriteScheduler implements WriteScheduler
     @Override
     public void doEnd()
     {
+        // TODO wait until entries are drained ??
         target.doEnd(targetId);
     }
 
@@ -208,7 +209,7 @@ class NukleusWriteScheduler implements WriteScheduler
     public boolean dataEos(int streamId)
     {
         int sizeof = 9;    // +9 for HTTP2 framing
-        boolean direct = replyBuffer == null && sizeof <= connection.outWindow;
+        boolean direct = !buffered() && sizeof <= connection.outWindow;
         Flyweight.Builder.Visitor data = target.visitDataEos(streamId);
         return http2(streamId, sizeof, direct, DATA, data, null);
     }
@@ -233,9 +234,14 @@ class NukleusWriteScheduler implements WriteScheduler
         }
     }
 
+    private boolean buffered()
+    {
+        return replyQueue != null && !replyQueue.isEmpty();
+    }
+
     private ConnectionEntry pop()
     {
-        if (replyQueue != null)
+        if (buffered())
         {
             ConnectionEntry entry = replyQueue.peek();
             if (entry != null && entry.fits())
@@ -349,10 +355,10 @@ class NukleusWriteScheduler implements WriteScheduler
         boolean fits()
         {
             // TODO avoid churning for low connection.outWindow ??
-            // if (connection.outWindow < 100)
-            // {
-            //     return false;
-            // }
+//             if (connection.outWindow < 1000 && type == DATA)
+//             {
+//                 return false;
+//             }
             int entry1Length = Math.min(length, connection.outWindow);
             if (entry1Length > 0)
             {

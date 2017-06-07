@@ -62,6 +62,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             StreamEntry entry = new StreamEntry(stream, cbOffset, length, eos, progress);
             stream.replyQueue.add(entry);
+            onHttp2Window(streamId);                // Make progress with partial write
         }
 
         return cbOffset != -1;
@@ -125,25 +126,11 @@ public class Http2WriteScheduler implements WriteScheduler
             return true;
         }
 
-        if (stream.replyBuffer == null)
+        if (!buffered(stream) && length <= connection.http2OutWindow && length <= stream.http2OutWindow)
         {
-            boolean written = true;
-            int min = Math.min(Math.min(length, (int) connection.http2OutWindow), (int) stream.http2OutWindow);
-            int remaining = min > 0 ? length - min : length;
-
-            if (min > 0)
-            {
-                connection.http2OutWindow -= min;
-                stream.http2OutWindow -= min;
-                written = writer.data(streamId, buffer, offset, min, progress);
-            }
-
-            if (written && remaining > 0)
-            {
-                written = http2(streamId, buffer, offset + min, remaining, false, progress);
-            }
-
-            return written;
+            connection.http2OutWindow -= length;
+            stream.http2OutWindow -= length;
+            return writer.data(streamId, buffer, offset, length, progress);
         }
         else
         {
@@ -159,9 +146,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             return true;
         }
-        boolean direct = stream.replyBuffer == null &&
-                0 <= connection.http2OutWindow &&
-                0 <= stream.http2OutWindow;
+        boolean direct = !buffered(stream) && 0 <= connection.http2OutWindow && 0 <= stream.http2OutWindow;
 
         if (direct)
         {
@@ -186,25 +171,22 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public void onHttp2Window()
     {
-        boolean found = false;
         StreamEntry entry;
 
         while((entry = pop()) != null)
         {
             DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
             writer.data(entry.stream.http2StreamId, read, entry.offset, entry.length, entry.progress);
-            found = true;
-        }
-        if (found)
-        {
-            writer.onWindow();
+            if (!buffered(entry.stream))
+            {
+                entry.stream.releaseReplyBuffer();
+            }
         }
     }
 
     @Override
     public void onHttp2Window(int streamId)
     {
-        boolean found = false;
         StreamEntry entry;
 
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
@@ -219,12 +201,11 @@ public class Http2WriteScheduler implements WriteScheduler
                 DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
                 writer.data(streamId, read, entry.offset, entry.length, entry.progress);
             }
-            found = true;
         }
 
-        if (found)
+        if (!buffered(stream))
         {
-            writer.onWindow();
+            stream.releaseReplyBuffer();
         }
     }
 
@@ -232,6 +213,11 @@ public class Http2WriteScheduler implements WriteScheduler
     public void onWindow()
     {
         writer.onWindow();
+    }
+
+    private boolean buffered(SourceInputStreamFactory.Http2Stream stream)
+    {
+        return stream.replyQueue != null && !stream.replyQueue.isEmpty();
     }
 
     private StreamEntry pop()
@@ -261,10 +247,6 @@ public class Http2WriteScheduler implements WriteScheduler
                 stream.replyBuffer.read(entry.length);
                 entry.adjustWindows();
                 noEntries--;
-                if (stream.replyQueue.isEmpty())
-                {
-                    stream.releaseReplyBuffer();
-                }
                 return entry;
             }
         }
@@ -272,13 +254,13 @@ public class Http2WriteScheduler implements WriteScheduler
         return null;
     }
 
-    MutableDirectBuffer read(MutableDirectBuffer buffer)
+    private MutableDirectBuffer read(MutableDirectBuffer buffer)
     {
         read.wrap(buffer.addressOffset(), buffer.capacity());
         return read;
     }
 
-    MutableDirectBuffer write(MutableDirectBuffer buffer)
+    private MutableDirectBuffer write(MutableDirectBuffer buffer)
     {
         write.wrap(buffer.addressOffset(), buffer.capacity());
         return write;
