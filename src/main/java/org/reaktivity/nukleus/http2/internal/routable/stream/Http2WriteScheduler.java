@@ -52,8 +52,6 @@ public class Http2WriteScheduler implements WriteScheduler
 
     public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, boolean eos, Consumer<Integer> progress)
     {
-        assert !eos;
-
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
         MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::write);
         CircularDirectBuffer cb = stream.replyBuffer;
@@ -303,6 +301,7 @@ public class Http2WriteScheduler implements WriteScheduler
                 if (remaining > 0)
                 {
                     stream.replyQueue.poll();
+                    noEntries--;
                     StreamEntry entry1 = new StreamEntry(stream, offset, min, eos, progress);
                     StreamEntry entry2 = new StreamEntry(stream, offset + min, remaining, eos, progress);
 
