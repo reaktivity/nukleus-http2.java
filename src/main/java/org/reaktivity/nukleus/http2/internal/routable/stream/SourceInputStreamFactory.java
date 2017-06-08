@@ -84,6 +84,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.
 
 public final class SourceInputStreamFactory
 {
+    private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
 
@@ -220,7 +221,8 @@ public final class SourceInputStreamFactory
         long sourceRef;
         private long correlationId;
         int window;
-        int outWindow;
+        int outWindow = -1;
+        int outWindowThreshold;
 
         private final WriteScheduler writeScheduler;
 
@@ -1297,6 +1299,10 @@ public final class SourceInputStreamFactory
         {
             windowRO.wrap(buffer, index, index + length);
             int update = windowRO.update();
+            if (outWindow == -1)
+            {
+                outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
+            }
             outWindow += update;
             writeScheduler.onWindow();
         }

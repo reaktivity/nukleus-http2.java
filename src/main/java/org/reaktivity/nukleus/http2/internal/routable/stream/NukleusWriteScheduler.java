@@ -354,11 +354,11 @@ class NukleusWriteScheduler implements WriteScheduler
 
         boolean fits()
         {
-            // TODO avoid churning for low connection.outWindow ??
-//             if (connection.outWindow < 1000 && type == DATA)
-//             {
-//                 return false;
-//             }
+            if (connection.outWindow < connection.outWindowThreshold)
+            {
+                // Instead of sending small updates, wait until a bigger window accumulates
+                return false;
+            }
             int entry1Length = Math.min(length, connection.outWindow);
             if (entry1Length > 0)
             {
