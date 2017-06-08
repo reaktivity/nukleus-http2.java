@@ -217,6 +217,14 @@ public class Http2HeadersFW extends Http2FrameFW
             return this;
         }
 
+        public Builder headers(Consumer<HpackHeaderBlockFW.Builder> mutator)
+        {
+            mutator.accept(blockRW);
+            int length = blockRW.limit() - offset() - PAYLOAD_OFFSET;
+            payloadLength(length);
+            return this;
+        }
+
     }
 }
 

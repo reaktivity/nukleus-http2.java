@@ -41,9 +41,9 @@ public class Http2PrefaceFW extends Flyweight
         return offset() + PRI_REQUEST.length;
     }
 
-    public boolean matches()
+    public boolean error()
     {
-        return PREFACE.equals(payloadRO);
+        return !PREFACE.equals(payloadRO);
     }
 
     @Override

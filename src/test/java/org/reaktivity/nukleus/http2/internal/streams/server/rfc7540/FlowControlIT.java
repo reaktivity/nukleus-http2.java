@@ -27,21 +27,21 @@ import org.reaktivity.reaktor.test.NukleusRule;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 
-public class MessageFormatIT
+public class FlowControlIT
 {
     private final K3poRule k3po = new K3poRule()
             .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/message.format")
-            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format");
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/flow.control")
+            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/flow.control");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
     private final NukleusRule nukleus = new NukleusRule("http2")
-        .directory("target/nukleus-itests")
-        .commandBufferCapacity(1024)
-        .responseBufferCapacity(1024)
-        .counterValuesBufferCapacity(1024)
-        .clean();
+            .directory("target/nukleus-itests")
+            .commandBufferCapacity(1024)
+            .responseBufferCapacity(1024)
+            .counterValuesBufferCapacity(1024)
+            .clean();
 
     @Rule
     public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
@@ -49,20 +49,11 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/server/controller",
-            "${spec}/continuation.frames/client",
-            "${nukleus}/continuation.frames/server" })
-    public void continuationFrames() throws Exception
+            "${spec}/stream.flow/client",
+            "${nukleus}/stream.flow/server" })
+    public void streamFlow() throws Exception
     {
         k3po.finish();
     }
 
-    @Test
-    @Specification({
-            "${route}/server/controller",
-            "${spec}/dynamic.table.requests/client",
-            "${nukleus}/dynamic.table.requests/server" })
-    public void dynamicTableRequests() throws Exception
-    {
-        k3po.finish();
-    }
 }
