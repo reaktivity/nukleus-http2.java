@@ -5,21 +5,18 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
-import java.util.function.UnaryOperator;
-
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 
 public class HttpWriteScheduler
 {
-    private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
-    private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
+    private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[0]);
 
     private final Slab slab;
     private final Target target;
     private final long targetId;
 
     private SourceInputStreamFactory.Http2Stream stream;
-    private int targetSlot = NO_SLOT;
+    private int slot = NO_SLOT;
     private RingDirectBuffer targetBuffer;
     private boolean endStream;
 
@@ -31,6 +28,10 @@ public class HttpWriteScheduler
         this.stream = stream;
     }
 
+    /*
+     * @return true if the data is written or stored
+     *         false if there are no slots or no space in the buffer
+     */
     boolean onData(Http2DataFW http2DataRO)
     {
         endStream = http2DataRO.endStream();
@@ -51,7 +52,7 @@ public class HttpWriteScheduler
             // Store the remaining to a buffer
             if (toSlab > 0)
             {
-                MutableDirectBuffer dst = acquire(this::write);
+                MutableDirectBuffer dst = acquire();
                 if (dst != null)
                 {
                     return targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
@@ -70,8 +71,7 @@ public class HttpWriteScheduler
         else
         {
             // Store the data in the existing buffer
-            MutableDirectBuffer dst = acquire(this::write);
-            return targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
+            return targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
         }
     }
 
@@ -84,10 +84,9 @@ public class HttpWriteScheduler
             // Send to http if there is available window
             if (toHttp > 0)
             {
-                MutableDirectBuffer dst = acquire(this::read);
                 int offset1 = targetBuffer.readOffset();
                 int read1 = targetBuffer.read(toHttp);
-                target.doHttpData(targetId, dst, offset1, read1);
+                target.doHttpData(targetId, buffer, offset1, read1);
 
                 // toHttp may span across the boundary, one more read may be required
                 if (read1 != toHttp)
@@ -96,7 +95,7 @@ public class HttpWriteScheduler
                     int read2 = targetBuffer.read(toHttp-read1);
                     assert read1 + read2 == toHttp;
 
-                    target.doHttpData(targetId, dst, offset2, read2);
+                    target.doHttpData(targetId, buffer, offset2, read2);
                 }
 
                 stream.sendHttp2Window(toHttp);
@@ -121,43 +120,37 @@ public class HttpWriteScheduler
     }
 
     /*
-     * @return true if there is a buffer
-     *         false if all slots are taken
+     * @return buffer if there is a slot, buffer is wrapped on that slot
+     *         null if all slots are taken
      */
-    private MutableDirectBuffer acquire(UnaryOperator<MutableDirectBuffer> change)
+    private MutableDirectBuffer acquire()
     {
-        if (targetSlot == NO_SLOT)
+        if (slot == NO_SLOT)
         {
-            targetSlot = slab.acquire(targetId);
-            if (targetSlot != NO_SLOT)
+            slot = slab.acquire(targetId);
+            if (slot != NO_SLOT)
             {
-                int capacity = slab.buffer(targetSlot).capacity();
+                int capacity = slab.buffer(slot, this::buffer).capacity();
                 targetBuffer = new RingDirectBuffer(capacity);
             }
         }
-        return targetSlot != NO_SLOT ? slab.buffer(targetSlot, change) : null;
+        return slot != NO_SLOT ? buffer : null;
     }
 
     private void release()
     {
-        if (targetSlot != NO_SLOT)
+        if (slot != NO_SLOT)
         {
-            slab.release(targetSlot);
-            targetSlot = NO_SLOT;
+            slab.release(slot);
+            slot = NO_SLOT;
             targetBuffer = null;
         }
     }
 
-    private MutableDirectBuffer read(MutableDirectBuffer buffer)
+    private MutableDirectBuffer buffer(MutableDirectBuffer src)
     {
-        read.wrap(buffer.addressOffset(), buffer.capacity());
-        return read;
-    }
-
-    private MutableDirectBuffer write(MutableDirectBuffer buffer)
-    {
-        write.wrap(buffer.addressOffset(), buffer.capacity());
-        return write;
+        buffer.wrap(src.addressOffset(), src.capacity());
+        return buffer;
     }
 
 }
