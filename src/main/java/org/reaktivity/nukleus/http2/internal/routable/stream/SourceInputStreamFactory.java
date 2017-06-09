@@ -1787,6 +1787,7 @@ public final class SourceInputStreamFactory
         private int replySlot = NO_SLOT;
         RingDirectBuffer replyBuffer;
         Deque replyQueue;
+        public boolean endStream;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state, Route route)
         {

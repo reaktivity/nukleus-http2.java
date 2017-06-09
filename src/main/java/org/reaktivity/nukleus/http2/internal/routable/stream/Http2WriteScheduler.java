@@ -32,9 +32,8 @@ public class Http2WriteScheduler implements WriteScheduler
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final NukleusWriteScheduler writer;
-    private final Target target;
 
-    private boolean eos;
+    private boolean end;
     private int noEntries;
 
     Http2WriteScheduler(
@@ -45,11 +44,10 @@ public class Http2WriteScheduler implements WriteScheduler
             long targetId)
     {
         this.connection = connection;
-        this.target = target;
         this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, target, targetId);
     }
 
-    public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, boolean eos, Consumer<Integer> progress)
+    public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
     {
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
         MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::read);
@@ -57,7 +55,7 @@ public class Http2WriteScheduler implements WriteScheduler
         boolean written = cb.write(dstBuffer, buffer, offset, length);
         if (written)
         {
-            StreamEntry entry = new StreamEntry(stream, length, eos, progress);
+            StreamEntry entry = new StreamEntry(stream, length, progress);
             stream.replyQueue.add(entry);
             onHttp2Window(streamId);                // Make progress with partial write
         }
@@ -131,7 +129,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         else
         {
-            return http2(streamId, buffer, offset, length, false, progress);
+            return http2(streamId, buffer, offset, length, progress);
         }
     }
 
@@ -144,39 +142,74 @@ public class Http2WriteScheduler implements WriteScheduler
             return true;
         }
         boolean direct = !buffered(stream) && 0 <= connection.http2OutWindow && 0 <= stream.http2OutWindow;
-
         if (direct)
         {
             return writer.dataEos(streamId);
         }
-        else
-        {
-            return http2(streamId, EMPTY, 0, 0, true, null);
-        }
+        stream.endStream = true;
+        return true;
     }
 
     @Override
     public void doEnd()
     {
-        eos = true;
         if (noEntries == 0)
         {
             writer.doEnd();
+            return;
         }
+        end = true;
     }
 
     @Override
     public void onHttp2Window()
     {
         StreamEntry entry;
-
         while((entry = pop()) != null)
         {
             write(entry);
+
             if (!buffered(entry.stream))
             {
                 entry.stream.releaseReplyBuffer();
+
+                if (entry.stream.endStream)
+                {
+                    writer.dataEos(entry.stream.http2StreamId);
+                }
             }
+        }
+
+        if (noEntries == 0 && end)
+        {
+            writer.doEnd();
+        }
+    }
+
+    @Override
+    public void onHttp2Window(int streamId)
+    {
+        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+
+        StreamEntry entry;
+        while ((entry = pop(stream)) != null)
+        {
+            write(entry);
+        }
+
+        if (!buffered(stream))
+        {
+            stream.releaseReplyBuffer();
+
+            if (stream.endStream)
+            {
+                writer.dataEos(streamId);
+            }
+        }
+
+        if (noEntries == 0 && end)
+        {
+            writer.doEnd();
         }
     }
 
@@ -195,30 +228,8 @@ public class Http2WriteScheduler implements WriteScheduler
             assert read1 + read2 == entry.length;
             writer.data(entry.stream.http2StreamId, read, offset2, read2, entry.progress);
         }
-    }
 
-    @Override
-    public void onHttp2Window(int streamId)
-    {
-        StreamEntry entry;
-
-        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        while ((entry = pop(stream)) != null)
-        {
-            if (entry.eos)
-            {
-                writer.dataEos(streamId);
-            }
-            else
-            {
-                write(entry);
-            }
-        }
-
-        if (!buffered(stream))
-        {
-            stream.releaseReplyBuffer();
-        }
+        entry.adjustWindows();
     }
 
     @Override
@@ -250,16 +261,13 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private StreamEntry pop(SourceInputStreamFactory.Http2Stream stream)
     {
-        if (stream.replyQueue != null)
+        if (buffered(stream))
         {
             StreamEntry entry = (StreamEntry) stream.replyQueue.peek();
-            if (entry != null && entry.fits())
+            if (entry.fits())
             {
-                entry = (StreamEntry) stream.replyQueue.poll();
-                //stream.replyBuffer.read(entry.length);
-                entry.adjustWindows();
                 noEntries--;
-                return entry;
+                return (StreamEntry) stream.replyQueue.poll();
             }
         }
 
@@ -277,38 +285,30 @@ public class Http2WriteScheduler implements WriteScheduler
         final SourceInputStreamFactory.Http2Stream stream;
         final int length;
         private final Consumer<Integer> progress;
-        private final boolean eos;
 
         StreamEntry(
                 SourceInputStreamFactory.Http2Stream stream,
                 int length,
-                boolean eos,
                 Consumer<Integer> progress)
         {
             this.stream = stream;
             this.length = length;
-            this.eos = eos;
             this.progress = progress;
             noEntries++;
         }
 
         boolean fits()
         {
-            if (eos)
-            {
-                return true;
-            }
-
             int min = Math.min(Math.min(length, (int) connection.http2OutWindow), (int) stream.http2OutWindow);
             if (min > 0)
             {
                 int remaining = length - min;
                 if (remaining > 0)
                 {
-                    stream.replyQueue.poll();
                     noEntries--;
-                    StreamEntry entry1 = new StreamEntry(stream, min, eos, progress);
-                    StreamEntry entry2 = new StreamEntry(stream, remaining, eos, progress);
+                    stream.replyQueue.poll();
+                    StreamEntry entry1 = new StreamEntry(stream, min, progress);
+                    StreamEntry entry2 = new StreamEntry(stream, remaining, progress);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
