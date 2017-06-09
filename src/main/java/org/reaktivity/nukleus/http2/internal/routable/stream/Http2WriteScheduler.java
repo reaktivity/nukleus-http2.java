@@ -54,16 +54,16 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
         MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::write);
-        CircularDirectBuffer cb = stream.replyBuffer;
-        int cbOffset = cb.write(dstBuffer, buffer, offset, length);
-        if (cbOffset != -1)
+        RingDirectBuffer cb = stream.replyBuffer;
+        boolean written = cb.write(dstBuffer, buffer, offset, length);
+        if (written)
         {
-            StreamEntry entry = new StreamEntry(stream, cbOffset, length, eos, progress);
+            StreamEntry entry = new StreamEntry(stream, length, eos, progress);
             stream.replyQueue.add(entry);
             onHttp2Window(streamId);                // Make progress with partial write
         }
 
-        return cbOffset != -1;
+        return written;
     }
 
     @Override
@@ -173,12 +173,28 @@ public class Http2WriteScheduler implements WriteScheduler
 
         while((entry = pop()) != null)
         {
-            DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
-            writer.data(entry.stream.http2StreamId, read, entry.offset, entry.length, entry.progress);
+            write(entry);
             if (!buffered(entry.stream))
             {
                 entry.stream.releaseReplyBuffer();
             }
+        }
+    }
+
+    private void write(StreamEntry entry)
+    {
+        // ring buffer may have split the entry into two parts
+        DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
+        int offset1 = entry.stream.replyBuffer.readOffset();
+        int read1 = entry.stream.replyBuffer.read(entry.length);
+        writer.data(entry.stream.http2StreamId, read, offset1, read1, entry.progress);
+
+        if (read1 != entry.length)
+        {
+            int offset2 = entry.stream.replyBuffer.readOffset();
+            int read2 = entry.stream.replyBuffer.read(entry.length - read1);
+            assert read1 + read2 == entry.length;
+            writer.data(entry.stream.http2StreamId, read, offset2, read2, entry.progress);
         }
     }
 
@@ -196,8 +212,7 @@ public class Http2WriteScheduler implements WriteScheduler
             }
             else
             {
-                DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
-                writer.data(streamId, read, entry.offset, entry.length, entry.progress);
+                write(entry);
             }
         }
 
@@ -242,7 +257,7 @@ public class Http2WriteScheduler implements WriteScheduler
             if (entry != null && entry.fits())
             {
                 entry = (StreamEntry) stream.replyQueue.poll();
-                stream.replyBuffer.read(entry.length);
+                //stream.replyBuffer.read(entry.length);
                 entry.adjustWindows();
                 noEntries--;
                 return entry;
@@ -267,20 +282,17 @@ public class Http2WriteScheduler implements WriteScheduler
     private class StreamEntry
     {
         final SourceInputStreamFactory.Http2Stream stream;
-        final int offset;
         final int length;
         private final Consumer<Integer> progress;
         private final boolean eos;
 
         StreamEntry(
                 SourceInputStreamFactory.Http2Stream stream,
-                int offset,
                 int length,
                 boolean eos,
                 Consumer<Integer> progress)
         {
             this.stream = stream;
-            this.offset = offset;
             this.length = length;
             this.eos = eos;
             this.progress = progress;
@@ -302,8 +314,8 @@ public class Http2WriteScheduler implements WriteScheduler
                 {
                     stream.replyQueue.poll();
                     noEntries--;
-                    StreamEntry entry1 = new StreamEntry(stream, offset, min, eos, progress);
-                    StreamEntry entry2 = new StreamEntry(stream, offset + min, remaining, eos, progress);
+                    StreamEntry entry1 = new StreamEntry(stream, min, eos, progress);
+                    StreamEntry entry2 = new StreamEntry(stream, remaining, eos, progress);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
@@ -321,7 +333,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         public String toString()
         {
-            return String.format("offset=%d length=%d", offset, length);
+            return String.format("length=%d", length);
         }
 
     }

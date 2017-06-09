@@ -1785,12 +1785,8 @@ public final class SourceInputStreamFactory
         int targetWindow;
 
         private int replySlot = NO_SLOT;
-        CircularDirectBuffer replyBuffer;
+        RingDirectBuffer replyBuffer;
         Deque replyQueue;
-
-        private MessageHandler streamState;
-        private MessageHandler throttleState;
-        private boolean endStream;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state, Route route)
         {
@@ -1849,7 +1845,7 @@ public final class SourceInputStreamFactory
                 if (replySlot != NO_SLOT)
                 {
                     int capacity = frameSlab.buffer(replySlot).capacity();
-                    replyBuffer = new CircularDirectBuffer(capacity);
+                    replyBuffer = new RingDirectBuffer(capacity);
                     replyQueue = new LinkedList();
                 }
             }
