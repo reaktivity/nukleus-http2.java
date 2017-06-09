@@ -16,10 +16,10 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.reaktivity.nukleus.Configuration;
-import org.reaktivity.nukleus.Controller;
+import org.reaktivity.nukleus.ControllerBuilder;
 import org.reaktivity.nukleus.ControllerFactorySpi;
 
-public final class Http2ControllerFactorySpi implements ControllerFactorySpi
+public final class Http2ControllerFactorySpi implements ControllerFactorySpi<Http2Controller>
 {
     @Override
     public String name()
@@ -34,15 +34,15 @@ public final class Http2ControllerFactorySpi implements ControllerFactorySpi
     }
 
     @Override
-    public <T extends Controller> T create(
-        Class<T> kind,
-        Configuration config)
+    public Http2Controller create(
+        Configuration config,
+        ControllerBuilder<Http2Controller> builder)
     {
         Context context = new Context();
         context.readonly(true)
                .conclude(config);
 
-        return kind.cast(new Http2Controller(context));
+        return new Http2Controller(context);
     }
 
 }

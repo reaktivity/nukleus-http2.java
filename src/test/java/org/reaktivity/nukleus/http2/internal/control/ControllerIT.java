@@ -15,6 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.control;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+import static org.junit.rules.RuleChain.outerRule;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Random;
+
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -23,14 +30,7 @@ import org.junit.rules.Timeout;
 import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.nukleus.http2.internal.Http2Controller;
-import org.reaktivity.reaktor.test.ControllerRule;
-
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Random;
-
-import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.junit.rules.RuleChain.outerRule;
+import org.reaktivity.reaktor.test.ReaktorRule;
 
 public class ControllerIT
 {
@@ -40,11 +40,12 @@ public class ControllerIT
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(5, SECONDS));
 
-    private final ControllerRule controller = new ControllerRule(Http2Controller.class)
+    private final ReaktorRule controller = new ReaktorRule()
         .directory("target/nukleus-itests")
         .commandBufferCapacity(1024)
         .responseBufferCapacity(1024)
-        .counterValuesBufferCapacity(1024);
+        .counterValuesBufferCapacity(1024)
+        .controller(Http2Controller.class::isAssignableFrom);
 
     @Rule
     public final TestRule chain = outerRule(k3po).around(timeout).around(controller);

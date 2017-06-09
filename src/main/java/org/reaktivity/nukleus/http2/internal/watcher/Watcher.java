@@ -33,14 +33,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 
-import com.sun.nio.file.SensitivityWatchEventModifier;
 import org.agrona.LangUtil;
 import org.reaktivity.nukleus.Nukleus;
-import org.reaktivity.nukleus.Reaktive;
 import org.reaktivity.nukleus.http2.internal.Context;
 import org.reaktivity.nukleus.http2.internal.router.Router;
 
-@Reaktive
+import com.sun.nio.file.SensitivityWatchEventModifier;
+
 public final class Watcher implements Nukleus
 {
     private final WatchService service;
