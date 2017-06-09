@@ -51,7 +51,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
         MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::read);
-        RingDirectBuffer cb = stream.replyBuffer;
+        CircularDirectBuffer cb = stream.replyBuffer;
         boolean written = cb.write(dstBuffer, buffer, offset, length);
         if (written)
         {

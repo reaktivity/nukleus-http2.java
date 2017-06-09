@@ -17,7 +17,7 @@ public class HttpWriteScheduler
 
     private SourceInputStreamFactory.Http2Stream stream;
     private int slot = NO_SLOT;
-    private RingDirectBuffer targetBuffer;
+    private CircularDirectBuffer targetBuffer;
     private boolean endStream;
 
     HttpWriteScheduler(Slab slab, Target target, long targetId, SourceInputStreamFactory.Http2Stream stream)
@@ -131,7 +131,7 @@ public class HttpWriteScheduler
             if (slot != NO_SLOT)
             {
                 int capacity = slab.buffer(slot, this::buffer).capacity();
-                targetBuffer = new RingDirectBuffer(capacity);
+                targetBuffer = new CircularDirectBuffer(capacity);
             }
         }
         return slot != NO_SLOT ? buffer : null;

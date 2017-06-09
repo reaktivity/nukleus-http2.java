@@ -19,7 +19,7 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-class RingDirectBuffer
+class CircularDirectBuffer
 {
     private final int capacity;
     /*
@@ -42,7 +42,7 @@ class RingDirectBuffer
     private int end;
     private int no;
 
-    RingDirectBuffer(int capacity)
+    CircularDirectBuffer(int capacity)
     {
         this.capacity = capacity;
     }

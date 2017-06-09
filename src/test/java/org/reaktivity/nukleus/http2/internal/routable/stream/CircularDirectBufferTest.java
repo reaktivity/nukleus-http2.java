@@ -22,7 +22,7 @@ import org.junit.Test;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-public class RingDirectBufferTest
+public class CircularDirectBufferTest
 {
 
     @Test
@@ -32,7 +32,7 @@ public class RingDirectBufferTest
 
         MutableDirectBuffer src = new UnsafeBuffer(new byte[capacity]);
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
-        RingDirectBuffer cb = new RingDirectBuffer(capacity);
+        CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
 
         for(int i=0; i < capacity; i++)
         {

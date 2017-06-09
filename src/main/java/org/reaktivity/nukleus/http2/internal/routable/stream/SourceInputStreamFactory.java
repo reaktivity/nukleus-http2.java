@@ -1785,7 +1785,7 @@ public final class SourceInputStreamFactory
         int targetWindow;
 
         private int replySlot = NO_SLOT;
-        RingDirectBuffer replyBuffer;
+        CircularDirectBuffer replyBuffer;
         Deque replyQueue;
         public boolean endStream;
 
@@ -1846,7 +1846,7 @@ public final class SourceInputStreamFactory
                 if (replySlot != NO_SLOT)
                 {
                     int capacity = frameSlab.buffer(replySlot).capacity();
-                    replyBuffer = new RingDirectBuffer(capacity);
+                    replyBuffer = new CircularDirectBuffer(capacity);
                     replyQueue = new LinkedList();
                 }
             }
