@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.reaktivity.nukleus.Configuration;
 import org.reaktivity.nukleus.Nukleus;
+import org.reaktivity.nukleus.NukleusBuilder;
 import org.reaktivity.nukleus.NukleusFactorySpi;
 import org.reaktivity.nukleus.http2.internal.conductor.Conductor;
 import org.reaktivity.nukleus.http2.internal.router.Router;
@@ -31,7 +32,9 @@ public final class Http2NukleusFactorySpi implements NukleusFactorySpi
     }
 
     @Override
-    public Nukleus create(Configuration config)
+    public Nukleus create(
+        Configuration config,
+        NukleusBuilder builder)
     {
         Context context = new Context();
         context.conclude(config);

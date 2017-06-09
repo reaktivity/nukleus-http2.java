@@ -51,7 +51,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.reaktor.Reaktor;
-import org.reaktivity.reaktor.matchers.NukleusMatcher;
 
 import java.io.File;
 import java.io.IOException;
@@ -89,7 +88,6 @@ public class Http2ServerBM
         properties.setProperty(DIRECTORY_PROPERTY_NAME, "target/nukleus-benchmarks");
         properties.setProperty(STREAMS_BUFFER_CAPACITY_PROPERTY_NAME, Long.toString(1024L * 1024L * 16L));
 
-        NukleusMatcher matchNukleus = "http2"::equals;
         this.configuration = new Configuration(properties);
 
         try
@@ -105,8 +103,8 @@ public class Http2ServerBM
 
         this.reaktor = Reaktor.builder()
                               .config(configuration)
-                              .discover(matchNukleus)
-                              .discover(Http2Controller.class::isAssignableFrom)
+                              .nukleus("http2"::equals)
+                              .controller(Http2Controller.class::isAssignableFrom)
                               .errorHandler(ex -> ex.printStackTrace(System.err))
                               .build();
 

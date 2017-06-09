@@ -35,11 +35,11 @@ import java.util.function.Consumer;
 
 import org.agrona.LangUtil;
 import org.reaktivity.nukleus.Nukleus;
-import org.reaktivity.nukleus.Reaktive;
 import org.reaktivity.nukleus.http2.internal.Context;
 import org.reaktivity.nukleus.http2.internal.router.Router;
 
-@Reaktive
+import com.sun.nio.file.SensitivityWatchEventModifier;
+
 public final class Watcher implements Nukleus
 {
     private final WatchService service;
@@ -152,7 +152,9 @@ public final class Watcher implements Nukleus
             try
             {
                 streamsPath.toFile().mkdirs();
-                streamsKey = streamsPath.register(service, ENTRY_CREATE, ENTRY_DELETE, OVERFLOW);
+                WatchEvent.Kind<?>[] kinds = { ENTRY_CREATE, ENTRY_DELETE, OVERFLOW };
+                Path absolutePath = streamsPath.toAbsolutePath();
+                streamsKey = absolutePath.register(service, kinds, SensitivityWatchEventModifier.HIGH);
                 syncWithFileSystem();
             }
             catch (IOException ex)
