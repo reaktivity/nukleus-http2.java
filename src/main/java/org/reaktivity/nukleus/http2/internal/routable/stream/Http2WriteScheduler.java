@@ -30,7 +30,6 @@ public class Http2WriteScheduler implements WriteScheduler
     private static final DirectBuffer EMPTY = new UnsafeBuffer(new byte[0]);
 
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
-    private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final NukleusWriteScheduler writer;
     private final Target target;
@@ -53,7 +52,7 @@ public class Http2WriteScheduler implements WriteScheduler
     public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, boolean eos, Consumer<Integer> progress)
     {
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::write);
+        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::read);
         RingDirectBuffer cb = stream.replyBuffer;
         boolean written = cb.write(dstBuffer, buffer, offset, length);
         if (written)
@@ -271,12 +270,6 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         read.wrap(buffer.addressOffset(), buffer.capacity());
         return read;
-    }
-
-    private MutableDirectBuffer write(MutableDirectBuffer buffer)
-    {
-        write.wrap(buffer.addressOffset(), buffer.capacity());
-        return write;
     }
 
     private class StreamEntry

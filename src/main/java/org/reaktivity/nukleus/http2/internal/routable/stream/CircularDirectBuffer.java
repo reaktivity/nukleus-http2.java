@@ -23,6 +23,9 @@ class CircularDirectBuffer
 {
     private final int capacity;
     /*
+     * A circular buffer that keeps an entry together (without wrapping
+     * across the boundary)
+     *
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      *  |   |x x x x x x x x x x|         |
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
