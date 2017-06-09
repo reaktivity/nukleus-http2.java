@@ -25,13 +25,13 @@ import java.util.stream.IntStream;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 
-public class CircularDirectBufferTest
+public class CircularEntryBufferTest
 {
 
     @Test
     public void add()
     {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
+        CircularEntryBuffer cb = new CircularEntryBuffer(100);
 
         for(int i=0; i < 100; i++)
         {
@@ -64,7 +64,7 @@ public class CircularDirectBufferTest
     @Test
     public void add2()
     {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
+        CircularEntryBuffer cb = new CircularEntryBuffer(100);
 
         int offset = cb.writeOffset(20);
         assertNotEquals(-1, offset);
@@ -98,7 +98,7 @@ public class CircularDirectBufferTest
     @Test
     public void remove()
     {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
+        CircularEntryBuffer cb = new CircularEntryBuffer(100);
 
         for(int i=0; i < 100; i++)
         {
@@ -113,7 +113,7 @@ public class CircularDirectBufferTest
     @Test
     public void testRandom()
     {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
+        CircularEntryBuffer cb = new CircularEntryBuffer(100);
         Random random = new Random(System.currentTimeMillis());
         List<Integer> list = new LinkedList<>();
         IntStream.range(1, 1000).forEach(x ->

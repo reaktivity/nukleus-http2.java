@@ -51,7 +51,7 @@ class NukleusWriteScheduler implements WriteScheduler
 
     private Deque<ConnectionEntry> replyQueue;
     private int replySlot = NO_SLOT;
-    private CircularDirectBuffer replyBuffer;
+    private CircularEntryBuffer replyBuffer;
     private Slab slab;
 
     NukleusWriteScheduler(
@@ -90,7 +90,7 @@ class NukleusWriteScheduler implements WriteScheduler
         else
         {
             MutableDirectBuffer dst = acquireReplyBuffer(this::write);    // TODO return value
-            CircularDirectBuffer cb = replyBuffer;
+            CircularEntryBuffer cb = replyBuffer;
             int offset = cb.writeOffset(lengthGuess);
             if (offset != -1)
             {
@@ -292,7 +292,7 @@ class NukleusWriteScheduler implements WriteScheduler
             if (replySlot != NO_SLOT)
             {
                 int capacity = slab.buffer(replySlot).capacity();
-                replyBuffer = new CircularDirectBuffer(capacity);
+                replyBuffer = new CircularEntryBuffer(capacity);
                 replyQueue = new LinkedList<>();
             }
         }
