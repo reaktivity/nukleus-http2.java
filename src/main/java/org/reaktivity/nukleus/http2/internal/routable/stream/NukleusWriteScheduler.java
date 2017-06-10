@@ -53,6 +53,7 @@ class NukleusWriteScheduler implements WriteScheduler
     private int replySlot = NO_SLOT;
     private CircularEntryBuffer replyBuffer;
     private Slab slab;
+    private boolean end;
 
     NukleusWriteScheduler(
             SourceInputStreamFactory.SourceInputStream connection,
@@ -193,8 +194,12 @@ class NukleusWriteScheduler implements WriteScheduler
     @Override
     public void doEnd()
     {
-        // TODO wait until entries are drained ??
-        target.doEnd(targetId);
+        if (!buffered())
+        {
+            target.doEnd(targetId);
+            return;
+        }
+        end = true;
     }
 
     // Since it is not encoding, this gives an approximate length of header block
@@ -231,6 +236,11 @@ class NukleusWriteScheduler implements WriteScheduler
         if (replyQueue != null && replyQueue.isEmpty())
         {
             releaseReplyBuffer();
+
+            if (end)
+            {
+                target.doEnd(targetId);
+            }
         }
     }
 
