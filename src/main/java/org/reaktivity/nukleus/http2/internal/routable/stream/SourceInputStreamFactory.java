@@ -145,7 +145,7 @@ public final class SourceInputStreamFactory
         int path;
         boolean regularHeader;
         Http2ErrorCode streamError;
-        int contentLength = -1;
+        long contentLength = -1;
 
         void reset()
         {
@@ -1515,7 +1515,7 @@ public final class SourceInputStreamFactory
             if (!headersContext.error() && name.equals(decodeContext.nameBuffer(28)))
             {
                 String contentLength = value.getStringWithoutLengthUtf8(0, value.capacity());
-                headersContext.contentLength = Integer.parseInt(contentLength);
+                headersContext.contentLength = Long.parseLong(contentLength);
             }
         }
 
