@@ -19,6 +19,7 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
@@ -29,37 +30,41 @@ public class CircularDirectBufferTest
     public void add()
     {
         int capacity = 100;
-
         MutableDirectBuffer src = new UnsafeBuffer(new byte[capacity]);
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
-        CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
 
-        for(int i=0; i < capacity; i++)
+        // will test all boundaries with start of the buffer at i
+        for(int i=0; i < 100; i++)
         {
-            boolean written = cb.write(dst, src, 0, 20);
-            assertTrue(written);
+            CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
+            assertTrue(cb.write(dst, src, 0, i));
+            assertEquals(i, read(cb, i));
 
-            written = cb.write(dst, src, 0, 20);
-            assertTrue(written);
+            // now start is at i
+            assertTrue(cb.write(dst, src, 0, 20));
+            assertTrue(cb.write(dst, src, 0, 30));
+            assertTrue(cb.write(dst, src, 0, 40));
+            assertTrue(cb.write(dst, src, 0, 10));
+            assertFalse(cb.write(dst, src, 0, 20));
 
-            written = cb.write(dst, src, 0, 20);
-            assertTrue(written);
-
-            written = cb.write(dst, src, 0, 20);
-            assertTrue(written);
-
-            written = cb.write(dst, src, 0, 20);
-            assertTrue(written);
-
-            written = cb.write(dst, src, 0, 20);
-            assertFalse(written);
-
-            cb.read(20);
-            cb.read(20);
-            cb.read(20);
-            cb.read(20);
-            cb.read(20);
+            assertEquals(5, read(cb, 5));
+            assertEquals(20, read(cb, 20));
+            assertEquals(15, read(cb, 15));
+            assertEquals(30, read(cb, 30));
+            assertEquals(30, read(cb, 30));
         }
+    }
+
+    private int read(CircularDirectBuffer cb, int length)
+    {
+        int part1 = cb.read(length);
+        int part2 = 0;
+
+        if (part1 != length)
+        {
+            part2 = cb.read(length-part1);
+        }
+        return part1 + part2;
     }
 
 }

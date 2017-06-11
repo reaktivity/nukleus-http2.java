@@ -78,11 +78,11 @@ class CircularDirectBuffer
             throw new IllegalArgumentException();
         }
 
-        int read = (start + length > capacity) ? capacity - end : length;
-
+        int read = (start + length > capacity) ? capacity - start : length;
         no -= read;
         start = (start + read) % capacity;
 
+        assert  read <= length;
         return read;
     }
 
