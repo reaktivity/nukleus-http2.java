@@ -40,7 +40,7 @@ class CircularDirectBuffer
 
     private int start;
     private int end;
-    private int no;
+    private int count;
 
     CircularDirectBuffer(int capacity)
     {
@@ -49,7 +49,7 @@ class CircularDirectBuffer
 
     boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
-        if (no + length > capacity)
+        if (count + length > capacity)
         {
             return false;
         }
@@ -66,20 +66,20 @@ class CircularDirectBuffer
             dstBuffer.putBytes(end, srcBuffer, srcIndex, length);
         }
 
-        no += length;
+        count += length;
         end = (end + length) % capacity;
         return true;
     }
 
     int read(int length)
     {
-        if (length > no)
+        if (length > count)
         {
             throw new IllegalArgumentException();
         }
 
         int read = (start + length > capacity) ? capacity - start : length;
-        no -= read;
+        count -= read;
         start = (start + read) % capacity;
 
         assert  read <= length;
@@ -93,7 +93,7 @@ class CircularDirectBuffer
 
     int size()
     {
-        return no;
+        return count;
     }
 
     public String toString()

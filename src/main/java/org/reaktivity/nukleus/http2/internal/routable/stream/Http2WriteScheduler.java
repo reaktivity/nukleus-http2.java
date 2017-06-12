@@ -35,7 +35,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private boolean end;
     private boolean endSent;
-    private int noEntries;
+    private int entryCount;
 
     Http2WriteScheduler(
             SourceInputStreamFactory.SourceInputStream connection,
@@ -156,7 +156,7 @@ public class Http2WriteScheduler implements WriteScheduler
     public void doEnd()
     {
         end = true;
-        if (noEntries == 0 && !endSent)
+        if (entryCount == 0 && !endSent)
         {
             endSent = true;
             writer.doEnd();
@@ -183,7 +183,7 @@ public class Http2WriteScheduler implements WriteScheduler
             }
         }
 
-        if (noEntries == 0 && end && !endSent)
+        if (entryCount == 0 && end && !endSent)
         {
             endSent = true;
             writer.doEnd();
@@ -212,7 +212,7 @@ public class Http2WriteScheduler implements WriteScheduler
             }
         }
 
-        if (noEntries == 0 && end && !endSent)
+        if (entryCount == 0 && end && !endSent)
         {
             endSent = true;
             writer.doEnd();
@@ -272,7 +272,7 @@ public class Http2WriteScheduler implements WriteScheduler
             StreamEntry entry = (StreamEntry) stream.replyQueue.peek();
             if (entry.fits())
             {
-                noEntries--;
+                entryCount--;
                 return (StreamEntry) stream.replyQueue.poll();
             }
         }
@@ -300,7 +300,7 @@ public class Http2WriteScheduler implements WriteScheduler
             this.stream = stream;
             this.length = length;
             this.progress = progress;
-            noEntries++;
+            entryCount++;
         }
 
         boolean fits()
@@ -311,7 +311,7 @@ public class Http2WriteScheduler implements WriteScheduler
                 int remaining = length - min;
                 if (remaining > 0)
                 {
-                    noEntries--;
+                    entryCount--;
                     stream.replyQueue.poll();
                     StreamEntry entry1 = new StreamEntry(stream, min, progress);
                     StreamEntry entry2 = new StreamEntry(stream, remaining, progress);
