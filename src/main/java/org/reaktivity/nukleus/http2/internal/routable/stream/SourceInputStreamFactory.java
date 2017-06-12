@@ -15,7 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
@@ -70,6 +69,8 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
+import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
+import static org.reaktivity.nukleus.http2.internal.InternalSystemProperty.MAXIMUM_STREAMS_WITH_PENDING_WRITES;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
@@ -188,8 +189,8 @@ public final class SourceInputStreamFactory
         this.supplyStreamId = supplyStreamId;
         this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
-        int slotCapacity = BitUtil.findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
-        int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
+        int slotCapacity = findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
+        int totalCapacity = findNextPositivePowerOfTwo(MAXIMUM_STREAMS_WITH_PENDING_WRITES.intValue()) * slotCapacity;
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
     }

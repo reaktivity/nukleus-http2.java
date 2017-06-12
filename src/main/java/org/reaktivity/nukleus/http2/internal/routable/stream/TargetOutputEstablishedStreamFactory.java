@@ -39,6 +39,8 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
+import static org.reaktivity.nukleus.http2.internal.InternalSystemProperty.WINDOW_SIZE;
+
 public final class TargetOutputEstablishedStreamFactory
 {
     private final FrameFW frameRO = new FrameFW();
@@ -223,7 +225,7 @@ public final class TargetOutputEstablishedStreamFactory
                 }
 
                 this.streamState = this::afterBeginOrData;
-                this.window = 8192;
+                this.window = WINDOW_SIZE.intValue();
                 source.doWindow(sourceId, window);
             }
             else
