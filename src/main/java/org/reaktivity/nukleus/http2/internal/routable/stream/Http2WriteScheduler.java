@@ -34,6 +34,7 @@ public class Http2WriteScheduler implements WriteScheduler
     private final NukleusWriteScheduler writer;
 
     private boolean end;
+    private boolean endSent;
     private int noEntries;
 
     Http2WriteScheduler(
@@ -125,6 +126,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             connection.http2OutWindow -= length;
             stream.http2OutWindow -= length;
+            stream.totalOutData += length;
             return writer.data(streamId, buffer, offset, length, progress);
         }
         else
@@ -153,12 +155,12 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public void doEnd()
     {
-        if (noEntries == 0)
-        {
-            writer.doEnd();
-            return;
-        }
         end = true;
+        if (noEntries == 0 && !endSent)
+        {
+            endSent = true;
+            writer.doEnd();
+        }
     }
 
     @Override
@@ -175,13 +177,15 @@ public class Http2WriteScheduler implements WriteScheduler
 
                 if (entry.stream.endStream)
                 {
+                    entry.stream.endStream = false;
                     writer.dataEos(entry.stream.http2StreamId);
                 }
             }
         }
 
-        if (noEntries == 0 && end)
+        if (noEntries == 0 && end && !endSent)
         {
+            endSent = true;
             writer.doEnd();
         }
     }
@@ -203,12 +207,14 @@ public class Http2WriteScheduler implements WriteScheduler
 
             if (stream.endStream)
             {
+                stream.endStream = false;
                 writer.dataEos(streamId);
             }
         }
 
-        if (noEntries == 0 && end)
+        if (noEntries == 0 && end && !endSent)
         {
+            endSent = true;
             writer.doEnd();
         }
     }
@@ -322,6 +328,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             connection.http2OutWindow -= length;
             stream.http2OutWindow -= length;
+            stream.totalOutData += length;
         }
 
         public String toString()
