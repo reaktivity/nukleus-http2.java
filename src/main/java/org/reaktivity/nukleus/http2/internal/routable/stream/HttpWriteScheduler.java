@@ -18,7 +18,8 @@ public class HttpWriteScheduler
     private SourceInputStreamFactory.Http2Stream stream;
     private int slot = NO_SLOT;
     private CircularDirectBuffer targetBuffer;
-    private boolean endStream;
+    private boolean end;
+    private boolean endSent;
 
     HttpWriteScheduler(Slab slab, Target target, long targetId, SourceInputStreamFactory.Http2Stream stream)
     {
@@ -34,7 +35,7 @@ public class HttpWriteScheduler
      */
     boolean onData(Http2DataFW http2DataRO)
     {
-        endStream = http2DataRO.endStream();
+        end = http2DataRO.endStream();
 
         if (targetBuffer == null)
         {
@@ -61,8 +62,9 @@ public class HttpWriteScheduler
             }
 
             // since there is no data is pending, we can send END frame
-            if (endStream)
+            if (end && !endSent)
             {
+                endSent = true;
                 target.doHttpEnd(targetId);
             }
 
@@ -104,8 +106,9 @@ public class HttpWriteScheduler
             if (targetBuffer.size() == 0)
             {
                 // since there is no data is pending in slab, we can send END frame right away
-                if (endStream)
+                if (end && !endSent)
                 {
+                    endSent = true;
                     target.doHttpEnd(targetId);
                 }
 

@@ -1788,6 +1788,7 @@ public final class SourceInputStreamFactory
         CircularDirectBuffer replyBuffer;
         Deque replyQueue;
         public boolean endStream;
+        long totalOutData;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state, Route route)
         {
