@@ -46,6 +46,8 @@ public final class Context implements Closeable
     private Path configDirectory;
     private ControlLayout controlRO;
     private int maximumStreamsCount;
+    private int window;
+    private int maximumSlots;
     private int streamsBufferCapacity;
     private int throttleBufferCapacity;
     private Function<String, Path> sourceStreamsPath;
@@ -79,6 +81,16 @@ public final class Context implements Closeable
     public int maximumStreamsCount()
     {
         return maximumStreamsCount;
+    }
+
+    public int window()
+    {
+        return window;
+    }
+
+    public int maximumSlots()
+    {
+        return maximumSlots;
     }
 
     public int streamsBufferCapacity()
@@ -247,7 +259,9 @@ public final class Context implements Closeable
     }
 
     public Context conclude(
-        Configuration config)
+        Configuration config,
+        int window,
+        int maximumSlots)
     {
         try
         {
@@ -260,6 +274,10 @@ public final class Context implements Closeable
             this.throttleBufferCapacity = config.throttleBufferCapacity();
 
             this.maximumControlResponseLength = config.responseBufferCapacity() / 8;
+
+            this.maximumSlots = maximumSlots;
+
+            this.window = window;
 
             // default FileSystem cannot be closed
             watchService(FileSystems.getDefault().newWatchService());

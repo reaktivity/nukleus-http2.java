@@ -70,7 +70,6 @@ import java.util.function.UnaryOperator;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
-import static org.reaktivity.nukleus.http2.internal.InternalSystemProperty.MAXIMUM_STREAMS_WITH_PENDING_WRITES;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
@@ -182,7 +181,8 @@ public final class SourceInputStreamFactory
         LongFunction<List<Route>> supplyRoutes,
         LongSupplier supplyStreamId,
         Target replyTarget,
-        LongObjectBiConsumer<Correlation> correlateNew)
+        LongObjectBiConsumer<Correlation> correlateNew,
+        int maximumSlots)
     {
         this.source = source;
         this.supplyRoutes = supplyRoutes;
@@ -190,7 +190,7 @@ public final class SourceInputStreamFactory
         this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
         int slotCapacity = findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
-        int totalCapacity = findNextPositivePowerOfTwo(MAXIMUM_STREAMS_WITH_PENDING_WRITES.intValue()) * slotCapacity;
+        int totalCapacity = findNextPositivePowerOfTwo(maximumSlots) * slotCapacity;
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
     }

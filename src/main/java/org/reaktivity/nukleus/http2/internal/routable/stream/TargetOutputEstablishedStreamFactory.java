@@ -39,8 +39,6 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 
-import static org.reaktivity.nukleus.http2.internal.InternalSystemProperty.WINDOW_SIZE;
-
 public final class TargetOutputEstablishedStreamFactory
 {
     private final FrameFW frameRO = new FrameFW();
@@ -54,15 +52,18 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final Source source;
     private final LongFunction<Correlation> correlateEstablished;
+    private final int initialWindow;
 
     public TargetOutputEstablishedStreamFactory(
         Source source,
         Function<String, Target> supplyTarget,
         LongSupplier supplyStreamId,
-        LongFunction<Correlation> correlateEstablished)
+        LongFunction<Correlation> correlateEstablished,
+        int initialWindow)
     {
         this.source = source;
         this.correlateEstablished = correlateEstablished;
+        this.initialWindow = initialWindow;
     }
 
     public MessageHandler newStream()
@@ -225,7 +226,7 @@ public final class TargetOutputEstablishedStreamFactory
                 }
 
                 this.streamState = this::afterBeginOrData;
-                this.window = WINDOW_SIZE.intValue();
+                this.window = initialWindow;
                 source.doWindow(sourceId, window);
             }
             else

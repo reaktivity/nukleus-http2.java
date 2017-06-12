@@ -33,8 +33,11 @@ public final class Http2NukleusFactorySpi implements NukleusFactorySpi
     @Override
     public Nukleus create(Configuration config)
     {
+        int window = InternalSystemProperty.WINDOW_SIZE.intValue();
+        int maximumSlots = InternalSystemProperty.MAXIMUM_SLOTS.intValue();
+
         Context context = new Context();
-        context.conclude(config);
+        context.conclude(config, window, maximumSlots);
 
         Conductor conductor = new Conductor(context);
         Watcher watcher = new Watcher(context);

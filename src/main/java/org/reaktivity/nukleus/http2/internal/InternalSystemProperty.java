@@ -24,7 +24,7 @@ public enum InternalSystemProperty
     // Maximum window size for nuklei writing data to the http2 nukleus
     WINDOW_SIZE("nukleus.http2.window.size", "65535"),
 
-    MAXIMUM_STREAMS_WITH_PENDING_WRITES("nukleus.http2.maximum.pending.write.streams", "1000");
+    MAXIMUM_SLOTS("nukleus.http2.maximum.slots", "1000");
 
     private final String name;
     private final String defaultValue;

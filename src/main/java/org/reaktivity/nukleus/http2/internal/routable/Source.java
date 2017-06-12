@@ -69,7 +69,9 @@ public final class Source implements Nukleus
         Function<String, Target> supplyTarget,
         LongObjectBiConsumer<Correlation> correlateNew,
         LongFunction<Correlation> correlateEstablished,
-        LongFunction<Correlation> lookupEstablished)
+        LongFunction<Correlation> lookupEstablished,
+        int maximumSlots,
+        int window)
     {
         this.sourceName = sourceName;
         this.partitionName = partitionName;
@@ -83,9 +85,11 @@ public final class Source implements Nukleus
         Target rejectTarget = supplyTarget.apply(sourceName);
         this.streamFactories = new EnumMap<>(RouteKind.class);
         this.streamFactories.put(RouteKind.INPUT,
-                new SourceInputStreamFactory(this, supplyRoutes, supplyTargetId, rejectTarget, correlateNew)::newStream);
+            new SourceInputStreamFactory(this, supplyRoutes, supplyTargetId, rejectTarget, correlateNew,
+                    maximumSlots)::newStream);
         this.streamFactories.put(RouteKind.OUTPUT_ESTABLISHED,
-                new TargetOutputEstablishedStreamFactory(this, supplyTarget, supplyTargetId, correlateEstablished)::newStream);
+            new TargetOutputEstablishedStreamFactory(this, supplyTarget, supplyTargetId, correlateEstablished,
+                    window)::newStream);
         this.streamFactories.put(RouteKind.OUTPUT,
                 new SourceOutputStreamFactory(this, supplyRoutes, supplyTargetId, correlateNew)::newStream);
         this.streamFactories.put(RouteKind.INPUT_ESTABLISHED,
