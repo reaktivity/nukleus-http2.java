@@ -25,7 +25,6 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.broadcast.BroadcastTransmitter;
 import org.agrona.concurrent.ringbuffer.RingBuffer;
 import org.reaktivity.nukleus.Nukleus;
-import org.reaktivity.nukleus.Reaktive;
 import org.reaktivity.nukleus.http2.internal.Context;
 import org.reaktivity.nukleus.http2.internal.router.Router;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
@@ -37,7 +36,6 @@ import org.reaktivity.nukleus.http2.internal.types.control.RoutedFW;
 import org.reaktivity.nukleus.http2.internal.types.control.UnrouteFW;
 import org.reaktivity.nukleus.http2.internal.types.control.UnroutedFW;
 
-@Reaktive
 public final class Conductor implements Nukleus
 {
     private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
