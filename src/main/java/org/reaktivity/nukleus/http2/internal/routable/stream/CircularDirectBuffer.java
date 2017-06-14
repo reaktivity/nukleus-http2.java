@@ -32,7 +32,7 @@ class CircularDirectBuffer
      *
      *
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-     *  |x x x|     |x x x x x x x| |
+     *  |x x x|     |x x x x x x x|x|
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      *         ^     ^
      *       end     start
@@ -40,83 +40,65 @@ class CircularDirectBuffer
 
     private int start;
     private int end;
+    private int count;
 
     CircularDirectBuffer(int capacity)
     {
         this.capacity = capacity;
     }
 
-    /*
-     * @return offset at which data of given length can be written
-     *         -1 if there is no space to write
-     */
-    int writeOffset(int length)
+    boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
-        int prevEnd = end;
-        if (start == end)                   // empty
+        if (count + length > capacity)
         {
-            start = end = 0;
-            if (length < capacity)
-            {
-                return 0;
-            }
-        }
-        else if (start < end)
-        {
-            if (end + length < capacity)
-            {
-                return prevEnd;
-            }
-            else if (length < start)
-            {
-                return 0;
-            }
-        }
-        else                                // wrapped
-        {
-            if (end + length < start)
-            {
-                return prevEnd;
-            }
+            return false;
         }
 
-        return -1;
-    }
-
-    void write(int offset, int length)
-    {
-        end = offset + length;
-    }
-
-    int write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
-    {
-        int index = writeOffset(length);
-        if (index != -1)
+        if (end + length > capacity)
         {
-            dstBuffer.putBytes(index, srcBuffer, srcIndex, length);
-            end = index + length;
+            int firstPart = capacity - end;
+            int secondPart = length - firstPart;
+            dstBuffer.putBytes(end, srcBuffer, srcIndex, firstPart);
+            dstBuffer.putBytes(0, srcBuffer, srcIndex + firstPart, secondPart);
         }
-        return index;
+        else
+        {
+            dstBuffer.putBytes(end, srcBuffer, srcIndex, length);
+        }
+
+        count += length;
+        end = (end + length) % capacity;
+        return true;
     }
 
-    private int readOffset(int length)
+    int read(int length)
     {
-        return start + length < capacity ? start : 0;
+        if (length > count)
+        {
+            throw new IllegalArgumentException();
+        }
+
+        int read = (start + length > capacity) ? capacity - start : length;
+        count -= read;
+        start = (start + read) % capacity;
+
+        assert  read <= length;
+        return read;
     }
 
-    void read(int length)
+    int readOffset()
     {
-        start = readOffset(length) + length;
+        return start;
     }
 
-    void read(int offset, int length)
+    int size()
     {
-        start = offset + length;
+        return count;
     }
 
     public String toString()
     {
-        return "capacity = " + capacity + " [start = " + start + " end = " + end + "]";
+        return "[capacity = " + capacity + " (start = " + start + " end = " + end + ")]";
     }
 
 }

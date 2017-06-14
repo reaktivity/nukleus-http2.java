@@ -15,15 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
-import java.util.stream.IntStream;
-
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class CircularDirectBufferTest
 {
@@ -31,111 +29,42 @@ public class CircularDirectBufferTest
     @Test
     public void add()
     {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
+        int capacity = 100;
+        MutableDirectBuffer src = new UnsafeBuffer(new byte[capacity]);
+        MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
 
+        // will test all boundaries with start of the buffer at i
         for(int i=0; i < 100; i++)
         {
-            int offset = cb.writeOffset(20);
-            assertNotEquals(-1, offset);
-            cb.write(offset, 20);
+            CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
+            assertTrue(cb.write(dst, src, 0, i));
+            assertEquals(i, read(cb, i));
 
-            offset = cb.writeOffset(20);
-            assertNotEquals(-1, offset);
-            cb.write(offset, 20);
+            // now start is at i
+            assertTrue(cb.write(dst, src, 0, 20));
+            assertTrue(cb.write(dst, src, 0, 30));
+            assertTrue(cb.write(dst, src, 0, 40));
+            assertTrue(cb.write(dst, src, 0, 10));
+            assertFalse(cb.write(dst, src, 0, 20));
 
-            offset = cb.writeOffset(20);
-            assertNotEquals(-1, offset);
-            cb.write(offset, 20);
-
-            offset = cb.writeOffset(20);
-            assertNotEquals(-1, offset);
-            cb.write(offset, 20);
-
-            offset = cb.writeOffset(20);
-            assertEquals(-1, offset);
-
-            cb.read(20);
-            cb.read(20);
-            cb.read(20);
-            cb.read(20);
+            assertEquals(5, read(cb, 5));
+            assertEquals(20, read(cb, 20));
+            assertEquals(15, read(cb, 15));
+            assertEquals(30, read(cb, 30));
+            assertEquals(30, read(cb, 30));
         }
     }
 
-    @Test
-    public void add2()
+    private int read(CircularDirectBuffer cb, int length)
     {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
+        int part1 = cb.read(length);
+        int part2 = 0;
 
-        int offset = cb.writeOffset(20);
-        assertNotEquals(-1, offset);
-        cb.write(offset, 20);
-
-        offset = cb.writeOffset(20);
-        assertNotEquals(-1, offset);
-        cb.write(offset, 20);
-
-        offset = cb.writeOffset(20);
-        assertNotEquals(-1, offset);
-        cb.write(offset, 20);
-
-        offset = cb.writeOffset(20);
-        assertNotEquals(-1, offset);
-        cb.write(offset, 20);
-
-        offset = cb.writeOffset(20);
-        assertEquals(-1, offset);
-
-        cb.read(20);
-
-        offset = cb.writeOffset(20);
-        assertEquals(-1, offset);
-
-        offset = cb.writeOffset(19);
-        assertNotEquals(-1, offset);
-        cb.write(offset, 19);
-    }
-
-    @Test
-    public void remove()
-    {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
-
-        for(int i=0; i < 100; i++)
+        if (part1 != length)
         {
-            int offset = cb.writeOffset(20);
-            assertNotEquals(-1, offset);
-            cb.write(offset, 20);
-
-            cb.read(20);
+            part2 = cb.read(length-part1);
         }
-    }
-
-    @Test
-    public void testRandom()
-    {
-        CircularDirectBuffer cb = new CircularDirectBuffer(100);
-        Random random = new Random(System.currentTimeMillis());
-        List<Integer> list = new LinkedList<>();
-        IntStream.range(1, 1000).forEach(x ->
-        {
-            int adds = random.nextInt(10) + 1;
-            for(int i=0; i < adds; i++)
-            {
-                int no = random.nextInt(30) + 1;
-                int offset = cb.writeOffset(no);
-                if (offset != -1)
-                {
-                    cb.write(offset, no);
-                    list.add(no);
-                }
-            }
-
-            int removes = random.nextInt(10) + 1;
-            for(int i=0; i < removes && !list.isEmpty(); i++)
-            {
-                cb.read(list.remove(0));
-            }
-        });
+        return part1 + part2;
     }
 
 }

@@ -36,8 +36,13 @@ public final class Http2NukleusFactorySpi implements NukleusFactorySpi
         Configuration config,
         NukleusBuilder builder)
     {
+        int window = InternalSystemProperty.WINDOW_SIZE.intValue();
+        int maximumSlots = InternalSystemProperty.MAXIMUM_SLOTS.intValue();
+
         Context context = new Context();
-        context.conclude(config);
+        context.window(window)
+               .maximumSlots(maximumSlots)
+               .conclude(config);
 
         Conductor conductor = new Conductor(context);
         Watcher watcher = new Watcher(context);

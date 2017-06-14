@@ -52,15 +52,18 @@ public final class TargetOutputEstablishedStreamFactory
 
     private final Source source;
     private final LongFunction<Correlation> correlateEstablished;
+    private final int initialWindow;
 
     public TargetOutputEstablishedStreamFactory(
         Source source,
         Function<String, Target> supplyTarget,
         LongSupplier supplyStreamId,
-        LongFunction<Correlation> correlateEstablished)
+        LongFunction<Correlation> correlateEstablished,
+        int initialWindow)
     {
         this.source = source;
         this.correlateEstablished = correlateEstablished;
+        this.initialWindow = initialWindow;
     }
 
     public MessageHandler newStream()
@@ -223,7 +226,7 @@ public final class TargetOutputEstablishedStreamFactory
                 }
 
                 this.streamState = this::afterBeginOrData;
-                this.window = 8192;
+                this.window = initialWindow;
                 source.doWindow(sourceId, window);
             }
             else

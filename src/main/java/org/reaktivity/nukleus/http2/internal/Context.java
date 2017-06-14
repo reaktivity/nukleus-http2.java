@@ -46,6 +46,8 @@ public final class Context implements Closeable
     private Path configDirectory;
     private ControlLayout controlRO;
     private int maximumStreamsCount;
+    private int window;
+    private int maximumSlots;
     private int streamsBufferCapacity;
     private int throttleBufferCapacity;
     private Function<String, Path> sourceStreamsPath;
@@ -79,6 +81,28 @@ public final class Context implements Closeable
     public int maximumStreamsCount()
     {
         return maximumStreamsCount;
+    }
+
+    public Context window(int window)
+    {
+        this.window = window;
+        return this;
+    }
+
+    public int window()
+    {
+        return window;
+    }
+
+    public Context maximumSlots(int maximumSlots)
+    {
+        this.maximumSlots = maximumSlots;
+        return this;
+    }
+
+    public int maximumSlots()
+    {
+        return maximumSlots;
     }
 
     public int streamsBufferCapacity()
