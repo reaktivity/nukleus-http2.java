@@ -51,8 +51,10 @@ class NukleusWriteScheduler implements WriteScheduler
 
     private Deque<ConnectionEntry> replyQueue;
     private int replySlot = NO_SLOT;
-    private CircularDirectBuffer replyBuffer;
+    private CircularEntryBuffer replyBuffer;
     private Slab slab;
+    private boolean end;
+    private boolean endSent;
 
     NukleusWriteScheduler(
             SourceInputStreamFactory.SourceInputStream connection,
@@ -90,7 +92,7 @@ class NukleusWriteScheduler implements WriteScheduler
         else
         {
             MutableDirectBuffer dst = acquireReplyBuffer(this::write);    // TODO return value
-            CircularDirectBuffer cb = replyBuffer;
+            CircularEntryBuffer cb = replyBuffer;
             int offset = cb.writeOffset(lengthGuess);
             if (offset != -1)
             {
@@ -193,8 +195,12 @@ class NukleusWriteScheduler implements WriteScheduler
     @Override
     public void doEnd()
     {
-        // TODO wait until entries are drained ??
-        target.doEnd(targetId);
+        end = true;
+        if (!buffered() && !endSent)
+        {
+            endSent = true;
+            target.doEnd(targetId);
+        }
     }
 
     // Since it is not encoding, this gives an approximate length of header block
@@ -217,8 +223,13 @@ class NukleusWriteScheduler implements WriteScheduler
     @Override
     public void onWindow()
     {
-        ConnectionEntry entry;
+        if (connection.outWindow < connection.outWindowThreshold)
+        {
+            // Instead of sending small updates, wait until a bigger window accumulates
+            return;
+        }
 
+        ConnectionEntry entry;
         while ((entry = pop()) != null)
         {
             DirectBuffer read = acquireReplyBuffer(this::read);
@@ -228,9 +239,16 @@ class NukleusWriteScheduler implements WriteScheduler
                 entry.progress.accept(entry.payload);
             }
         }
-        if (replyQueue != null && replyQueue.isEmpty())
+
+        if (!buffered())
         {
             releaseReplyBuffer();
+
+            if (end && !endSent)
+            {
+                endSent = true;
+                target.doEnd(targetId);
+            }
         }
     }
 
@@ -292,7 +310,7 @@ class NukleusWriteScheduler implements WriteScheduler
             if (replySlot != NO_SLOT)
             {
                 int capacity = slab.buffer(replySlot).capacity();
-                replyBuffer = new CircularDirectBuffer(capacity);
+                replyBuffer = new CircularEntryBuffer(capacity);
                 replyQueue = new LinkedList<>();
             }
         }
@@ -354,11 +372,6 @@ class NukleusWriteScheduler implements WriteScheduler
 
         boolean fits()
         {
-            if (connection.outWindow < connection.outWindowThreshold)
-            {
-                // Instead of sending small updates, wait until a bigger window accumulates
-                return false;
-            }
             int entry1Length = Math.min(length, connection.outWindow);
             if (entry1Length > 0)
             {

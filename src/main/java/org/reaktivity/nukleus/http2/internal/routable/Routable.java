@@ -163,7 +163,8 @@ public final class Routable extends Nukleus.Composite
 
         return include(new Source(sourceName, partitionName, layout, writeBuffer,
                                   this::supplyRoutes, supplyTargetId,
-                                  this::supplyTarget, correlateNew, correlateEstablished, lookupEstablished));
+                                  this::supplyTarget, correlateNew, correlateEstablished, lookupEstablished,
+                                  context.maximumSlots(), context.window()));
     }
 
     private Target supplyTarget(

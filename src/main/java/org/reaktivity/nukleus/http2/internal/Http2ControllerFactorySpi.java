@@ -38,8 +38,13 @@ public final class Http2ControllerFactorySpi implements ControllerFactorySpi<Htt
         Configuration config,
         ControllerBuilder<Http2Controller> builder)
     {
+        int window = InternalSystemProperty.WINDOW_SIZE.intValue();
+        int maximumSlots = InternalSystemProperty.MAXIMUM_SLOTS.intValue();
+
         Context context = new Context();
         context.readonly(true)
+               .window(window)
+               .maximumSlots(maximumSlots)
                .conclude(config);
 
         return new Http2Controller(context);

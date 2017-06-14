@@ -15,7 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.routable.stream;
 
-import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
@@ -70,6 +69,7 @@ import java.util.function.Predicate;
 import java.util.function.UnaryOperator;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
+import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
 import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
@@ -145,7 +145,7 @@ public final class SourceInputStreamFactory
         int path;
         boolean regularHeader;
         Http2ErrorCode streamError;
-        int contentLength = -1;
+        long contentLength = -1;
 
         void reset()
         {
@@ -181,15 +181,16 @@ public final class SourceInputStreamFactory
         LongFunction<List<Route>> supplyRoutes,
         LongSupplier supplyStreamId,
         Target replyTarget,
-        LongObjectBiConsumer<Correlation> correlateNew)
+        LongObjectBiConsumer<Correlation> correlateNew,
+        int maximumSlots)
     {
         this.source = source;
         this.supplyRoutes = supplyRoutes;
         this.supplyStreamId = supplyStreamId;
         this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
-        int slotCapacity = BitUtil.findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
-        int totalCapacity = 128 * slotCapacity;     // TODO max concurrent connections
+        int slotCapacity = findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
+        int totalCapacity = findNextPositivePowerOfTwo(maximumSlots) * slotCapacity;
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
     }
@@ -1515,7 +1516,7 @@ public final class SourceInputStreamFactory
             if (!headersContext.error() && name.equals(decodeContext.nameBuffer(28)))
             {
                 String contentLength = value.getStringWithoutLengthUtf8(0, value.capacity());
-                headersContext.contentLength = Integer.parseInt(contentLength);
+                headersContext.contentLength = Long.parseLong(contentLength);
             }
         }
 
@@ -1771,10 +1772,8 @@ public final class SourceInputStreamFactory
 
     class Http2Stream
     {
-        private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
-        private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
-
         private final SourceInputStream connection;
+        private final HttpWriteScheduler httpWriteScheduler;
         final int http2StreamId;
         private final long targetId;
         private final Route route;
@@ -1784,17 +1783,13 @@ public final class SourceInputStreamFactory
 
         private long contentLength;
         private long totalData;
-        private int targetWindow;
-        private int targetSlotIndex = NO_SLOT;
-        private int targetSlotPosition;
+        int targetWindow;
 
         private int replySlot = NO_SLOT;
         CircularDirectBuffer replyBuffer;
         Deque replyQueue;
-
-        private MessageHandler streamState;
-        private MessageHandler throttleState;
-        private boolean endStream;
+        public boolean endStream;
+        long totalOutData;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state, Route route)
         {
@@ -1804,9 +1799,8 @@ public final class SourceInputStreamFactory
             this.http2InWindow = connection.localSettings.initialWindowSize;
             this.http2OutWindow = connection.remoteSettings.initialWindowSize;
             this.state = state;
-            this.throttleState = this::throttleNoSlab;
-            this.streamState = this::streamNoSlab;
             this.route = route;
+            this.httpWriteScheduler = new HttpWriteScheduler(frameSlab, route.target(), targetId, this);
         }
 
         boolean isClientInitiated()
@@ -1816,81 +1810,10 @@ public final class SourceInputStreamFactory
 
         private void onData()
         {
-            streamState.onMessage(0, null, 0, 0);
+            httpWriteScheduler.onData(http2DataRO);
         }
 
-        private void streamNoSlab(
-                int msgTypeId,
-                MutableDirectBuffer buffer,
-                int index,
-                int length)
-        {
-            assert targetSlotIndex == NO_SLOT;
-            assert targetSlotPosition == 0;
-            assert !endStream;
-
-            endStream = http2DataRO.endStream();
-
-            int data = http2DataRO.dataLength();
-            int toHttp = data > targetWindow ? targetWindow : data;
-            int toSlab = data - toHttp;
-
-            if (toHttp > 0)
-            {
-                route.target().doHttpData(targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
-                sendHttp2Window(toHttp);
-            }
-
-            if (toSlab > 0)
-            {
-                boolean acquired = acquireSlot(targetId);
-                if (!acquired)
-                {
-                    throw new UnsupportedOperationException("TODO no slots available");
-                    // TODO reset
-                    //streamState =;
-                    //throttleState = this::throttleIgnore;
-                    //return;
-                }
-                MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::write);
-                targetBuffer.putBytes(0, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
-                targetSlotPosition = toSlab;
-                streamState = this::streamSlab;
-                throttleState = this::throttleSlab;
-            }
-            else if (endStream)
-            {
-                // since there is no data is pending, we can send END frame
-                route.target().doHttpEnd(targetId);
-            }
-        }
-
-        private void streamSlab(
-                int msgTypeId,
-                MutableDirectBuffer buffer,
-                int index,
-                int length)
-        {
-            assert targetSlotIndex != NO_SLOT;
-            assert targetSlotPosition > 0;
-            assert !endStream;
-
-            endStream = http2DataRO.endStream();
-            MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::write);
-            targetBuffer.putBytes(targetSlotPosition, http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
-            targetSlotPosition += http2DataRO.dataLength();
-        }
-
-        void onThrottle(
-                int msgTypeId,
-                MutableDirectBuffer buffer,
-                int index,
-                int length)
-        {
-            throttleState.onMessage(msgTypeId, buffer, index, length);
-        }
-
-        private void throttleNoSlab(
+        private void onThrottle(
                 int msgTypeId,
                 DirectBuffer buffer,
                 int index,
@@ -1902,6 +1825,7 @@ public final class SourceInputStreamFactory
                     windowRO.wrap(buffer, index, index + length);
                     int update = windowRO.update();
                     targetWindow += update;
+                    httpWriteScheduler.onWindow();
                     break;
                 case ResetFW.TYPE_ID:
                     doReset(buffer, index, length);
@@ -1909,82 +1833,6 @@ public final class SourceInputStreamFactory
                 default:
                     // ignore
                     break;
-            }
-        }
-
-        private void throttleSlab(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
-        {
-            switch (msgTypeId)
-            {
-                case WindowFW.TYPE_ID:
-                    windowRO.wrap(buffer, index, index + length);
-                    long targetId = windowRO.streamId();
-                    int update = windowRO.update();
-                    targetWindow += update;
-
-                    int data = targetSlotPosition;
-                    int toHttp = data > targetWindow ? targetWindow : data;
-                    int toSlab = data - toHttp;
-
-
-
-                    if (toHttp > 0)
-                    {
-                        MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::read);
-                        route.target().doHttpData(targetId, targetBuffer, 0, toHttp);
-                        sendHttp2Window(toHttp);
-                    }
-
-                    if (toSlab > 0)
-                    {
-                        MutableDirectBuffer targetBuffer = frameSlab.buffer(targetSlotIndex, this::write);
-                        targetBuffer.putBytes(0, targetBuffer, toHttp, toSlab);
-                        targetSlotPosition = toSlab;
-                    }
-                    else
-                    {
-                        releaseSlot();
-                        streamState = this::streamNoSlab;
-                        throttleState = this::throttleNoSlab;
-                        if (endStream)
-                        {
-                            // since there is no data is pending in slab, we can send END frame right away
-                            route.target().doHttpEnd(targetId);
-                        }
-                    }
-
-                    break;
-                case ResetFW.TYPE_ID:
-                    doReset(buffer, index, length);
-                    break;
-                default:
-                    // ignore
-                    break;
-            }
-        }
-
-        private boolean acquireSlot(long streamId)
-        {
-            if (targetSlotPosition == 0)
-            {
-                assert targetSlotIndex == NO_SLOT;
-                targetSlotIndex = frameSlab.acquire(streamId);
-                return targetSlotIndex != NO_SLOT;
-            }
-            return true;
-        }
-
-        private void releaseSlot()
-        {
-            if (targetSlotIndex != NO_SLOT)
-            {
-                frameSlab.release(targetSlotIndex);
-                targetSlotIndex = NO_SLOT;
-                targetSlotPosition = 0;
             }
         }
 
@@ -2024,12 +1872,12 @@ public final class SourceInputStreamFactory
                 int length)
         {
             resetRO.wrap(buffer, index, index + length);
-            releaseSlot();
+            httpWriteScheduler.onReset();
             releaseReplyBuffer();
             //source.doReset(sourceId);
         }
 
-        private void sendHttp2Window(int update)
+        void sendHttp2Window(int update)
         {
             targetWindow -= update;
 
@@ -2041,18 +1889,6 @@ public final class SourceInputStreamFactory
 
             // stream-level flow-control
             connection.writeScheduler.windowUpdate(http2StreamId, update);
-        }
-
-        private MutableDirectBuffer read(MutableDirectBuffer buffer)
-        {
-            read.wrap(buffer.addressOffset(), buffer.capacity());
-            return read;
-        }
-
-        private MutableDirectBuffer write(MutableDirectBuffer buffer)
-        {
-            write.wrap(buffer.addressOffset(), buffer.capacity());
-            return write;
         }
 
     }
