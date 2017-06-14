@@ -43,7 +43,9 @@ public final class Http2ControllerFactorySpi implements ControllerFactorySpi<Htt
 
         Context context = new Context();
         context.readonly(true)
-               .conclude(config, window, maximumSlots);
+               .window(window)
+               .maximumSlots(maximumSlots)
+               .conclude(config);
 
         return new Http2Controller(context);
     }

@@ -40,7 +40,9 @@ public final class Http2NukleusFactorySpi implements NukleusFactorySpi
         int maximumSlots = InternalSystemProperty.MAXIMUM_SLOTS.intValue();
 
         Context context = new Context();
-        context.conclude(config, window, maximumSlots);
+        context.window(window)
+               .maximumSlots(maximumSlots)
+               .conclude(config);
 
         Conductor conductor = new Conductor(context);
         Watcher watcher = new Watcher(context);

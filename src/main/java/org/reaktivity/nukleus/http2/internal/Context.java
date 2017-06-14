@@ -83,9 +83,21 @@ public final class Context implements Closeable
         return maximumStreamsCount;
     }
 
+    public Context window(int window)
+    {
+        this.window = window;
+        return this;
+    }
+
     public int window()
     {
         return window;
+    }
+
+    public Context maximumSlots(int maximumSlots)
+    {
+        this.maximumSlots = maximumSlots;
+        return this;
     }
 
     public int maximumSlots()
@@ -259,9 +271,7 @@ public final class Context implements Closeable
     }
 
     public Context conclude(
-        Configuration config,
-        int window,
-        int maximumSlots)
+        Configuration config)
     {
         try
         {
@@ -274,10 +284,6 @@ public final class Context implements Closeable
             this.throttleBufferCapacity = config.throttleBufferCapacity();
 
             this.maximumControlResponseLength = config.responseBufferCapacity() / 8;
-
-            this.maximumSlots = maximumSlots;
-
-            this.window = window;
 
             // default FileSystem cannot be closed
             watchService(FileSystems.getDefault().newWatchService());

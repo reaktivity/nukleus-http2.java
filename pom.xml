@@ -147,7 +147,6 @@
           </includes>
           <excludes>
             <exclude>src/conf/**</exclude>
-            <exclude>src/**/*.btm</exclude>
           </excludes>
           <failIfUnknown>true</failIfUnknown>
         </configuration>
