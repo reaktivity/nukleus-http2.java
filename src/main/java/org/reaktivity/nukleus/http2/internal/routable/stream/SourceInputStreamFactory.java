@@ -221,9 +221,10 @@ public final class SourceInputStreamFactory
         int lastStreamId;
         long sourceRef;
         private long correlationId;
-        int window;
-        int outWindow = -1;
-        int outWindowThreshold;
+        private final int initialWindow = 8192; // TODO config
+        int window = initialWindow;
+        int outWindow;
+        int outWindowThreshold = -1;
 
         private final WriteScheduler writeScheduler;
 
@@ -422,10 +423,7 @@ public final class SourceInputStreamFactory
             this.correlationId = beginRO.correlationId();
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;
-
-            final int initial = 8192;
-            this.window += initial;
-            source.doWindow(sourceId, initial);
+            source.doWindow(sourceId, window);
 
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
@@ -447,8 +445,9 @@ public final class SourceInputStreamFactory
             }
             else
             {
-                this.window += length;
-                source.doWindow(sourceId, length);
+                this.window += dataRO.length();
+                assert window <= initialWindow;
+                source.doWindow(sourceId, dataRO.length());
                 final OctetsFW payload = dataRO.payload();
                 final int limit = payload.limit();
 
@@ -1300,7 +1299,7 @@ public final class SourceInputStreamFactory
         {
             windowRO.wrap(buffer, index, index + length);
             int update = windowRO.update();
-            if (outWindow == -1)
+            if (outWindowThreshold == -1)
             {
                 outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
             }
