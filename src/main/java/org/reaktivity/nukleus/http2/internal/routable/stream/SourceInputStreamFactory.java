@@ -122,6 +122,7 @@ public final class SourceInputStreamFactory
     private final LongSupplier supplyStreamId;
     private final Target replyTarget;
     private final LongObjectBiConsumer<Correlation> correlateNew;
+    private final LongFunction<Correlation> correlateEstablished;
     private final Slab frameSlab;
     private final Slab headersSlab;
 
@@ -182,6 +183,7 @@ public final class SourceInputStreamFactory
         LongSupplier supplyStreamId,
         Target replyTarget,
         LongObjectBiConsumer<Correlation> correlateNew,
+        LongFunction<Correlation> correlateEstablished,
         int maximumSlots)
     {
         this.source = source;
@@ -189,6 +191,7 @@ public final class SourceInputStreamFactory
         this.supplyStreamId = supplyStreamId;
         this.replyTarget = replyTarget;
         this.correlateNew = correlateNew;
+        this.correlateEstablished = correlateEstablished;
         int slotCapacity = findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
         int totalCapacity = findNextPositivePowerOfTwo(maximumSlots) * slotCapacity;
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
@@ -396,18 +399,12 @@ public final class SourceInputStreamFactory
         void cleanConnection()
         {
             replyTarget.removeThrottle(sourceOutputEstId);
-
             source.removeStream(sourceId);
-            if (streamState != null)
-            {
-                writeScheduler.doEnd();
-            }
-
             for(Http2Stream http2Stream : http2Streams.values())
             {
-                http2Stream.route.target().removeThrottle(http2Stream.targetId);
-                http2Stream.route.target().doHttpEnd(http2Stream.targetId);
+                closeStream(http2Stream);
             }
+            http2Streams.clear();
             streamState = this::streamAfterReset;
         }
 
@@ -473,8 +470,9 @@ public final class SourceInputStreamFactory
             writeScheduler.doEnd();
             for(Http2Stream http2Stream : http2Streams.values())
             {
-                http2Stream.route.target().doEnd(http2Stream.targetId);
+                closeStream(http2Stream);
             }
+            http2Streams.clear();
 
             if (frameSlotIndex != NO_SLOT)
             {
@@ -990,7 +988,9 @@ public final class SourceInputStreamFactory
             {
                 noPromisedStreams--;
             }
+            correlateEstablished.apply(stream.targetId);    // remove from Correlations map
             http2Streams.remove(stream.http2StreamId);
+            stream.route.target().removeThrottle(stream.targetId);
 
             stream.route.target().doHttpEnd(stream.targetId);
         }
