@@ -16,28 +16,29 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.reaktivity.nukleus.Configuration;
-import org.reaktivity.nukleus.Nukleus;
-import org.reaktivity.nukleus.NukleusBuilder;
-import org.reaktivity.nukleus.NukleusFactorySpi;
 
-import static org.reaktivity.nukleus.route.RouteKind.SERVER;
-
-public final class Http2NukleusFactorySpi implements NukleusFactorySpi
+public class Http2Configuration extends Configuration
 {
-    @Override
-    public String name()
+
+    public static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";
+    public static final String HTTP_WINDOW_BYTES = "nukleus.http2.window.bytes";
+
+    public static final int HTTP2_WINDOW_BYTES_DEFAULT = 8192;
+    public static final int HTTP_WINDOW_BYTES_DEFAULT = 8192;
+
+    public Http2Configuration(Configuration config)
     {
-        return "http2";
+        super(config);
     }
 
-    @Override
-    public Nukleus create(
-            Configuration config,
-            NukleusBuilder builder)
+    public int http2Window()
     {
-        Http2Configuration http2Config = new Http2Configuration(config);
-        ServerStreamFactoryBuilder streamFactoryBuilder = new ServerStreamFactoryBuilder(http2Config);
-        return builder.streamFactory(SERVER, streamFactoryBuilder)
-                      .build();
+        return getInteger(HTTP2_WINDOW_BYTES, HTTP2_WINDOW_BYTES_DEFAULT);
     }
+
+    public int httpWindow()
+    {
+        return getInteger(HTTP_WINDOW_BYTES, HTTP_WINDOW_BYTES_DEFAULT);
+    }
+
 }

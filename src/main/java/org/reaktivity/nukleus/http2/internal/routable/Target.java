@@ -25,7 +25,6 @@ import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.agrona.concurrent.ringbuffer.RingBuffer;
 import org.reaktivity.nukleus.Nukleus;
-import org.reaktivity.nukleus.http2.internal.Http2Nukleus;
 import org.reaktivity.nukleus.http2.internal.layouts.StreamsLayout;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -51,7 +50,7 @@ import java.util.function.Consumer;
 
 public final class Target implements Nukleus
 {
-    private static final DirectBuffer SOURCE_NAME_BUFFER = new UnsafeBuffer(Http2Nukleus.NAME.getBytes(UTF_8));
+    private static final DirectBuffer SOURCE_NAME_BUFFER = new UnsafeBuffer("http2".getBytes(UTF_8));
 
     private final FrameFW frameRO = new FrameFW();
 

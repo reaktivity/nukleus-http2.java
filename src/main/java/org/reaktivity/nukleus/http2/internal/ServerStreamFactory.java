@@ -1,0 +1,528 @@
+/**
+ * Copyright 2016-2017 The Reaktivity Project
+ *
+ * The Reaktivity Project licenses this file to you under the Apache License,
+ * version 2.0 (the "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at:
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
+package org.reaktivity.nukleus.http2.internal;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.collections.Long2ObjectHashMap;
+import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.function.MessageFunction;
+import org.reaktivity.nukleus.function.MessagePredicate;
+import org.reaktivity.nukleus.http2.internal.routable.Correlation;
+import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.route.RouteHandler;
+import org.reaktivity.nukleus.stream.StreamFactory;
+
+import java.nio.ByteBuffer;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
+
+import static java.util.Objects.requireNonNull;
+import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
+
+public final class ServerStreamFactory implements StreamFactory
+{
+    private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
+
+    private final RouteFW routeRO = new RouteFW();
+
+    private final BeginFW beginRO = new BeginFW();
+    private final DataFW dataRO = new DataFW();
+    private final EndFW endRO = new EndFW();
+
+    private final BeginFW.Builder beginRW = new BeginFW.Builder();
+    private final DataFW.Builder dataRW = new DataFW.Builder();
+    private final EndFW.Builder endRW = new EndFW.Builder();
+
+    private final WindowFW windowRO = new WindowFW();
+    private final ResetFW resetRO = new ResetFW();
+
+
+    private final OctetsFW outNetOctetsRO = new OctetsFW();
+    private final OctetsFW outAppOctetsRO = new OctetsFW();
+
+    private final WindowFW.Builder windowRW = new WindowFW.Builder();
+    private final ResetFW.Builder resetRW = new ResetFW.Builder();
+
+    private final Http2Configuration config;
+    private final RouteHandler router;
+    private final MutableDirectBuffer writeBuffer;
+    private final BufferPool bufferPool;
+    private final LongSupplier supplyStreamId;
+    private final LongSupplier supplyCorrelationId;
+
+    private final Long2ObjectHashMap<Correlation> correlations;
+    private final MessageFunction<RouteFW> wrapRoute;
+
+
+    public ServerStreamFactory(
+            Http2Configuration config,
+            RouteHandler router,
+            MutableDirectBuffer writeBuffer,
+            Supplier<BufferPool> supplyBufferPool,
+            LongSupplier supplyStreamId,
+            LongSupplier supplyCorrelationId,
+            Long2ObjectHashMap<Correlation> correlations)
+    {
+        this.config = config;
+        this.router = requireNonNull(router);
+        this.writeBuffer = requireNonNull(writeBuffer);
+        this.bufferPool = requireNonNull(supplyBufferPool).get();
+        this.supplyStreamId = requireNonNull(supplyStreamId);
+        this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
+        this.correlations = requireNonNull(correlations);
+
+        this.wrapRoute = this::wrapRoute;
+    }
+
+    @Override
+    public MessageConsumer newStream(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length,
+            MessageConsumer throttle)
+    {
+        final BeginFW begin = beginRO.wrap(buffer, index, index + length);
+        final long sourceRef = begin.sourceRef();
+
+        MessageConsumer newStream = null;
+
+        if (sourceRef == 0L)
+        {
+            newStream = newConnectReplyStream(begin, throttle);
+        }
+        else
+        {
+            newStream = newAcceptStream(begin, throttle);
+        }
+
+        return newStream;
+    }
+
+    private MessageConsumer newAcceptStream(
+            final BeginFW begin,
+            final MessageConsumer networkThrottle)
+    {
+        final long networkRef = begin.sourceRef();
+        final String acceptName = begin.source().asString();
+
+        final MessagePredicate filter = (t, b, o, l) ->
+        {
+            final RouteFW route = routeRO.wrap(b, o, l);
+            return networkRef == route.sourceRef() &&
+                    acceptName.equals(route.source().asString());
+        };
+
+        final RouteFW route = router.resolve(filter, this::wrapRoute);
+
+        MessageConsumer newStream = null;
+
+        if (route != null)
+        {
+            final long networkId = begin.streamId();
+
+
+            newStream = new ServerAcceptStream(networkThrottle, networkId, networkRef)::handleStream;
+        }
+
+        return newStream;
+    }
+
+    private MessageConsumer newConnectReplyStream(
+            final BeginFW begin,
+            final MessageConsumer throttle)
+    {
+        final long throttleId = begin.streamId();
+
+        return new ServerConnectReplyStream(throttle, throttleId)::handleStream;
+    }
+
+    private RouteFW wrapRoute(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
+    {
+        return routeRO.wrap(buffer, index, index + length);
+    }
+
+    private final class ServerAcceptStream
+    {
+        private final MessageConsumer networkThrottle;
+        private final long networkId;
+        private final long networkRef;
+
+        private String networkReplyName;
+        private MessageConsumer networkReply;
+        private long networkReplyId;
+
+        private int networkSlot = NO_SLOT;
+        private int networkSlotOffset;
+
+        private MessageConsumer applicationTarget;
+        private long applicationId;
+
+        private MessageConsumer streamState;
+
+        private ServerAcceptStream(
+                MessageConsumer networkThrottle,
+                long networkId,
+                long networkRef)
+        {
+            this.networkThrottle = networkThrottle;
+            this.networkId = networkId;
+            this.networkRef = networkRef;
+            this.streamState = this::beforeBegin;
+        }
+
+        private void handleStream(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            streamState.accept(msgTypeId, buffer, index, length);
+        }
+
+        private void beforeBegin(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            if (msgTypeId == BeginFW.TYPE_ID)
+            {
+                final BeginFW begin = beginRO.wrap(buffer, index, index + length);
+                handleBegin(begin);
+            }
+            else
+            {
+                doReset(networkThrottle, networkId);
+            }
+        }
+
+        private void handleBegin(
+                BeginFW begin)
+        {
+            final String networkReplyName = begin.source().asString();
+            final long networkCorrelationId = begin.correlationId();
+
+            final MessageConsumer networkReply = router.supplyTarget(networkReplyName);
+            final long newNetworkReplyId = supplyStreamId.getAsLong();
+
+            doWindow(networkThrottle, networkId, 0, 0);
+
+            doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
+            router.setThrottle(networkReplyName, newNetworkReplyId, null);
+
+            this.streamState = null;
+            this.networkReplyName = networkReplyName;
+            this.networkReply = networkReply;
+            this.networkReplyId = newNetworkReplyId;
+
+        }
+
+        private void afterHandshake(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case DataFW.TYPE_ID:
+                    final DataFW data = dataRO.wrap(buffer, index, index + length);
+                    handleData(data);
+                    break;
+                case EndFW.TYPE_ID:
+                    final EndFW end = endRO.wrap(buffer, index, index + length);
+                    handleEnd(end);
+                    break;
+                default:
+                    doReset(networkThrottle, networkId);
+                    break;
+            }
+        }
+
+        private void handleData(
+                DataFW data)
+        {
+            final OctetsFW payload = data.payload();
+
+        }
+
+        private void handleEnd(
+                EndFW end)
+        {
+        }
+
+        private void handleThrottle(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case WindowFW.TYPE_ID:
+                    final WindowFW window = windowRO.wrap(buffer, index, index + length);
+                    handleWindow(window);
+                    break;
+                case ResetFW.TYPE_ID:
+                    final ResetFW reset = resetRO.wrap(buffer, index, index + length);
+                    handleReset(reset);
+                    break;
+                default:
+                    // ignore
+                    break;
+            }
+        }
+
+        private void handleWindow(
+                WindowFW window)
+        {
+            // TODO: this is post handshake
+            final int writableBytes = window.update();
+            final int writableFrames = window.frames();
+            final int newWritableBytes = writableBytes; // TODO: consider TLS Record padding
+
+            doWindow(networkThrottle, networkId, newWritableBytes, writableFrames);
+        }
+
+        private void handleReset(
+                ResetFW reset)
+        {
+            doReset(networkThrottle, networkId);
+        }
+    }
+
+
+    private final class ServerConnectReplyStream
+    {
+        private final MessageConsumer applicationReplyThrottle;
+        private final long applicationReplyId;
+
+        private MessageConsumer networkReply;
+        private long networkReplyId;
+
+        private MessageConsumer streamState;
+
+        private ServerConnectReplyStream(
+                MessageConsumer applicationReplyThrottle,
+                long applicationReplyId)
+        {
+            this.applicationReplyThrottle = applicationReplyThrottle;
+            this.applicationReplyId = applicationReplyId;
+            this.streamState = this::beforeBegin;
+        }
+
+        private void handleStream(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            streamState.accept(msgTypeId, buffer, index, length);
+        }
+
+        private void beforeBegin(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            if (msgTypeId == BeginFW.TYPE_ID)
+            {
+                final BeginFW begin = beginRO.wrap(buffer, index, index + length);
+                handleBegin(begin);
+            }
+            else
+            {
+                doReset(applicationReplyThrottle, applicationReplyId);
+            }
+        }
+
+        private void afterBegin(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case DataFW.TYPE_ID:
+                    final DataFW data = dataRO.wrap(buffer, index, index + length);
+                    handleData(data);
+                    break;
+                case EndFW.TYPE_ID:
+                    final EndFW end = endRO.wrap(buffer, index, index + length);
+                    handleEnd(end);
+                    break;
+                default:
+                    doReset(applicationReplyThrottle, applicationReplyId);
+                    break;
+            }
+        }
+
+        private void handleBegin(
+                BeginFW begin)
+        {
+            final long sourceRef = begin.sourceRef();
+            final long correlationId = begin.correlationId();
+
+
+        }
+
+        private void handleData(
+                DataFW data)
+        {
+            final OctetsFW payload = data.payload();
+
+        }
+
+        private void handleEnd(
+                EndFW end)
+        {
+        }
+
+        private void handleThrottle(
+                int msgTypeId,
+                DirectBuffer buffer,
+                int index,
+                int length)
+        {
+            switch (msgTypeId)
+            {
+                case WindowFW.TYPE_ID:
+                    final WindowFW window = windowRO.wrap(buffer, index, index + length);
+                    handleWindow(window);
+                    break;
+                case ResetFW.TYPE_ID:
+                    final ResetFW reset = resetRO.wrap(buffer, index, index + length);
+                    handleReset(reset);
+                    break;
+                default:
+                    // ignore
+                    break;
+            }
+        }
+
+        private void handleWindow(
+                final WindowFW window)
+        {
+            final int writableBytes = window.update();
+            final int writableFrames = window.frames();
+            final int newWritableBytes = writableBytes; // TODO: consider TLS Record padding
+
+            doWindow(applicationReplyThrottle, applicationReplyId, newWritableBytes, writableFrames);
+        }
+
+        private void handleReset(
+                ResetFW reset)
+        {
+            doReset(applicationReplyThrottle, applicationReplyId);
+        }
+    }
+
+    private void alignSlotBuffer(
+            final MutableDirectBuffer slotBuffer,
+            final int bytesConsumed,
+            final int bytesRemaining)
+    {
+        if (bytesConsumed > 0)
+        {
+            writeBuffer.putBytes(0, slotBuffer, bytesConsumed, bytesRemaining);
+            slotBuffer.putBytes(0, writeBuffer, 0, bytesRemaining);
+        }
+    }
+
+    private void doBegin(
+            final MessageConsumer target,
+            final long targetId,
+            final long targetRef,
+            final long correlationId)
+    {
+        final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                     .streamId(targetId)
+                                     .source("tls")
+                                     .sourceRef(targetRef)
+                                     .correlationId(correlationId)
+                                     .extension(e -> e.reset())
+                                     .build();
+
+        target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
+    }
+
+    private void doData(
+            final MessageConsumer target,
+            final long targetId,
+            final OctetsFW payload)
+    {
+        final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                  .streamId(targetId)
+                                  .payload(p -> p.set(payload.buffer(), payload.offset(), payload.sizeof()))
+                                  .extension(e -> e.reset())
+                                  .build();
+
+        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    private void doEnd(
+            final MessageConsumer target,
+            final long targetId)
+    {
+        final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                               .streamId(targetId)
+                               .extension(e -> e.reset())
+                               .build();
+
+        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+    }
+
+    private void doWindow(
+            final MessageConsumer throttle,
+            final long throttleId,
+            final int writableBytes,
+            final int writableFrames)
+    {
+        final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                        .streamId(throttleId)
+                                        .update(writableBytes)
+                                        .frames(writableFrames)
+                                        .build();
+
+        throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
+    }
+
+    private void doReset(
+            final MessageConsumer throttle,
+            final long throttleId)
+    {
+        final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                     .streamId(throttleId)
+                                     .build();
+
+        throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+    }
+}

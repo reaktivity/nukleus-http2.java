@@ -140,7 +140,7 @@ public class Http2ServerBM
         reaktor.start();
         this.sourceInputRef = controller.routeServer("source", 0L, "http2", 0L, headers).get();
 
-        this.sourceInputStreams = controller.streams("source");
+        //this.sourceInputStreams = controller.streams("source");
         // Handshake streams (not used yet)
         //this.sourceOutputEstStreams = controller.streams("source", "source");
         this.sourceInputId = random.nextLong();
@@ -158,7 +158,7 @@ public class Http2ServerBM
         {
             Thread.yield();
         }
-        this.sourceOutputEstStreams = controller.streams("http2", "source");
+        //this.sourceOutputEstStreams = controller.streams("http2", "source");
         this.sourceOutputEstHandler = this::processBegin;
         createRequestData();
     }

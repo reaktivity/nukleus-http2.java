@@ -22,7 +22,7 @@ import org.junit.rules.TestRule;
 import org.junit.rules.Timeout;
 import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
-import org.reaktivity.reaktor.test.NukleusRule;
+import org.reaktivity.reaktor.test.ReaktorRule;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
@@ -36,15 +36,16 @@ public class FlowControlIT
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
-    private final NukleusRule nukleus = new NukleusRule("http2")
+    private final ReaktorRule reaktor = new ReaktorRule()
             .directory("target/nukleus-itests")
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
             .counterValuesBufferCapacity(1024)
+            .nukleus("http2"::equals)
             .clean();
 
     @Rule
-    public final TestRule chain = outerRule(nukleus).around(k3po).around(timeout);
+    public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
     @Test
     @Specification({
