@@ -1381,6 +1381,7 @@ public final class SourceInputStreamFactory
             Optional<Route> optional = resolveTarget(sourceRef, headersMap);
             Route route = optional.get();
             Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, route);
+            this.maxPushPromiseStreamId = http2StreamId;
             long targetId = http2Stream.targetId;
 
             Target newTarget = route.target();
