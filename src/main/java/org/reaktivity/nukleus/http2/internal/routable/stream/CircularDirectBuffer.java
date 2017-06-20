@@ -19,7 +19,7 @@ package org.reaktivity.nukleus.http2.internal.routable.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-class CircularDirectBuffer
+public class CircularDirectBuffer
 {
     private final int capacity;
     /*

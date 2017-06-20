@@ -1778,7 +1778,7 @@ public final class SourceInputStreamFactory
         private final Route route;
         private State state;
         long http2OutWindow;
-        private long http2InWindow;
+        long http2InWindow;
 
         private long contentLength;
         private long totalData;

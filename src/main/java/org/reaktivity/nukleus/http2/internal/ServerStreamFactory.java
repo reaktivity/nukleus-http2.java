@@ -18,16 +18,29 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
-import org.reaktivity.nukleus.http2.internal.routable.Correlation;
+import org.reaktivity.nukleus.http2.internal.routable.stream.Slab;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteHandler;
@@ -38,31 +51,50 @@ import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
+import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 
 public final class ServerStreamFactory implements StreamFactory
 {
     private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
 
-    private final RouteFW routeRO = new RouteFW();
+    final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
+    final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
 
-    private final BeginFW beginRO = new BeginFW();
-    private final DataFW dataRO = new DataFW();
-    private final EndFW endRO = new EndFW();
+    final RouteFW routeRO = new RouteFW();
 
-    private final BeginFW.Builder beginRW = new BeginFW.Builder();
-    private final DataFW.Builder dataRW = new DataFW.Builder();
-    private final EndFW.Builder endRW = new EndFW.Builder();
-
-    private final WindowFW windowRO = new WindowFW();
-    private final ResetFW resetRO = new ResetFW();
+    final FrameFW frameRO = new FrameFW();
 
 
-    private final OctetsFW outNetOctetsRO = new OctetsFW();
-    private final OctetsFW outAppOctetsRO = new OctetsFW();
+    final BeginFW beginRO = new BeginFW();
+    final DataFW dataRO = new DataFW();
+    final EndFW endRO = new EndFW();
 
-    private final WindowFW.Builder windowRW = new WindowFW.Builder();
-    private final ResetFW.Builder resetRW = new ResetFW.Builder();
+    final BeginFW.Builder beginRW = new BeginFW.Builder();
+    final DataFW.Builder dataRW = new DataFW.Builder();
+    final EndFW.Builder endRW = new EndFW.Builder();
+
+    final WindowFW windowRO = new WindowFW();
+    final ResetFW resetRO = new ResetFW();
+
+    final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
+    final Http2FrameFW http2RO = new Http2FrameFW();
+    final Http2SettingsFW settingsRO = new Http2SettingsFW();
+    final Http2DataFW http2DataRO = new Http2DataFW();
+    final Http2HeadersFW headersRO = new Http2HeadersFW();
+    final Http2ContinuationFW continationRO = new Http2ContinuationFW();
+    final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
+    final Http2WindowUpdateFW http2WindowRO = new Http2WindowUpdateFW();
+    final Http2PriorityFW priorityRO = new Http2PriorityFW();
+    final UnsafeBuffer scratch = new UnsafeBuffer(new byte[8192]);  // TODO
+    final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
+    final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
+    final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
+
+    final Http2PingFW pingRO = new Http2PingFW();
+
+    final WindowFW.Builder windowRW = new WindowFW.Builder();
+    final ResetFW.Builder resetRW = new ResetFW.Builder();
 
     private final Http2Configuration config;
     private final RouteHandler router;
@@ -71,8 +103,11 @@ public final class ServerStreamFactory implements StreamFactory
     private final LongSupplier supplyStreamId;
     private final LongSupplier supplyCorrelationId;
 
-    private final Long2ObjectHashMap<Correlation> correlations;
+    final Long2ObjectHashMap<Correlation2> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
+
+    final Slab frameSlab;
+    final Slab headersSlab;
 
 
     public ServerStreamFactory(
@@ -82,7 +117,7 @@ public final class ServerStreamFactory implements StreamFactory
             Supplier<BufferPool> supplyBufferPool,
             LongSupplier supplyStreamId,
             LongSupplier supplyCorrelationId,
-            Long2ObjectHashMap<Correlation> correlations)
+            Long2ObjectHashMap<Correlation2> correlations)
     {
         this.config = config;
         this.router = requireNonNull(router);
@@ -91,6 +126,11 @@ public final class ServerStreamFactory implements StreamFactory
         this.supplyStreamId = requireNonNull(supplyStreamId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
+
+        int slotCapacity = findNextPositivePowerOfTwo(Settings2.DEFAULT_INITIAL_WINDOW_SIZE);
+        int totalCapacity = findNextPositivePowerOfTwo(128) * slotCapacity;
+        this.frameSlab = new Slab(totalCapacity, slotCapacity);
+        this.headersSlab = new Slab(totalCapacity, slotCapacity);
 
         this.wrapRoute = this::wrapRoute;
     }
@@ -457,7 +497,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
     }
 
-    private void doBegin(
+    void doBegin(
             final MessageConsumer target,
             final long targetId,
             final long targetRef,
@@ -474,7 +514,7 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
-    private void doData(
+    void doData(
             final MessageConsumer target,
             final long targetId,
             final OctetsFW payload)
@@ -488,7 +528,7 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
     }
 
-    private void doEnd(
+    void doEnd(
             final MessageConsumer target,
             final long targetId)
     {
@@ -500,7 +540,7 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
-    private void doWindow(
+    void doWindow(
             final MessageConsumer throttle,
             final long throttleId,
             final int writableBytes,
@@ -515,7 +555,7 @@ public final class ServerStreamFactory implements StreamFactory
         throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
     }
 
-    private void doReset(
+    void doReset(
             final MessageConsumer throttle,
             final long throttleId)
     {

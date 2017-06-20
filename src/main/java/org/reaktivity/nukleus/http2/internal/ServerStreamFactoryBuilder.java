@@ -21,7 +21,6 @@ import java.util.function.Supplier;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.reaktivity.nukleus.buffer.BufferPool;
-import org.reaktivity.nukleus.http2.internal.routable.Correlation;
 import org.reaktivity.nukleus.route.RouteHandler;
 import org.reaktivity.nukleus.stream.StreamFactory;
 import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
@@ -29,7 +28,7 @@ import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 {
     private final Http2Configuration config;
-    private final Long2ObjectHashMap<Correlation> correlations;
+    private final Long2ObjectHashMap<Correlation2> correlations;
 
     private RouteHandler router;
     private MutableDirectBuffer writeBuffer;
