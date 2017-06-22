@@ -238,8 +238,6 @@ public final class SourceInputStreamFactory
 
         final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
-        private int lastPromisedStreamId;
-
         private int noClientStreams;
         private int noPromisedStreams;
         private int maxClientStreamId;
@@ -1339,8 +1337,8 @@ public final class SourceInputStreamFactory
 
         private int nextPromisedId()
         {
-            lastPromisedStreamId += 2;
-            return lastPromisedStreamId;
+            maxPushPromiseStreamId += 2;
+            return maxPushPromiseStreamId;
         }
 
         /*
