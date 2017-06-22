@@ -69,7 +69,6 @@ final class Http2Connection
     long sourceId;
     int lastStreamId;
     long sourceRef;
-    private long correlationId;
     private final int initialWindow = 8192; // TODO config
     int window = initialWindow;
     int outWindow;
@@ -164,7 +163,6 @@ final class Http2Connection
     {
         this.sourceId = beginRO.streamId();
         this.sourceRef = beginRO.sourceRef();
-        this.correlationId = beginRO.correlationId();
         this.decoderState = this::decodePreface;
 
         writeScheduler.settings(localSettings.maxConcurrentStreams);
@@ -1104,9 +1102,6 @@ final class Http2Connection
 
         Http2Stream2 http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, httpTarget);
         long targetId = http2Stream.targetId;
-
-
-
         long targetRef = route.targetRef();
 
         httpTarget.doHttpBegin(targetId, targetRef, targetId,
@@ -1114,11 +1109,7 @@ final class Http2Connection
                                                          .name(h.name())
                                                          .value(h.value()))));
         httpTarget.doHttpEnd(targetId);
-        Correlation2 correlation = new Correlation2(correlationId, sourceOutputEstId, writeScheduler,
-                this::doPromisedRequest, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
-                OUTPUT_ESTABLISHED);
 
-        factory.correlations.put(targetId, correlation);
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
     }
 
@@ -1129,11 +1120,12 @@ final class Http2Connection
         Http2Stream2 http2Stream = new Http2Stream2(factory, this, http2StreamId, state, httpTarget);
         http2Streams.put(http2StreamId, http2Stream);
 
-        Correlation2 correlation = new Correlation2(correlationId, sourceOutputEstId, writeScheduler,
-                this::doPromisedRequest, factory.http2RO.streamId(), encodeContext, this::nextPromisedId, this::findPushId,
+        long newCorrelationId = factory.supplyCorrelationId.getAsLong();
+        Correlation2 correlation = new Correlation2(newCorrelationId, sourceOutputEstId, writeScheduler,
+                this::doPromisedRequest, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
                 OUTPUT_ESTABLISHED);
 
-        factory.correlations.put(http2Stream.targetId, correlation);
+        factory.correlations.put(newCorrelationId, correlation);
         if (http2Stream.isClientInitiated())
         {
             noClientStreams++;

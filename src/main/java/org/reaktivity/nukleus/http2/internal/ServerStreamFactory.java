@@ -102,7 +102,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final MutableDirectBuffer writeBuffer;
     private final BufferPool bufferPool;
     final LongSupplier supplyStreamId;
-    private final LongSupplier supplyCorrelationId;
+    final LongSupplier supplyCorrelationId;
 
     final Long2ObjectHashMap<Correlation2> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
