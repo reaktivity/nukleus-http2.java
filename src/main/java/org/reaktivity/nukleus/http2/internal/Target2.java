@@ -211,7 +211,7 @@ public class Target2
             Http2ErrorCode errorCode)
     {
         return (buffer, offset, limit) ->
-                resetRW.wrap(buffer, offset, limit)
+                http2ResetRW.wrap(buffer, offset, limit)
                        .streamId(streamId)
                        .errorCode(errorCode)
                        .build()

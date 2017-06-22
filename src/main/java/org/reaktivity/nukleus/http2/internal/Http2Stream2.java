@@ -2,10 +2,9 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.routable.Route;
 import org.reaktivity.nukleus.http2.internal.routable.stream.CircularDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.stream.HttpWriteScheduler;
-import org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
@@ -15,12 +14,12 @@ import java.util.function.UnaryOperator;
 
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 
-public class Http2Stream2 {
+public class Http2Stream2
+{
     private final Http2Connection connection;
-    private final HttpWriteScheduler httpWriteScheduler;
+    final HttpWriteScheduler2 httpWriteScheduler;
     final int http2StreamId;
     final long targetId;
-    final Route route;
     Http2Connection.State state;
     long http2OutWindow;
     long http2InWindow;
@@ -34,17 +33,18 @@ public class Http2Stream2 {
     Deque replyQueue;
     public boolean endStream;
     long totalOutData;
+    ServerStreamFactory factory;
 
-    Http2Stream(Http2Connection connection, int http2StreamId, Http2Connection.State state, Route route)
+    Http2Stream2(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state, Target2 httpTarget)
     {
+        this.factory = factory;
         this.connection = connection;
         this.http2StreamId = http2StreamId;
-        this.targetId = supplyStreamId.getAsLong();
+        this.targetId = factory.supplyStreamId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.route = route;
-        this.httpWriteScheduler = new HttpWriteScheduler(frameSlab, route.target(), targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler2(factory.frameSlab, httpTarget, targetId, this);
     }
 
     boolean isClientInitiated()
@@ -52,12 +52,12 @@ public class Http2Stream2 {
         return http2StreamId%2 == 1;
     }
 
-    private void onData()
+    void onData()
     {
-        httpWriteScheduler.onData(http2DataRO);
+        httpWriteScheduler.onData(factory.http2DataRO);
     }
 
-    private void onThrottle(
+    void onThrottle(
             int msgTypeId,
             DirectBuffer buffer,
             int index,
@@ -66,8 +66,8 @@ public class Http2Stream2 {
         switch (msgTypeId)
         {
             case WindowFW.TYPE_ID:
-                windowRO.wrap(buffer, index, index + length);
-                int update = windowRO.update();
+                factory.windowRO.wrap(buffer, index, index + length);
+                int update = factory.windowRO.update();
                 targetWindow += update;
                 httpWriteScheduler.onWindow();
                 break;
@@ -88,22 +88,22 @@ public class Http2Stream2 {
     {
         if (replySlot == NO_SLOT)
         {
-            replySlot = frameSlab.acquire(connection.sourceOutputEstId);
+            replySlot = factory.frameSlab.acquire(connection.sourceOutputEstId);
             if (replySlot != NO_SLOT)
             {
-                int capacity = frameSlab.buffer(replySlot).capacity();
+                int capacity = factory.frameSlab.buffer(replySlot).capacity();
                 replyBuffer = new CircularDirectBuffer(capacity);
                 replyQueue = new LinkedList();
             }
         }
-        return replySlot != NO_SLOT ? frameSlab.buffer(replySlot, change) : null;
+        return replySlot != NO_SLOT ? factory.frameSlab.buffer(replySlot, change) : null;
     }
 
     void releaseReplyBuffer()
     {
         if (replySlot != NO_SLOT)
         {
-            frameSlab.release(replySlot);
+            factory.frameSlab.release(replySlot);
             replySlot = NO_SLOT;
             replyBuffer = null;
             replyQueue = null;
@@ -115,7 +115,7 @@ public class Http2Stream2 {
             int index,
             int length)
     {
-        resetRO.wrap(buffer, index, index + length);
+        factory.resetRO.wrap(buffer, index, index + length);
         httpWriteScheduler.onReset();
         releaseReplyBuffer();
         //source.doReset(sourceId);

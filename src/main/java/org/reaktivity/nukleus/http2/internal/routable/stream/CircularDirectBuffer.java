@@ -42,12 +42,12 @@ public class CircularDirectBuffer
     private int end;
     private int count;
 
-    CircularDirectBuffer(int capacity)
+    public CircularDirectBuffer(int capacity)
     {
         this.capacity = capacity;
     }
 
-    boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
+    public boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
         if (count + length > capacity)
         {
@@ -71,7 +71,7 @@ public class CircularDirectBuffer
         return true;
     }
 
-    int read(int length)
+    public int read(int length)
     {
         if (length > count)
         {
@@ -86,12 +86,12 @@ public class CircularDirectBuffer
         return read;
     }
 
-    int readOffset()
+    public int readOffset()
     {
         return start;
     }
 
-    int size()
+    public int size()
     {
         return count;
     }

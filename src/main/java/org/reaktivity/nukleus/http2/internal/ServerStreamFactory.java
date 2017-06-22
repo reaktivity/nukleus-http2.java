@@ -57,6 +57,7 @@ import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT
 public final class ServerStreamFactory implements StreamFactory
 {
     private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
+    private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
 
     final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
@@ -100,7 +101,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final RouteHandler router;
     private final MutableDirectBuffer writeBuffer;
     private final BufferPool bufferPool;
-    private final LongSupplier supplyStreamId;
+    final LongSupplier supplyStreamId;
     private final LongSupplier supplyCorrelationId;
 
     final Long2ObjectHashMap<Correlation2> correlations;
@@ -224,6 +225,10 @@ public final class ServerStreamFactory implements StreamFactory
         private long applicationId;
 
         private MessageConsumer streamState;
+        private Http2Connection http2Connection;
+        private int window;
+        private int outWindow;
+        private int outWindowThreshold = -1;
 
         private ServerAcceptStream(
                 MessageConsumer networkThrottle,
@@ -262,28 +267,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
         }
 
-        private void handleBegin(
-                BeginFW begin)
-        {
-            final String networkReplyName = begin.source().asString();
-            final long networkCorrelationId = begin.correlationId();
-
-            final MessageConsumer networkReply = router.supplyTarget(networkReplyName);
-            final long newNetworkReplyId = supplyStreamId.getAsLong();
-
-            doWindow(networkThrottle, networkId, 0, 0);
-
-            doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
-            router.setThrottle(networkReplyName, newNetworkReplyId, null);
-
-            this.streamState = null;
-            this.networkReplyName = networkReplyName;
-            this.networkReply = networkReply;
-            this.networkReplyId = newNetworkReplyId;
-
-        }
-
-        private void afterHandshake(
+        private void afterBegin(
                 int msgTypeId,
                 DirectBuffer buffer,
                 int index,
@@ -305,16 +289,53 @@ public final class ServerStreamFactory implements StreamFactory
             }
         }
 
+        private void handleBegin(
+                BeginFW begin)
+        {
+            final String networkReplyName = begin.source().asString();
+            final long networkCorrelationId = begin.correlationId();
+
+            final MessageConsumer networkReply = router.supplyTarget(networkReplyName);
+            final long newNetworkReplyId = supplyStreamId.getAsLong();
+
+            window = config.http2Window();
+            doWindow(networkThrottle, networkId, window, 1);
+
+            doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
+            router.setThrottle(networkReplyName, newNetworkReplyId, this::handleThrottle);
+
+            this.streamState = this::afterBegin;
+            this.networkReplyName = networkReplyName;
+            this.networkReply = networkReply;
+            this.networkReplyId = newNetworkReplyId;
+            http2Connection = new Http2Connection(ServerStreamFactory.this, router, newNetworkReplyId,
+                    networkReply, writeBuffer, wrapRoute);
+            http2Connection.handleBegin(begin);
+        }
+
         private void handleData(
                 DataFW data)
         {
-            final OctetsFW payload = data.payload();
+            window -= dataRO.length();
+            if (window < 0)
+            {
+                doReset(networkThrottle, networkId);
+                //http2Connection.handleReset();
+            }
+            else
+            {
+                this.window += dataRO.length();
+                assert window <= config.http2Window();
+                doWindow(networkThrottle, networkId, dataRO.length(), 1);
 
+                http2Connection.handleData(data);
+            }
         }
 
         private void handleEnd(
                 EndFW end)
         {
+            http2Connection.handleEnd(end);
         }
 
         private void handleThrottle(
@@ -342,17 +363,28 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleWindow(
                 WindowFW window)
         {
-            // TODO: this is post handshake
-            final int writableBytes = window.update();
-            final int writableFrames = window.frames();
-            final int newWritableBytes = writableBytes; // TODO: consider TLS Record padding
+            int update = windowRO.update();
+            if (outWindowThreshold == -1)
+            {
+                outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
+            }
+            outWindow += update;
 
-            doWindow(networkThrottle, networkId, newWritableBytes, writableFrames);
+            if (http2Connection != null)
+            {
+                // TODO remove the following and use SeverAcceptStream.outWindow
+                http2Connection.outWindowThreshold = outWindowThreshold;
+                http2Connection.outWindow = outWindow;
+
+                http2Connection.handleWindow(window);
+            }
         }
 
         private void handleReset(
                 ResetFW reset)
         {
+            http2Connection.handleReset(reset);
+
             doReset(networkThrottle, networkId);
         }
     }
@@ -367,6 +399,7 @@ public final class ServerStreamFactory implements StreamFactory
         private long networkReplyId;
 
         private MessageConsumer streamState;
+        private int window;
 
         private ServerConnectReplyStream(
                 MessageConsumer applicationReplyThrottle,
@@ -428,16 +461,21 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleBegin(
                 BeginFW begin)
         {
+            System.out.println("begin");
             final long sourceRef = begin.sourceRef();
             final long correlationId = begin.correlationId();
 
+            window = config.httpWindow();
+            doWindow(applicationReplyThrottle, applicationReplyId, window, 1);
 
+            this.streamState = this::afterBegin;
         }
 
         private void handleData(
                 DataFW data)
         {
             final OctetsFW payload = data.payload();
+            System.out.println("Got payload");
 
         }
 
@@ -505,7 +543,7 @@ public final class ServerStreamFactory implements StreamFactory
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
-                                     .source("tls")
+                                     .source("http2")
                                      .sourceRef(targetRef)
                                      .correlationId(correlationId)
                                      .extension(e -> e.reset())

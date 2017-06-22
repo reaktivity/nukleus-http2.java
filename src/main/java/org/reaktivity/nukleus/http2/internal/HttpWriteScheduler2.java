@@ -13,30 +13,32 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal.routable.stream;
+package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.http2.internal.routable.stream.CircularDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.routable.stream.Slab;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 
-public class HttpWriteScheduler
+public class HttpWriteScheduler2
 {
     private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[0]);
 
     private final Slab slab;
-    private final Target target;
+    private final Target2 target;
     private final long targetId;
 
-    private SourceInputStreamFactory.Http2Stream stream;
+    private Http2Stream2 stream;
     private int slot = NO_SLOT;
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
 
-    public HttpWriteScheduler(Slab slab, Target target, long targetId, SourceInputStreamFactory.Http2Stream stream)
+    public HttpWriteScheduler2(Slab slab, Target2 target, long targetId, Http2Stream2 stream)
     {
         this.slab = slab;
         this.target = target;

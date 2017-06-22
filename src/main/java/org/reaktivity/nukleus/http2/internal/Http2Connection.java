@@ -3,16 +3,16 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
-import org.agrona.concurrent.MessageHandler;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.Route;
-import org.reaktivity.nukleus.http2.internal.routable.Target;
-import org.reaktivity.nukleus.http2.internal.routable.stream.Http2WriteScheduler;
+import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.function.MessageFunction;
+import org.reaktivity.nukleus.function.MessagePredicate;
 import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
+import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -29,19 +29,16 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.route.RouteHandler;
 
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Predicate;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
-import static org.reaktivity.nukleus.http2.internal.routable.Route.headersMatch;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
@@ -53,12 +50,9 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.
 
 final class Http2Connection
 {
-    private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
 
+    private final MutableDirectBuffer writeBuffer;
     ServerStreamFactory factory;
-
-    private MessageHandler streamState;
-    private MessageHandler throttleState;
     private DecoderState decoderState;
 
     // slab to assemble a complete HTTP2 frame
@@ -81,15 +75,15 @@ final class Http2Connection
     int outWindow;
     int outWindowThreshold = -1;
 
-    private final WriteScheduler writeScheduler;
+    final WriteScheduler writeScheduler;
 
     final long sourceOutputEstId;
     private final HpackContext decodeContext;
     private final HpackContext encodeContext;
+    private final MessageFunction<RouteFW> wrapRoute;
+
 
     final Int2ObjectHashMap<Http2Stream2> http2Streams;      // HTTP2 stream-id --> Http2Stream
-
-    private int lastPromisedStreamId;
 
     private int noClientStreams;
     private int noPromisedStreams;
@@ -97,40 +91,42 @@ final class Http2Connection
     private int maxPushPromiseStreamId;
 
     private boolean goaway;
-    private Settings2 localSettings;
-    private Settings2 remoteSettings;
+    Settings2 localSettings;
+    Settings2 remoteSettings;
     private boolean expectContinuation;
     private int expectContinuationStreamId;
     private boolean expectDynamicTableSizeUpdate = true;
     long http2OutWindow;
-    private long http2InWindow;
+    long http2InWindow;
 
     private boolean prefaceAvailable;
     private boolean http2FrameAvailable;
     private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
     private final HeadersContext headersContext = new HeadersContext();
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
+    final Target2 networkTarget;
+    MessageConsumer networkConsumer;
+    RouteHandler router;
+    String networkReplyName;
 
-    @Override
-    public String toString()
+    Http2Connection(ServerStreamFactory factory, RouteHandler router, long networkReplyId, MessageConsumer networkConsumer,
+                    MutableDirectBuffer writeBuffer, MessageFunction<RouteFW> wrapRoute)
     {
-        return String.format("%s[source=%s, sourceId=%016x, window=%d]",
-                getClass().getSimpleName(), source.routableName(), sourceId, window);
-    }
-
-    private Http2Connection()
-    {
-        this.streamState = this::streamBeforeBegin;
-        this.throttleState = this::throttleNextWindow;
-        sourceOutputEstId = supplyStreamId.getAsLong();
+        this.factory = factory;
+        this.router = router;
+        this.writeBuffer = writeBuffer;
+        this.wrapRoute = wrapRoute;
+        sourceOutputEstId = networkReplyId;
         http2Streams = new Int2ObjectHashMap<>();
         localSettings = new Settings2();
         remoteSettings = new Settings2();
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-        writeScheduler = new Http2WriteScheduler(this, sourceOutputEstId, factory.frameSlab, replyTarget, sourceOutputEstId);
+        networkTarget = new Target2(networkConsumer, writeBuffer);
+        writeScheduler = new Http2WriteScheduler2(this, sourceOutputEstId, factory.frameSlab, networkTarget, sourceOutputEstId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
+        this.networkConsumer = networkConsumer;
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                 ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
@@ -146,181 +142,56 @@ final class Http2Connection
         this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, nameValue));
     }
 
-    private void handleStream(
-            int msgTypeId,
-            MutableDirectBuffer buffer,
-            int index,
-            int length)
-    {
-        streamState.onMessage(msgTypeId, buffer, index, length);
-    }
-
-    private void streamBeforeBegin(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        if (msgTypeId == BeginFW.TYPE_ID)
-        {
-            processBegin(buffer, index, length);
-        }
-        else
-        {
-            processUnexpected(buffer, index, length);
-        }
-    }
-
-    private void streamAfterBeginOrData(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        switch (msgTypeId)
-        {
-            case DataFW.TYPE_ID:
-                processData(buffer, index, length);
-                break;
-            case EndFW.TYPE_ID:
-                processEnd(buffer, index, length);
-                break;
-            default:
-                processUnexpected(buffer, index, length);
-                break;
-        }
-    }
-
-    private void streamAfterEnd(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        processUnexpected(buffer, index, length);
-    }
-
-    private void streamAfterReset(
-            int msgTypeId,
-            MutableDirectBuffer buffer,
-            int index,
-            int length)
-    {
-        // already sent reset, just ignore the data
-    }
-
-    private void streamAfterReplyOrReset(
-            int msgTypeId,
-            MutableDirectBuffer buffer,
-            int index,
-            int length)
-    {
-        if (msgTypeId == DataFW.TYPE_ID)
-        {
-            factory.dataRO.wrap(buffer, index, index + length);
-            final long streamId = factory.dataRO.streamId();
-            factory.doWindow(streamId, length);
-        }
-        else if (msgTypeId == EndFW.TYPE_ID)
-        {
-            factory.endRO.wrap(buffer, index, index + length);
-            final long streamId = factory.endRO.streamId();
-
-            //source.removeStream(streamId);
-
-            this.streamState = this::streamAfterEnd;
-        }
-    }
-
-    private void processUnexpected(
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        factory.frameRO.wrap(buffer, index, index + length);
-        long streamId = factory.frameRO.streamId();
-
-        processUnexpected(streamId);
-    }
-
     void processUnexpected(
             long streamId)
     {
-        factory.doReset(streamId);
+        networkTarget.doReset(networkConsumer, streamId);
         cleanConnection();
     }
 
     void cleanConnection()
     {
-        replyTarget.removeThrottle(sourceOutputEstId);
-        source.removeStream(sourceId);
+        //replyTarget.removeThrottle(sourceOutputEstId);
+        //source.removeStream(sourceId);
         for(Http2Stream2 http2Stream : http2Streams.values())
         {
             closeStream(http2Stream);
         }
         http2Streams.clear();
-        streamState = this::streamAfterReset;
     }
 
-    private void processBegin(
-            DirectBuffer buffer,
-            int index,
-            int length)
+    void handleBegin(BeginFW beginRO)
     {
-        factory.beginRO.wrap(buffer, index, index + length);
-
-        this.sourceId = factory.beginRO.streamId();
-        this.sourceRef = factory.beginRO.sourceRef();
-        this.correlationId = factory.beginRO.correlationId();
-        this.streamState = this::streamAfterBeginOrData;
+        this.sourceId = beginRO.streamId();
+        this.sourceRef = beginRO.sourceRef();
+        this.correlationId = beginRO.correlationId();
         this.decoderState = this::decodePreface;
-        factory.doWindow(sourceId, window);
 
-        replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
-        factory.doBegin(sourceOutputEstId, 0L, correlationId);
         writeScheduler.settings(localSettings.maxConcurrentStreams);
     }
 
-    private void processData(
-            DirectBuffer buffer,
-            int index,
-            int length)
+    void handleData(DataFW dataRO)
     {
-        factory.dataRO.wrap(buffer, index, index + length);
+        OctetsFW payload = dataRO.payload();
+        int limit = payload.limit();
 
-        window -= factory.dataRO.length();
-
-        if (window < 0)
+        int offset = payload.offset();
+        while (offset < limit)
         {
-            processUnexpected(buffer, index, length);
-        }
-        else
-        {
-            this.window += factory.dataRO.length();
-            assert window <= initialWindow;
-            factory.doWindow(sourceId, factory.dataRO.length());
-            final OctetsFW payload = factory.dataRO.payload();
-            final int limit = payload.limit();
-
-            int offset = payload.offset();
-            while (offset < limit)
-            {
-                offset += decoderState.decode(buffer, offset, limit);
-            }
+            offset += decoderState.decode(dataRO.buffer(), offset, limit);
         }
     }
 
-    private void processEnd(
-            DirectBuffer buffer,
-            int index,
-            int length)
+    void handleReset(ResetFW reset)
     {
-        factory.endRO.wrap(buffer, index, index + length);
-        final long streamId = factory.endRO.streamId();
+        // TODO
+    }
 
+    void handleEnd(EndFW end)
+    {
         decoderState = (b, o, l) -> o;
 
-        source.removeStream(streamId);
+        //source.removeStream(streamId);
         writeScheduler.doEnd();
         for(Http2Stream2 http2Stream : http2Streams.values())
         {
@@ -405,7 +276,7 @@ final class Http2Connection
         if (frameSlotIndex == NO_SLOT)
         {
             // all slots are in use, just reset the connection
-            factory.doReset(sourceId);
+            networkTarget.doReset(networkConsumer, sourceId);
             prefaceAvailable = false;
             return available;               // assume everything is consumed
         }
@@ -488,7 +359,7 @@ final class Http2Connection
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(sourceId);
+                networkTarget.doReset(networkConsumer, sourceId);
                 http2FrameAvailable = false;
                 return false;
             }
@@ -505,8 +376,6 @@ final class Http2Connection
             frameSlotPosition = 0;
         }
     }
-
-
 
     /*
      * Assembles a complete HTTP2 headers (including any continuations) if any.
@@ -619,7 +488,7 @@ final class Http2Connection
                 if (headersSlotIndex == NO_SLOT)
                 {
                     // all slots are in use, just reset the connection
-                    factory.doReset(sourceId);
+                    networkTarget.doReset(networkConsumer, sourceId);
                     return false;
                 }
                 headersSlotPosition = 0;
@@ -763,7 +632,7 @@ final class Http2Connection
 
         headersContext.reset();
 
-        factory.httpBeginExRW.wrap(scratch, 0, scratch.capacity());
+        factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity());
 
         factory.blockRO.forEach(headerFieldConsumer);
         // All HTTP/2 requests MUST include exactly one valid value for the
@@ -788,22 +657,24 @@ final class Http2Connection
             }
         }
 
-        final Optional<Route> optional = resolveTarget(sourceRef, headersContext.headers);
-        Route route = optional.get();   // TODO
-        stream = newStream(streamId, state, route);
-        Target newTarget = route.target();
+        RouteFW route = resolveTarget(sourceRef, headersContext.headers);
+        final String applicationName = route.target().asString();
+        final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
+        Target2 httpTarget = new Target2(applicationTarget, writeBuffer);
+        stream = newStream(streamId, state, httpTarget);
         final long targetRef = route.targetRef();
 
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        newTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId, beginEx.buffer(), beginEx.offset(),
+        httpTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId, beginEx.buffer(), beginEx.offset(),
                 beginEx.sizeof());
-        newTarget.addThrottle(stream.targetId, stream::onThrottle);
+        router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
+
 
         if (factory.headersRO.endStream())
         {
-            newTarget.doHttpEnd(stream.targetId);
+            httpTarget.doHttpEnd(stream.targetId);  // TODO use HttpWriteScheduler
         }
     }
 
@@ -844,9 +715,9 @@ final class Http2Connection
         }
         factory.correlations.remove(stream.targetId);    // remove from Correlations map
         http2Streams.remove(stream.http2StreamId);
-        stream.route.target().removeThrottle(stream.targetId);
+        //stream.route.target().removeThrottle(stream.targetId);
 
-        stream.route.target().doHttpEnd(stream.targetId);
+        //stream.route.target().doHttpEnd(stream.targetId);
     }
 
     private void doWindow()
@@ -957,7 +828,6 @@ final class Http2Connection
         http2InWindow -= factory.http2RO.payloadLength();
         stream.http2InWindow -= factory.http2RO.payloadLength();
 
-        Target newTarget = stream.route.target();
         stream.totalData += factory.http2RO.payloadLength();
 
         if (dataRO.endStream())
@@ -967,7 +837,7 @@ final class Http2Connection
             if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
             {
                 streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-                newTarget.doEnd(stream.targetId);
+                //stream.httpWriteScheduler.doEnd(stream.targetId);
                 return;
             }
         }
@@ -1108,57 +978,51 @@ final class Http2Connection
         return State.IDLE;
     }
 
-    Optional<Route> resolveTarget(
+    RouteFW resolveTarget(
             long sourceRef,
             Map<String, String> headers)
     {
-        final List<Route> routes = supplyRoutes.apply(sourceRef);
-        final Predicate<Route> predicate = headersMatch(headers);
 
-        return routes.stream().filter(predicate).findFirst();
-    }
-
-    void handleThrottle(
-            int msgTypeId,
-            MutableDirectBuffer buffer,
-            int index,
-            int length)
-    {
-        throttleState.onMessage(msgTypeId, buffer, index, length);
-    }
-
-    private void throttleNextWindow(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        switch (msgTypeId)
+        MessagePredicate filter = (t, b, o, l) ->
         {
-            case WindowFW.TYPE_ID:
-                processNextWindow(buffer, index, length);
-                break;
-            case ResetFW.TYPE_ID:
-                processReset(buffer, index, length);
-                break;
-            default:
-                // ignore
-                break;
-        }
+            return true;        // TODO
+        };
+
+        return router.resolve(filter, wrapRoute);
     }
 
-    private void processNextWindow(
-            DirectBuffer buffer,
-            int index,
-            int length)
+//    void handleThrottle(
+//            int msgTypeId,
+//            MutableDirectBuffer buffer,
+//            int index,
+//            int length)
+//    {
+//        throttleState.onMessage(msgTypeId, buffer, index, length);
+//    }
+
+//    private void throttleNextWindow(
+//            int msgTypeId,
+//            DirectBuffer buffer,
+//            int index,
+//            int length)
+//    {
+//        switch (msgTypeId)
+//        {
+//            case WindowFW.TYPE_ID:
+//                processNextWindow(buffer, index, length);
+//                break;
+//            case ResetFW.TYPE_ID:
+//                processReset(buffer, index, length);
+//                break;
+//            default:
+//                // ignore
+//                break;
+//        }
+//    }
+
+    void handleWindow(WindowFW windowRO)
     {
-        factory.windowRO.wrap(buffer, index, index + length);
-        int update = factory.windowRO.update();
-        if (outWindowThreshold == -1)
-        {
-            outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
-        }
-        outWindow += update;
+
         writeScheduler.onWindow();
     }
 
@@ -1193,8 +1057,8 @@ final class Http2Connection
 
     private int nextPromisedId()
     {
-        lastPromisedStreamId += 2;
-        return lastPromisedStreamId;
+        maxPushPromiseStreamId += 2;
+        return maxPushPromiseStreamId;
     }
 
     /*
@@ -1233,32 +1097,36 @@ final class Http2Connection
         Map<String, String> headersMap = new HashMap<>();
         headers.forEach(
                 httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
-        Optional<Route> optional = resolveTarget(sourceRef, headersMap);
-        Route route = optional.get();
-        Http2Stream2 http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, route);
+        RouteFW route = resolveTarget(sourceRef, headersMap);
+        final String applicationName = route.target().asString();
+        final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
+        Target2 httpTarget = new Target2(applicationTarget, writeBuffer);
+
+        Http2Stream2 http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, httpTarget);
         long targetId = http2Stream.targetId;
 
-        Target newTarget = route.target();
+
+
         long targetRef = route.targetRef();
 
-        newTarget.doHttpBegin(targetId, targetRef, targetId,
+        httpTarget.doHttpBegin(targetId, targetRef, targetId,
                 hs -> headers.forEach(h -> hs.item(b -> b.representation((byte) 0)
                                                          .name(h.name())
                                                          .value(h.value()))));
-        newTarget.doHttpEnd(targetId);
+        httpTarget.doHttpEnd(targetId);
         Correlation2 correlation = new Correlation2(correlationId, sourceOutputEstId, writeScheduler,
                 this::doPromisedRequest, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
                 OUTPUT_ESTABLISHED);
 
         factory.correlations.put(targetId, correlation);
-        newTarget.addThrottle(targetId, this::handleThrottle);
+        router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
     }
 
-    private Http2Stream2 newStream(int http2StreamId, State state, Route route)
+    private Http2Stream2 newStream(int http2StreamId, State state, Target2 httpTarget)
     {
         assert http2StreamId != 0;
 
-        Http2Stream2 http2Stream = new Http2Stream2(this, http2StreamId, state, route);
+        Http2Stream2 http2Stream = new Http2Stream2(factory, this, http2StreamId, state, httpTarget);
         http2Streams.put(http2StreamId, http2Stream);
 
         Correlation2 correlation = new Correlation2(correlationId, sourceOutputEstId, writeScheduler,
