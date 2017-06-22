@@ -1,9 +1,22 @@
+/**
+ * Copyright 2016-2017 The Reaktivity Project
+ *
+ * The Reaktivity Project licenses this file to you under the Apache License,
+ * version 2.0 (the "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at:
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.function.MessageConsumer;
-import org.reaktivity.nukleus.http2.internal.routable.Route;
 import org.reaktivity.nukleus.http2.internal.routable.stream.CircularDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -35,7 +48,8 @@ public class Http2Stream2
     long totalOutData;
     ServerStreamFactory factory;
 
-    Http2Stream2(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state, Target2 httpTarget)
+    Http2Stream2(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
+                 Target2 httpTarget)
     {
         this.factory = factory;
         this.connection = connection;

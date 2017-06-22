@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.Target;
 import org.reaktivity.nukleus.http2.internal.routable.stream.CircularDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.stream.Slab;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;

@@ -1,3 +1,18 @@
+/**
+ * Copyright 2016-2017 The Reaktivity Project
+ *
+ * The Reaktivity Project licenses this file to you under the Apache License,
+ * version 2.0 (the "License"); you may not use this file except in compliance
+ * with the License. You may obtain a copy of the License at:
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ */
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
@@ -11,6 +26,7 @@ import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.String16FW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
@@ -1407,9 +1423,9 @@ final class Http2Connection
         if (!encodeHeadersContext.status)
         {
             StringFW name = httpHeader.name();
-            StringFW value = httpHeader.value();
+            String16FW value = httpHeader.value();
             factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
-            factory.valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+            factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
 
             if (factory.nameRO.equals(encodeContext.nameBuffer(8)))
             {
@@ -1421,9 +1437,9 @@ final class Http2Connection
     boolean validHeader(HttpHeaderFW httpHeader)
     {
         StringFW name = httpHeader.name();
-        StringFW value = httpHeader.value();
+        String16FW value = httpHeader.value();
         factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
-        factory.valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+        factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
 
         if (factory.nameRO.equals(encodeContext.nameBuffer(1)) ||
                 factory.nameRO.equals(encodeContext.nameBuffer(2)) ||
@@ -1440,9 +1456,9 @@ final class Http2Connection
     private void mapHeader(HttpHeaderFW httpHeader, HpackHeaderFieldFW.Builder builder)
     {
         StringFW name = httpHeader.name();
-        StringFW value = httpHeader.value();
+        String16FW value = httpHeader.value();
         factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
-        factory.valueRO.wrap(value.buffer(), value.offset() + 1, value.sizeof() - 1);
+        factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
 
         int index = encodeContext.index(factory.nameRO, factory.valueRO);
         if (index != -1)
