@@ -97,7 +97,7 @@ final class Http2Connection
     private final MessageFunction<RouteFW> wrapRoute;
 
 
-    final Int2ObjectHashMap<Http2Stream2> http2Streams;      // HTTP2 stream-id --> Http2Stream
+    final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
     private int noClientStreams;
     private int noPromisedStreams;
@@ -167,7 +167,7 @@ final class Http2Connection
     {
         //replyTarget.removeThrottle(sourceOutputEstId);
         //source.removeStream(sourceId);
-        for(Http2Stream2 http2Stream : http2Streams.values())
+        for(Http2Stream http2Stream : http2Streams.values())
         {
             closeStream(http2Stream);
         }
@@ -206,7 +206,7 @@ final class Http2Connection
 
         //source.removeStream(streamId);
         writeScheduler.doEnd();
-        for(Http2Stream2 http2Stream : http2Streams.values())
+        for(Http2Stream http2Stream : http2Streams.values())
         {
             closeStream(http2Stream);
         }
@@ -623,7 +623,7 @@ final class Http2Connection
     {
         int streamId = factory.http2RO.streamId();
 
-        Http2Stream2 stream = http2Streams.get(streamId);
+        Http2Stream stream = http2Streams.get(streamId);
         if (stream != null)
         {
             // TODO trailers
@@ -705,7 +705,7 @@ final class Http2Connection
             error(Http2ErrorCode.FRAME_SIZE_ERROR);
             return;
         }
-        Http2Stream2 stream = http2Streams.get(streamId);
+        Http2Stream stream = http2Streams.get(streamId);
         if (stream == null || stream.state == State.IDLE)
         {
             error(Http2ErrorCode.PROTOCOL_ERROR);
@@ -716,7 +716,7 @@ final class Http2Connection
         }
     }
 
-    private void closeStream(Http2Stream2 stream)
+    private void closeStream(Http2Stream stream)
     {
         if (stream.isClientInitiated())
         {
@@ -757,7 +757,7 @@ final class Http2Connection
                 error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
             }
-            Http2Stream2 stream = http2Streams.get(streamId);
+            Http2Stream stream = http2Streams.get(streamId);
             if (stream == null)
             {
                 // A receiver could receive a WINDOW_UPDATE frame on a "half-closed (remote)" or "closed" stream.
@@ -795,7 +795,7 @@ final class Http2Connection
         }
         else
         {
-            Http2Stream2 stream = http2Streams.get(streamId);
+            Http2Stream stream = http2Streams.get(streamId);
             stream.http2OutWindow += factory.http2WindowRO.size();
             if (stream.http2OutWindow > Integer.MAX_VALUE)
             {
@@ -810,7 +810,7 @@ final class Http2Connection
     private void doData()
     {
         int streamId = factory.http2RO.streamId();
-        Http2Stream2 stream = http2Streams.get(streamId);
+        Http2Stream stream = http2Streams.get(streamId);
 
         if (streamId == 0 || stream == null || stream.state == State.IDLE)
         {
@@ -916,7 +916,7 @@ final class Http2Connection
                 // 6.9.2. Initial Flow-Control Window Size
                 // SETTINGS frame can alter the initial flow-control
                 // window size for streams with active flow-control windows
-                for(Http2Stream2 http2Stream: http2Streams.values())
+                for(Http2Stream http2Stream: http2Streams.values())
                 {
                     http2Stream.http2OutWindow += update;           // http2OutWindow can become negative
                     if (http2Stream.http2OutWindow > Integer.MAX_VALUE)
@@ -969,7 +969,7 @@ final class Http2Connection
 
     private State state(int streamId)
     {
-        Http2Stream2 stream = http2Streams.get(streamId);
+        Http2Stream stream = http2Streams.get(streamId);
         if (stream != null)
         {
             return stream.state;
@@ -1086,7 +1086,7 @@ final class Http2Connection
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         Target httpTarget = new Target(applicationTarget, writeBuffer);
 
-        Http2Stream2 http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, httpTarget);
+        Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, httpTarget);
         long targetId = http2Stream.targetId;
         long targetRef = route.targetRef();
 
@@ -1099,11 +1099,11 @@ final class Http2Connection
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
     }
 
-    private Http2Stream2 newStream(int http2StreamId, State state, Target httpTarget)
+    private Http2Stream newStream(int http2StreamId, State state, Target httpTarget)
     {
         assert http2StreamId != 0;
 
-        Http2Stream2 http2Stream = new Http2Stream2(factory, this, http2StreamId, state, httpTarget);
+        Http2Stream http2Stream = new Http2Stream(factory, this, http2StreamId, state, httpTarget);
         http2Streams.put(http2StreamId, http2Stream);
 
         Correlation correlation = new Correlation(http2Stream.correlationId, sourceOutputEstId, writeScheduler,

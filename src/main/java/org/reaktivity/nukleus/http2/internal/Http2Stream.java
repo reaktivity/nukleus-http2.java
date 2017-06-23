@@ -26,7 +26,7 @@ import java.util.function.UnaryOperator;
 
 import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
-public class Http2Stream2
+class Http2Stream
 {
     private final Http2Connection connection;
     private final HttpWriteScheduler httpWriteScheduler;
@@ -48,8 +48,8 @@ public class Http2Stream2
     long totalOutData;
     private ServerStreamFactory factory;
 
-    Http2Stream2(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
-                 Target httpTarget)
+    Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
+                Target httpTarget)
     {
         this.factory = factory;
         this.connection = connection;

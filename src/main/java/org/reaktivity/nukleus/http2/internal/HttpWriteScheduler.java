@@ -29,13 +29,13 @@ class HttpWriteScheduler
     private final Target target;
     private final long targetId;
 
-    private Http2Stream2 stream;
+    private Http2Stream stream;
     private int slot = NO_SLOT;
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
 
-    HttpWriteScheduler(Slab slab, Target target, long targetId, Http2Stream2 stream)
+    HttpWriteScheduler(Slab slab, Target target, long targetId, Http2Stream stream)
     {
         this.slab = slab;
         this.target = target;

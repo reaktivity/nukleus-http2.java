@@ -47,7 +47,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
     public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
     {
-        Http2Stream2 stream = connection.http2Streams.get(streamId);
+        Http2Stream stream = connection.http2Streams.get(streamId);
         MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::read);
         CircularDirectBuffer cb = stream.replyBuffer;
         boolean written = cb.write(dstBuffer, buffer, offset, length);
@@ -113,7 +113,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean data(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
     {
-        Http2Stream2 stream = connection.http2Streams.get(streamId);
+        Http2Stream stream = connection.http2Streams.get(streamId);
         if (stream == null)
         {
             return true;
@@ -135,7 +135,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean dataEos(int streamId)
     {
-        Http2Stream2 stream = connection.http2Streams.get(streamId);
+        Http2Stream stream = connection.http2Streams.get(streamId);
         if (stream == null)
         {
             return true;
@@ -190,7 +190,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public void onHttp2Window(int streamId)
     {
-        Http2Stream2 stream = connection.http2Streams.get(streamId);
+        Http2Stream stream = connection.http2Streams.get(streamId);
 
         StreamEntry entry;
         while ((entry = pop(stream)) != null)
@@ -241,7 +241,7 @@ public class Http2WriteScheduler implements WriteScheduler
         writer.onWindow();
     }
 
-    private boolean buffered(Http2Stream2 stream)
+    private boolean buffered(Http2Stream stream)
     {
         return stream.replyQueue != null && !stream.replyQueue.isEmpty();
     }
@@ -250,7 +250,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         // TODO Map#values may not iterate randomly, randomly pick a stream ??
         // Select a frame on a HTTP2 stream that can be written
-        for(Http2Stream2 stream : connection.http2Streams.values())
+        for(Http2Stream stream : connection.http2Streams.values())
         {
             StreamEntry entry = pop(stream);
             if (entry != null)
@@ -262,7 +262,7 @@ public class Http2WriteScheduler implements WriteScheduler
         return null;
     }
 
-    private StreamEntry pop(Http2Stream2 stream)
+    private StreamEntry pop(Http2Stream stream)
     {
         if (buffered(stream))
         {
@@ -285,12 +285,12 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private class StreamEntry
     {
-        final Http2Stream2 stream;
+        final Http2Stream stream;
         final int length;
         private final Consumer<Integer> progress;
 
         StreamEntry(
-                Http2Stream2 stream,
+                Http2Stream stream,
                 int length,
                 Consumer<Integer> progress)
         {
