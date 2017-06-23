@@ -33,6 +33,7 @@ public class Http2Stream2
     final HttpWriteScheduler2 httpWriteScheduler;
     final int http2StreamId;
     final long targetId;
+    final long correlationId;
     Http2Connection.State state;
     long http2OutWindow;
     long http2InWindow;
@@ -55,6 +56,7 @@ public class Http2Stream2
         this.connection = connection;
         this.http2StreamId = http2StreamId;
         this.targetId = factory.supplyStreamId.getAsLong();
+        this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;

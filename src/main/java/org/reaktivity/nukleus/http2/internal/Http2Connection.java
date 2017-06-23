@@ -38,6 +38,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
@@ -681,7 +682,7 @@ final class Http2Connection
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpTarget.doHttpBegin(stream.targetId, targetRef, stream.targetId, beginEx.buffer(), beginEx.offset(),
+        httpTarget.doHttpBegin(stream.targetId, targetRef, stream.correlationId, beginEx.buffer(), beginEx.offset(),
                 beginEx.sizeof());
         router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
 
@@ -1120,7 +1121,7 @@ final class Http2Connection
         long targetId = http2Stream.targetId;
         long targetRef = route.targetRef();
 
-        httpTarget.doHttpBegin(targetId, targetRef, targetId,
+        httpTarget.doHttpBegin(targetId, targetRef, http2Stream.correlationId,
                 hs -> headers.forEach(h -> hs.item(b -> b.representation((byte) 0)
                                                          .name(h.name())
                                                          .value(h.value()))));
@@ -1136,12 +1137,11 @@ final class Http2Connection
         Http2Stream2 http2Stream = new Http2Stream2(factory, this, http2StreamId, state, httpTarget);
         http2Streams.put(http2StreamId, http2Stream);
 
-        long newCorrelationId = factory.supplyCorrelationId.getAsLong();
-        Correlation2 correlation = new Correlation2(newCorrelationId, sourceOutputEstId, writeScheduler,
-                this::doPromisedRequest, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
+        Correlation2 correlation = new Correlation2(http2Stream.correlationId, sourceOutputEstId, writeScheduler,
+                this::doPromisedRequest, this, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
                 OUTPUT_ESTABLISHED);
 
-        factory.correlations.put(newCorrelationId, correlation);
+        factory.correlations.put(http2Stream.correlationId, correlation);
         if (http2Stream.isClientInitiated())
         {
             noClientStreams++;
@@ -1490,6 +1490,47 @@ final class Http2Connection
             builder.name(factory.nameRO, 0, factory.nameRO.capacity());
         }
         builder.value(factory.valueRO, 0, factory.valueRO.capacity());
+    }
+
+
+    void handleHttpBegin(BeginFW begin, Correlation2 correlation2)
+    {
+        OctetsFW extension = begin.extension();
+
+        if (extension.sizeof() > 0)
+        {
+            HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
+            writeScheduler.headers(correlation2.http2StreamId, beginEx.headers());
+        }
+    }
+
+    void handleHttpData(DataFW dataRO, Correlation2 correlation2, Consumer<Integer> progress)
+    {
+        OctetsFW extension = dataRO.extension();
+        OctetsFW payload = dataRO.payload();
+
+        if (extension.sizeof() > 0)
+        {
+
+            int pushStreamId = correlation2.pushStreamIds.applyAsInt(correlation2.http2StreamId);
+            if (pushStreamId != -1)
+            {
+                int promisedStreamId = correlation2.promisedStreamIds.getAsInt();
+                Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
+                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), progress);
+                correlation2.pushHandler.accept(promisedStreamId, dataEx.headers());
+            }
+        }
+        if (payload.sizeof() > 0)
+        {
+            writeScheduler.data(correlation2.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof(), progress);
+        }
+
+    }
+
+    void handleHttpEnd(EndFW data, Correlation2 correlation2)
+    {
+        writeScheduler.dataEos(correlation2.http2StreamId);
     }
 
     enum State

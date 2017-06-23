@@ -32,6 +32,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
@@ -91,6 +92,10 @@ public final class ServerStreamFactory implements StreamFactory
     final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
     final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
+    final HttpBeginExFW beginExRO = new HttpBeginExFW();
+    final Http2DataExFW dataExRO = new Http2DataExFW();
+
+
 
     final Http2PingFW pingRO = new Http2PingFW();
 
@@ -401,6 +406,9 @@ public final class ServerStreamFactory implements StreamFactory
         private MessageConsumer streamState;
         private int window;
 
+        private Http2Connection http2Connection;
+        private Correlation2 correlation2;
+
         private ServerConnectReplyStream(
                 MessageConsumer applicationReplyThrottle,
                 long applicationReplyId)
@@ -464,75 +472,45 @@ public final class ServerStreamFactory implements StreamFactory
             System.out.println("begin");
             final long sourceRef = begin.sourceRef();
             final long correlationId = begin.correlationId();
+            correlation2 = sourceRef == 0L ? correlations.remove(correlationId) : null;
+            if (correlation2 != null)
+            {
+                http2Connection = correlation2.http2Connection;
 
-            window = config.httpWindow();
-            doWindow(applicationReplyThrottle, applicationReplyId, window, 1);
+                window = config.httpWindow();
+                doWindow(applicationReplyThrottle, applicationReplyId, window, 5);
+                http2Connection.handleHttpBegin(begin, correlation2);
 
-            this.streamState = this::afterBegin;
+                this.streamState = this::afterBegin;
+            }
+            else
+            {
+                doReset(applicationReplyThrottle, applicationReplyId);
+            }
         }
 
         private void handleData(
                 DataFW data)
         {
             final OctetsFW payload = data.payload();
-            System.out.println("Got payload");
+            window -= data.length();
 
+            System.out.println("Got payload");
+            http2Connection.handleHttpData(data, correlation2, this::sendWindow);
         }
 
         private void handleEnd(
                 EndFW end)
         {
+            http2Connection.handleHttpEnd(end, correlation2);
         }
 
-        private void handleThrottle(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+        private void sendWindow(int update)
         {
-            switch (msgTypeId)
-            {
-                case WindowFW.TYPE_ID:
-                    final WindowFW window = windowRO.wrap(buffer, index, index + length);
-                    handleWindow(window);
-                    break;
-                case ResetFW.TYPE_ID:
-                    final ResetFW reset = resetRO.wrap(buffer, index, index + length);
-                    handleReset(reset);
-                    break;
-                default:
-                    // ignore
-                    break;
-            }
+            window += update;
+            doWindow(applicationReplyThrottle, applicationReplyId, window, 5);
         }
 
-        private void handleWindow(
-                final WindowFW window)
-        {
-            final int writableBytes = window.update();
-            final int writableFrames = window.frames();
-            final int newWritableBytes = writableBytes; // TODO: consider TLS Record padding
-
-            doWindow(applicationReplyThrottle, applicationReplyId, newWritableBytes, writableFrames);
-        }
-
-        private void handleReset(
-                ResetFW reset)
-        {
-            doReset(applicationReplyThrottle, applicationReplyId);
-        }
-    }
-
-    private void alignSlotBuffer(
-            final MutableDirectBuffer slotBuffer,
-            final int bytesConsumed,
-            final int bytesRemaining)
-    {
-        if (bytesConsumed > 0)
-        {
-            writeBuffer.putBytes(0, slotBuffer, bytesConsumed, bytesRemaining);
-            slotBuffer.putBytes(0, writeBuffer, 0, bytesRemaining);
-        }
     }
 
     void doBegin(

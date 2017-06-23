@@ -30,21 +30,23 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 
 public class Correlation2
 {
-    private final IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
-    private final long id;
-    private final int http2StreamId;
-    private final IntSupplier promisedStreamIds;
-    private final RouteKind established;
-    private final long sourceOutputEstId;
-    private final HpackContext encodeContext;
-    private final IntUnaryOperator pushStreamIds;
-    private final WriteScheduler writeScheduler;
+    final IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
+    final long id;
+    final int http2StreamId;
+    final IntSupplier promisedStreamIds;
+    final RouteKind established;
+    final long sourceOutputEstId;
+    final HpackContext encodeContext;
+    final IntUnaryOperator pushStreamIds;
+    final WriteScheduler writeScheduler;
+    final Http2Connection http2Connection;
 
     public Correlation2(
             long id,
             long sourceOutputEstId,
             WriteScheduler writeScheduler,
             IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler,
+            Http2Connection http2Connection,
             int http2StreamId,
             HpackContext encodeContext,
             IntSupplier promisedStreamIds,
@@ -55,6 +57,7 @@ public class Correlation2
         this.sourceOutputEstId = sourceOutputEstId;
         this.writeScheduler = writeScheduler;
         this.pushHandler = pushHandler;
+        this.http2Connection = http2Connection;
         this.http2StreamId = http2StreamId;
         this.encodeContext = encodeContext;
         this.promisedStreamIds = promisedStreamIds;
