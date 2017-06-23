@@ -24,7 +24,7 @@ import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 
-public class Correlation2
+public class Correlation
 {
     final IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
     final long id;
@@ -36,7 +36,7 @@ public class Correlation2
     final WriteScheduler writeScheduler;
     final Http2Connection http2Connection;
 
-    public Correlation2(
+    public Correlation(
             long id,
             long sourceOutputEstId,
             WriteScheduler writeScheduler,
@@ -63,41 +63,6 @@ public class Correlation2
         return id;
     }
 
-    public WriteScheduler writeScheduler()
-    {
-        return writeScheduler;
-    }
-
-    public long getSourceOutputEstId()
-    {
-        return sourceOutputEstId;
-    }
-
-    public int http2StreamId()
-    {
-        return http2StreamId;
-    }
-
-    public IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler()
-    {
-        return pushHandler;
-    }
-
-    public HpackContext encodeContext()
-    {
-        return encodeContext;
-    }
-
-    public IntSupplier promisedStreamIds()
-    {
-        return promisedStreamIds;
-    }
-
-    public IntUnaryOperator pushStreamIds()
-    {
-        return pushStreamIds;
-    }
-
     @Override
     public int hashCode()
     {
@@ -108,12 +73,12 @@ public class Correlation2
     public boolean equals(
             Object obj)
     {
-        if (!(obj instanceof Correlation2))
+        if (!(obj instanceof Correlation))
         {
             return false;
         }
 
-        Correlation2 that = (Correlation2) obj;
+        Correlation that = (Correlation) obj;
         return this.id == that.id &&
                 this.sourceOutputEstId == that.sourceOutputEstId &&
                 this.http2StreamId == that.http2StreamId;
@@ -122,7 +87,7 @@ public class Correlation2
     @Override
     public String toString()
     {
-        return String.format("[id=%s, sourceOutputEstId=%s http2StreamId=%s established=%s]",
+        return String.format("[id=%s, sourceOutputEstId=%s http2StreamId=%s]",
                 id, sourceOutputEstId, http2StreamId);
     }
 

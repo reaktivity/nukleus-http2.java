@@ -19,7 +19,7 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-public class CircularEntryBuffer
+class CircularEntryBuffer
 {
     private final int capacity;
     /*
@@ -44,7 +44,7 @@ public class CircularEntryBuffer
     private int start;
     private int end;
 
-    public CircularEntryBuffer(int capacity)
+    CircularEntryBuffer(int capacity)
     {
         this.capacity = capacity;
     }
@@ -53,7 +53,7 @@ public class CircularEntryBuffer
      * @return offset at which data of given length can be written
      *         -1 if there is no space to write
      */
-    public int writeOffset(int length)
+    int writeOffset(int length)
     {
         int prevEnd = end;
         if (start == end)                   // empty
@@ -86,7 +86,7 @@ public class CircularEntryBuffer
         return -1;
     }
 
-    public void write(int offset, int length)
+    void write(int offset, int length)
     {
         end = offset + length;
     }
@@ -112,7 +112,7 @@ public class CircularEntryBuffer
         start = readOffset(length) + length;
     }
 
-    public void read(int offset, int length)
+    void read(int offset, int length)
     {
         start = offset + length;
     }

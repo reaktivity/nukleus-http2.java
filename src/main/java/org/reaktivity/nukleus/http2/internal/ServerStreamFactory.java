@@ -23,12 +23,10 @@ import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
-import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
@@ -46,7 +44,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteHandler;
 import org.reaktivity.nukleus.stream.StreamFactory;
 
-import java.nio.ByteBuffer;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -56,16 +53,12 @@ import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
 public final class ServerStreamFactory implements StreamFactory
 {
-    private static final ByteBuffer EMPTY_BYTE_BUFFER = ByteBuffer.allocate(0);
     private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
 
     final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
 
     final RouteFW routeRO = new RouteFW();
-
-    final FrameFW frameRO = new FrameFW();
-
 
     final BeginFW beginRO = new BeginFW();
     final DataFW dataRO = new DataFW();
@@ -94,8 +87,6 @@ public final class ServerStreamFactory implements StreamFactory
     final HttpBeginExFW beginExRO = new HttpBeginExFW();
     final Http2DataExFW dataExRO = new Http2DataExFW();
 
-
-
     final Http2PingFW pingRO = new Http2PingFW();
 
     final WindowFW.Builder windowRW = new WindowFW.Builder();
@@ -108,7 +99,7 @@ public final class ServerStreamFactory implements StreamFactory
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
 
-    final Long2ObjectHashMap<Correlation2> correlations;
+    final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
 
     final Slab frameSlab;
@@ -122,7 +113,7 @@ public final class ServerStreamFactory implements StreamFactory
             Supplier<BufferPool> supplyBufferPool,
             LongSupplier supplyStreamId,
             LongSupplier supplyCorrelationId,
-            Long2ObjectHashMap<Correlation2> correlations)
+            Long2ObjectHashMap<Correlation> correlations)
     {
         this.config = config;
         this.router = requireNonNull(router);
@@ -132,7 +123,7 @@ public final class ServerStreamFactory implements StreamFactory
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
 
-        int slotCapacity = findNextPositivePowerOfTwo(Settings2.DEFAULT_INITIAL_WINDOW_SIZE);
+        int slotCapacity = findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
         int totalCapacity = findNextPositivePowerOfTwo(128) * slotCapacity;
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
@@ -399,14 +390,11 @@ public final class ServerStreamFactory implements StreamFactory
         private final MessageConsumer applicationReplyThrottle;
         private final long applicationReplyId;
 
-        private MessageConsumer networkReply;
-        private long networkReplyId;
-
         private MessageConsumer streamState;
         private int window;
 
         private Http2Connection http2Connection;
-        private Correlation2 correlation2;
+        private Correlation correlation;
 
         private ServerConnectReplyStream(
                 MessageConsumer applicationReplyThrottle,
@@ -468,17 +456,16 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleBegin(
                 BeginFW begin)
         {
-            System.out.println("begin");
             final long sourceRef = begin.sourceRef();
             final long correlationId = begin.correlationId();
-            correlation2 = sourceRef == 0L ? correlations.remove(correlationId) : null;
-            if (correlation2 != null)
+            correlation = sourceRef == 0L ? correlations.remove(correlationId) : null;
+            if (correlation != null)
             {
-                http2Connection = correlation2.http2Connection;
+                http2Connection = correlation.http2Connection;
 
                 window = config.httpWindow();
                 doWindow(applicationReplyThrottle, applicationReplyId, window, 5);
-                http2Connection.handleHttpBegin(begin, correlation2);
+                http2Connection.handleHttpBegin(begin, correlation);
 
                 this.streamState = this::afterBegin;
             }
@@ -491,17 +478,15 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleData(
                 DataFW data)
         {
-            final OctetsFW payload = data.payload();
             window -= data.length();
 
-            System.out.println("Got payload");
-            http2Connection.handleHttpData(data, correlation2, this::sendWindow);
+            http2Connection.handleHttpData(data, correlation, this::sendWindow);
         }
 
         private void handleEnd(
                 EndFW end)
         {
-            http2Connection.handleHttpEnd(end, correlation2);
+            http2Connection.handleHttpEnd(end, correlation);
         }
 
         private void sendWindow(int update)
@@ -527,32 +512,6 @@ public final class ServerStreamFactory implements StreamFactory
                                      .build();
 
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
-    }
-
-    void doData(
-            final MessageConsumer target,
-            final long targetId,
-            final OctetsFW payload)
-    {
-        final DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                  .streamId(targetId)
-                                  .payload(p -> p.set(payload.buffer(), payload.offset(), payload.sizeof()))
-                                  .extension(e -> e.reset())
-                                  .build();
-
-        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    void doEnd(
-            final MessageConsumer target,
-            final long targetId)
-    {
-        final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                               .streamId(targetId)
-                               .extension(e -> e.reset())
-                               .build();
-
-        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
     void doWindow(

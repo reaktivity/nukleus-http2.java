@@ -29,7 +29,7 @@ import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 public class Http2Stream2
 {
     private final Http2Connection connection;
-    final HttpWriteScheduler2 httpWriteScheduler;
+    private final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
     final long targetId;
     final long correlationId;
@@ -46,10 +46,10 @@ public class Http2Stream2
     Deque replyQueue;
     public boolean endStream;
     long totalOutData;
-    ServerStreamFactory factory;
+    private ServerStreamFactory factory;
 
     Http2Stream2(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
-                 Target2 httpTarget)
+                 Target httpTarget)
     {
         this.factory = factory;
         this.connection = connection;
@@ -59,7 +59,7 @@ public class Http2Stream2
         this.http2InWindow = connection.localSettings.initialWindowSize;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler2(factory.frameSlab, httpTarget, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory.frameSlab, httpTarget, targetId, this);
     }
 
     boolean isClientInitiated()

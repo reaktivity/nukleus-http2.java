@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-public class Settings2
+class Settings
 {
-    static final int DEFAULT_HEADER_TABLE_SIZE = 4096;
-    static final boolean DEFAULT_ENABLE_PUSH = true;
-    static final int DEFAULT_MAX_CONCURRENT_STREAMS = 100;
+    private static final int DEFAULT_HEADER_TABLE_SIZE = 4096;
+    private static final boolean DEFAULT_ENABLE_PUSH = true;
+    private static final int DEFAULT_MAX_CONCURRENT_STREAMS = 100;
     static final int DEFAULT_INITIAL_WINDOW_SIZE = 65_535;
-    static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
+    private static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
 
     int headerTableSize = DEFAULT_HEADER_TABLE_SIZE;
     boolean enablePush = DEFAULT_ENABLE_PUSH;

@@ -21,12 +21,12 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
 import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
-public class HttpWriteScheduler2
+class HttpWriteScheduler
 {
     private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[0]);
 
     private final Slab slab;
-    private final Target2 target;
+    private final Target target;
     private final long targetId;
 
     private Http2Stream2 stream;
@@ -35,7 +35,7 @@ public class HttpWriteScheduler2
     private boolean end;
     private boolean endSent;
 
-    public HttpWriteScheduler2(Slab slab, Target2 target, long targetId, Http2Stream2 stream)
+    HttpWriteScheduler(Slab slab, Target target, long targetId, Http2Stream2 stream)
     {
         this.slab = slab;
         this.target = target;
@@ -47,7 +47,7 @@ public class HttpWriteScheduler2
      * @return true if the data is written or stored
      *         false if there are no slots or no space in the buffer
      */
-    public boolean onData(Http2DataFW http2DataRO)
+    boolean onData(Http2DataFW http2DataRO)
     {
         end = http2DataRO.endStream();
 
@@ -91,7 +91,7 @@ public class HttpWriteScheduler2
         }
     }
 
-    public void onWindow()
+    void onWindow()
     {
         if (targetBuffer != null)
         {
@@ -131,7 +131,7 @@ public class HttpWriteScheduler2
         }
     }
 
-    public void onReset()
+    void onReset()
     {
         release();
     }

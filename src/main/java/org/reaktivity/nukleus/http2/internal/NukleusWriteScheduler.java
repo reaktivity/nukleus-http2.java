@@ -39,12 +39,12 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
-class NukleusWriteScheduler2 implements WriteScheduler
+class NukleusWriteScheduler implements WriteScheduler
 {
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
     private final Http2Connection connection;
-    private final Target2 target;
+    private final Target target;
     private final long targetId;
     private final long sourceOutputEstId;
 
@@ -55,11 +55,11 @@ class NukleusWriteScheduler2 implements WriteScheduler
     private boolean end;
     private boolean endSent;
 
-    NukleusWriteScheduler2(
+    NukleusWriteScheduler(
             Http2Connection connection,
             long sourceOutputEstId,
             Slab slab,
-            Target2 target,
+            Target target,
             long targetId)
     {
         this.connection = connection;

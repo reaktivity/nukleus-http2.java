@@ -17,26 +17,26 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.reaktivity.nukleus.Configuration;
 
-public class Http2Configuration extends Configuration
+class Http2Configuration extends Configuration
 {
 
-    public static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";
-    public static final String HTTP_WINDOW_BYTES = "nukleus.http2.window.bytes";
+    private static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";
+    private static final String HTTP_WINDOW_BYTES = "nukleus.http2.window.bytes";
 
-    public static final int HTTP2_WINDOW_BYTES_DEFAULT = 8192;
-    public static final int HTTP_WINDOW_BYTES_DEFAULT = 8192;
+    private static final int HTTP2_WINDOW_BYTES_DEFAULT = 8192;
+    private static final int HTTP_WINDOW_BYTES_DEFAULT = 8192;
 
-    public Http2Configuration(Configuration config)
+    Http2Configuration(Configuration config)
     {
         super(config);
     }
 
-    public int http2Window()
+    int http2Window()
     {
         return getInteger(HTTP2_WINDOW_BYTES, HTTP2_WINDOW_BYTES_DEFAULT);
     }
 
-    public int httpWindow()
+    int httpWindow()
     {
         return getInteger(HTTP_WINDOW_BYTES, HTTP_WINDOW_BYTES_DEFAULT);
     }

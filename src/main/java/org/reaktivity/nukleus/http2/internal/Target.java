@@ -26,7 +26,6 @@ import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
@@ -46,11 +45,9 @@ import java.util.function.Consumer;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-public class Target2
+public class Target
 {
     private static final DirectBuffer SOURCE_NAME_BUFFER = new UnsafeBuffer("http2".getBytes(UTF_8));
-
-    private final FrameFW frameRO = new FrameFW();
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final DataFW.Builder dataRW = new DataFW.Builder();
@@ -73,7 +70,7 @@ public class Target2
     private final MutableDirectBuffer writeBuffer;
 
 
-    public Target2(MessageConsumer target, MutableDirectBuffer writeBuffer)
+    public Target(MessageConsumer target, MutableDirectBuffer writeBuffer)
     {
         this.target = target;
         this.writeBuffer = writeBuffer;

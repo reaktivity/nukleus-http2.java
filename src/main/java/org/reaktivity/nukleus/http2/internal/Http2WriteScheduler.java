@@ -24,27 +24,25 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 
 import java.util.function.Consumer;
 
-public class Http2WriteScheduler2 implements WriteScheduler
+public class Http2WriteScheduler implements WriteScheduler
 {
-    private static final DirectBuffer EMPTY = new UnsafeBuffer(new byte[0]);
-
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     private final Http2Connection connection;
-    private final NukleusWriteScheduler2 writer;
+    private final NukleusWriteScheduler writer;
 
     private boolean end;
     private boolean endSent;
     private int entryCount;
 
-    Http2WriteScheduler2(
+    Http2WriteScheduler(
             Http2Connection connection,
             long sourceOutputEstId,
             Slab slab,
-            Target2 target,
+            Target target,
             long targetId)
     {
         this.connection = connection;
-        this.writer = new NukleusWriteScheduler2(connection, sourceOutputEstId, slab, target, targetId);
+        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, target, targetId);
     }
 
     public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
