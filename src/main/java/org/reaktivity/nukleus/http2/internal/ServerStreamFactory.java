@@ -98,6 +98,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final BufferPool bufferPool;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
+    final HttpWriter httpWriter;
 
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
@@ -127,6 +128,7 @@ public final class ServerStreamFactory implements StreamFactory
         int totalCapacity = findNextPositivePowerOfTwo(128) * slotCapacity;
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
+        this.httpWriter = new HttpWriter(writeBuffer);
 
         this.wrapRoute = this::wrapRoute;
     }

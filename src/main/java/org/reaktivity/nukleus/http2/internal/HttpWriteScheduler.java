@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
 import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
@@ -26,8 +27,9 @@ class HttpWriteScheduler
     private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[0]);
 
     private final Slab slab;
-    private final Target target;
+    private final HttpWriter target;
     private final long targetId;
+    private final MessageConsumer applicationTarget;
 
     private Http2Stream stream;
     private int slot = NO_SLOT;
@@ -35,9 +37,10 @@ class HttpWriteScheduler
     private boolean end;
     private boolean endSent;
 
-    HttpWriteScheduler(Slab slab, Target target, long targetId, Http2Stream stream)
+    HttpWriteScheduler(Slab slab, MessageConsumer applicationTarget, HttpWriter target, long targetId, Http2Stream stream)
     {
         this.slab = slab;
+        this.applicationTarget = applicationTarget;
         this.target = target;
         this.targetId = targetId;
         this.stream = stream;
@@ -60,7 +63,7 @@ class HttpWriteScheduler
             // Send to http if there is available window
             if (toHttp > 0)
             {
-                target.doHttpData(targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
+                target.doHttpData(applicationTarget, targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
                 stream.sendHttp2Window(toHttp);
             }
 
@@ -79,7 +82,7 @@ class HttpWriteScheduler
             if (end && !endSent)
             {
                 endSent = true;
-                target.doHttpEnd(targetId);
+                target.doHttpEnd(applicationTarget, targetId);
             }
 
             return true;
@@ -102,7 +105,7 @@ class HttpWriteScheduler
             {
                 int offset1 = targetBuffer.readOffset();
                 int read1 = targetBuffer.read(toHttp);
-                target.doHttpData(targetId, buffer, offset1, read1);
+                target.doHttpData(applicationTarget, targetId, buffer, offset1, read1);
 
                 // toHttp may span across the boundary, one more read may be required
                 if (read1 != toHttp)
@@ -111,7 +114,7 @@ class HttpWriteScheduler
                     int read2 = targetBuffer.read(toHttp-read1);
                     assert read1 + read2 == toHttp;
 
-                    target.doHttpData(targetId, buffer, offset2, read2);
+                    target.doHttpData(applicationTarget, targetId, buffer, offset2, read2);
                 }
 
                 stream.sendHttp2Window(toHttp);
@@ -123,7 +126,7 @@ class HttpWriteScheduler
                 if (end && !endSent)
                 {
                     endSent = true;
-                    target.doHttpEnd(targetId);
+                    target.doHttpEnd(applicationTarget, targetId);
                 }
 
                 release();

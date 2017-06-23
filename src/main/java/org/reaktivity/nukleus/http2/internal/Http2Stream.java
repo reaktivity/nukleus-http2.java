@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
@@ -49,7 +50,7 @@ class Http2Stream
     private ServerStreamFactory factory;
 
     Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
-                Target httpTarget)
+                MessageConsumer applicationTarget, HttpWriter httpWriter)
     {
         this.factory = factory;
         this.connection = connection;
@@ -59,7 +60,7 @@ class Http2Stream
         this.http2InWindow = connection.localSettings.initialWindowSize;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.frameSlab, httpTarget, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory.frameSlab, applicationTarget, httpWriter, targetId, this);
     }
 
     boolean isClientInitiated()
