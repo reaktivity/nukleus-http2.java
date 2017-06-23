@@ -118,7 +118,7 @@ final class Http2Connection
     private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
     private final HeadersContext headersContext = new HeadersContext();
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
-    final Target networkTarget;
+    final Http2Writer http2Writer;
     MessageConsumer networkConsumer;
     RouteHandler router;
     String networkReplyName;
@@ -136,8 +136,9 @@ final class Http2Connection
         remoteSettings = new Settings();
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
-        networkTarget = new Target(networkConsumer, writeBuffer);
-        writeScheduler = new Http2WriteScheduler(this, sourceOutputEstId, factory.frameSlab, networkTarget, sourceOutputEstId);
+        http2Writer = factory.http2Writer;
+        writeScheduler = new Http2WriteScheduler(this, sourceOutputEstId, factory.frameSlab, networkConsumer,
+                http2Writer, sourceOutputEstId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
         this.networkConsumer = networkConsumer;
@@ -159,7 +160,7 @@ final class Http2Connection
     void processUnexpected(
             long streamId)
     {
-        networkTarget.doReset(networkConsumer, streamId);
+        http2Writer.doReset(networkConsumer, streamId);
         cleanConnection();
     }
 
@@ -289,7 +290,7 @@ final class Http2Connection
         if (frameSlotIndex == NO_SLOT)
         {
             // all slots are in use, just reset the connection
-            networkTarget.doReset(networkConsumer, sourceId);
+            http2Writer.doReset(networkConsumer, sourceId);
             prefaceAvailable = false;
             return available;               // assume everything is consumed
         }
@@ -372,7 +373,7 @@ final class Http2Connection
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                networkTarget.doReset(networkConsumer, sourceId);
+                http2Writer.doReset(networkConsumer, sourceId);
                 http2FrameAvailable = false;
                 return false;
             }
@@ -501,7 +502,7 @@ final class Http2Connection
                 if (headersSlotIndex == NO_SLOT)
                 {
                     // all slots are in use, just reset the connection
-                    networkTarget.doReset(networkConsumer, sourceId);
+                    http2Writer.doReset(networkConsumer, sourceId);
                     return false;
                 }
                 headersSlotPosition = 0;

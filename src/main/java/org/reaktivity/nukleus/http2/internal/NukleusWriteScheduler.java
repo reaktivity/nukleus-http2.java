@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
@@ -44,9 +45,10 @@ class NukleusWriteScheduler implements WriteScheduler
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
     private final Http2Connection connection;
-    private final Target target;
+    private final Http2Writer http2Writer;
     private final long targetId;
     private final long sourceOutputEstId;
+    private final MessageConsumer networkConsumer;
 
     private Deque<ConnectionEntry> replyQueue;
     private int replySlot = NO_SLOT;
@@ -59,13 +61,15 @@ class NukleusWriteScheduler implements WriteScheduler
             Http2Connection connection,
             long sourceOutputEstId,
             Slab slab,
-            Target target,
+            MessageConsumer networkConsumer,
+            Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
         this.sourceOutputEstId = sourceOutputEstId;
         this.slab = slab;
-        this.target = target;
+        this.networkConsumer = networkConsumer;
+        this.http2Writer = http2Writer;
         this.targetId = targetId;
     }
 
@@ -79,7 +83,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         if (direct)
         {
-            int actualLength = target.doHttp2(targetId, visitor);
+            int actualLength = http2Writer.doHttp2(networkConsumer, targetId, visitor);
             connection.outWindow -= actualLength;
             if (progress != null)
             {
@@ -109,7 +113,7 @@ class NukleusWriteScheduler implements WriteScheduler
     @Override
     public boolean windowUpdate(int streamId, int update)
     {
-        Flyweight.Builder.Visitor window = target.visitWindowUpdate(streamId, update);
+        Flyweight.Builder.Visitor window = http2Writer.visitWindowUpdate(streamId, update);
         int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 window size increment
         boolean direct = !buffered() && sizeof <= connection.outWindow;
         return http2(streamId, sizeof, direct, WINDOW_UPDATE, window, null);
@@ -120,7 +124,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for a ping
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor ping = target.visitPingAck(buffer, offset, length);
+        Flyweight.Builder.Visitor ping = http2Writer.visitPingAck(buffer, offset, length);
         return http2(0, sizeof, direct, PING, ping, null);
     }
 
@@ -130,7 +134,7 @@ class NukleusWriteScheduler implements WriteScheduler
         int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for goaway payload
         boolean direct = !buffered() && sizeof <= connection.outWindow;
 
-        Flyweight.Builder.Visitor goaway = target.visitGoaway(lastStreamId, errorCode);
+        Flyweight.Builder.Visitor goaway = http2Writer.visitGoaway(lastStreamId, errorCode);
         return http2(0, sizeof, direct, GO_AWAY, goaway, null);
     }
 
@@ -140,7 +144,7 @@ class NukleusWriteScheduler implements WriteScheduler
         int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 for RST_STREAM payload
         boolean direct = !buffered() && sizeof <= connection.outWindow;
 
-        Flyweight.Builder.Visitor rst = target.visitRst(streamId, errorCode);
+        Flyweight.Builder.Visitor rst = http2Writer.visitRst(streamId, errorCode);
         return http2(streamId, sizeof, direct, RST_STREAM, rst, null);
     }
 
@@ -149,7 +153,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor settings = target.visitSettings(maxConcurrentStreams);
+        Flyweight.Builder.Visitor settings = http2Writer.visitSettings(maxConcurrentStreams);
         return http2(0, sizeof, direct, SETTINGS, settings, null);
     }
 
@@ -158,7 +162,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9;                 // +9 for HTTP2 framing
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor settings = target.visitSettingsAck();
+        Flyweight.Builder.Visitor settings = http2Writer.visitSettingsAck();
         return http2(0, sizeof, direct, SETTINGS, settings, null);
     }
 
@@ -167,7 +171,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitHeaders(streamId, headers, connection::mapHeaders);
+        Flyweight.Builder.Visitor data = http2Writer.visitHeaders(streamId, headers, connection::mapHeaders);
         return http2(streamId, sizeof, direct, HEADERS, data, null);
     }
 
@@ -177,7 +181,8 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromize);
+        Flyweight.Builder.Visitor data = http2Writer.visitPushPromise(streamId, promisedStreamId, headers,
+                connection::mapPushPromize);
         return http2(streamId, sizeof, direct, PUSH_PROMISE, data, null);
     }
 
@@ -187,7 +192,7 @@ class NukleusWriteScheduler implements WriteScheduler
         assert length > 0;
         int sizeof = 9 + length;    // +9 for HTTP2 framing
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
+        Flyweight.Builder.Visitor data = http2Writer.visitData(streamId, buffer, offset, length);
         return http2(streamId, sizeof, direct, DATA, data, progress);
     }
 
@@ -198,7 +203,7 @@ class NukleusWriteScheduler implements WriteScheduler
         if (!buffered() && !endSent)
         {
             endSent = true;
-            target.doEnd(targetId);
+            http2Writer.doEnd(networkConsumer, targetId);
         }
     }
 
@@ -215,7 +220,7 @@ class NukleusWriteScheduler implements WriteScheduler
     {
         int sizeof = 9;    // +9 for HTTP2 framing
         boolean direct = !buffered() && sizeof <= connection.outWindow;
-        Flyweight.Builder.Visitor data = target.visitDataEos(streamId);
+        Flyweight.Builder.Visitor data = http2Writer.visitDataEos(streamId);
         return http2(streamId, sizeof, direct, DATA, data, null);
     }
 
@@ -232,7 +237,7 @@ class NukleusWriteScheduler implements WriteScheduler
         while ((entry = pop()) != null)
         {
             DirectBuffer read = acquireReplyBuffer(this::read);
-            target.doData(targetId, read, entry.offset, entry.length);
+            http2Writer.doData(networkConsumer, targetId, read, entry.offset, entry.length);
             if (entry.progress != null)
             {
                 entry.progress.accept(entry.payload);
@@ -246,7 +251,7 @@ class NukleusWriteScheduler implements WriteScheduler
             if (end && !endSent)
             {
                 endSent = true;
-                target.doEnd(targetId);
+                http2Writer.doEnd(networkConsumer, targetId);
             }
         }
     }

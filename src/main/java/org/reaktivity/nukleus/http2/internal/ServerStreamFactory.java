@@ -99,6 +99,7 @@ public final class ServerStreamFactory implements StreamFactory
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
+    final Http2Writer http2Writer;
 
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
@@ -129,6 +130,7 @@ public final class ServerStreamFactory implements StreamFactory
         this.frameSlab = new Slab(totalCapacity, slotCapacity);
         this.headersSlab = new Slab(totalCapacity, slotCapacity);
         this.httpWriter = new HttpWriter(writeBuffer);
+        this.http2Writer = new Http2Writer(writeBuffer);
 
         this.wrapRoute = this::wrapRoute;
     }

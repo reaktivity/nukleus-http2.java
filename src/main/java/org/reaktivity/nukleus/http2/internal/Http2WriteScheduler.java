@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
@@ -38,11 +39,12 @@ public class Http2WriteScheduler implements WriteScheduler
             Http2Connection connection,
             long sourceOutputEstId,
             Slab slab,
-            Target target,
+            MessageConsumer networkConsumer,
+            Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
-        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, target, targetId);
+        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, networkConsumer, http2Writer, targetId);
     }
 
     public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
