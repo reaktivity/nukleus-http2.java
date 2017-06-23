@@ -22,7 +22,6 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
-import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
@@ -56,8 +55,7 @@ import java.util.function.Consumer;
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
-import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
@@ -1138,8 +1136,7 @@ final class Http2Connection
         http2Streams.put(http2StreamId, http2Stream);
 
         Correlation2 correlation = new Correlation2(http2Stream.correlationId, sourceOutputEstId, writeScheduler,
-                this::doPromisedRequest, this, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId,
-                OUTPUT_ESTABLISHED);
+                this::doPromisedRequest, this, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId);
 
         factory.correlations.put(http2Stream.correlationId, correlation);
         if (http2Stream.isClientInitiated())

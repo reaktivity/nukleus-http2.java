@@ -15,61 +15,20 @@
  */
 package org.reaktivity.nukleus.http2.internal.bench;
 
-import org.agrona.DirectBuffer;
-import org.agrona.LangUtil;
-import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.MessageHandler;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
-import org.openjdk.jmh.annotations.Group;
-import org.openjdk.jmh.annotations.GroupThreads;
-import org.openjdk.jmh.annotations.Level;
 import org.openjdk.jmh.annotations.Measurement;
 import org.openjdk.jmh.annotations.Mode;
 import org.openjdk.jmh.annotations.OutputTimeUnit;
 import org.openjdk.jmh.annotations.Scope;
-import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
-import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
-import org.openjdk.jmh.infra.Control;
 import org.openjdk.jmh.runner.Runner;
 import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
-import org.reaktivity.nukleus.Configuration;
-import org.reaktivity.nukleus.http2.internal.Http2Controller;
-import org.reaktivity.nukleus.http2.internal.HttpStreams;
-import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
-import org.reaktivity.reaktor.Reaktor;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Properties;
-import java.util.Random;
-
-import static java.nio.ByteBuffer.allocateDirect;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.nio.file.FileVisitOption.FOLLOW_LINKS;
 import static java.util.concurrent.TimeUnit.SECONDS;
-import static org.agrona.BitUtil.SIZE_OF_INT;
-import static org.agrona.BitUtil.SIZE_OF_LONG;
-import static org.reaktivity.nukleus.Configuration.DIRECTORY_PROPERTY_NAME;
-import static org.reaktivity.nukleus.Configuration.STREAMS_BUFFER_CAPACITY_PROPERTY_NAME;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
@@ -79,6 +38,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 @OutputTimeUnit(SECONDS)
 public class Http2ServerBM
 {
+    /*
     private final Reaktor reaktor;
     private final Http2Controller controller;
     private final Configuration configuration;
@@ -359,7 +319,7 @@ public class Http2ServerBM
                 .build();
 
         sourceOutputEstStreams.writeThrottle(window.typeId(), window.buffer(), window.offset(), window.sizeof());
-    }
+    }*/
 
     public static void main(String[] args) throws RunnerException
     {

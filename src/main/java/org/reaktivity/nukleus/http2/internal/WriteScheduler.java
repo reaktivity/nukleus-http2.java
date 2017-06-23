@@ -14,7 +14,7 @@
  * under the License.
  */
 
-package org.reaktivity.nukleus.http2.internal.routable.stream;
+package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;

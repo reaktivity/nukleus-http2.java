@@ -23,7 +23,6 @@ import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
-import org.reaktivity.nukleus.http2.internal.routable.stream.Slab;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
@@ -53,7 +52,7 @@ import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
 public final class ServerStreamFactory implements StreamFactory
 {

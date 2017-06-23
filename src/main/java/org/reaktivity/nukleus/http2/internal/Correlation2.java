@@ -15,15 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import static java.util.Objects.requireNonNull;
-
 import java.util.Objects;
 import java.util.function.IntSupplier;
 import java.util.function.IntUnaryOperator;
 
-import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
-import org.reaktivity.nukleus.http2.internal.router.RouteKind;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
@@ -34,7 +30,6 @@ public class Correlation2
     final long id;
     final int http2StreamId;
     final IntSupplier promisedStreamIds;
-    final RouteKind established;
     final long sourceOutputEstId;
     final HpackContext encodeContext;
     final IntUnaryOperator pushStreamIds;
@@ -50,8 +45,7 @@ public class Correlation2
             int http2StreamId,
             HpackContext encodeContext,
             IntSupplier promisedStreamIds,
-            IntUnaryOperator pushStreamIds,
-            RouteKind established)
+            IntUnaryOperator pushStreamIds)
     {
         this.id = id;
         this.sourceOutputEstId = sourceOutputEstId;
@@ -62,7 +56,6 @@ public class Correlation2
         this.encodeContext = encodeContext;
         this.promisedStreamIds = promisedStreamIds;
         this.pushStreamIds = pushStreamIds;
-        this.established = requireNonNull(established, "established");
     }
 
     public long id()
@@ -83,11 +76,6 @@ public class Correlation2
     public int http2StreamId()
     {
         return http2StreamId;
-    }
-
-    public RouteKind established()
-    {
-        return established;
     }
 
     public IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler()
@@ -113,14 +101,14 @@ public class Correlation2
     @Override
     public int hashCode()
     {
-        return Objects.hash(id, sourceOutputEstId, http2StreamId, established);
+        return Objects.hash(id, sourceOutputEstId, http2StreamId);
     }
 
     @Override
     public boolean equals(
             Object obj)
     {
-        if (!(obj instanceof org.reaktivity.nukleus.http2.internal.routable.Correlation))
+        if (!(obj instanceof Correlation2))
         {
             return false;
         }
@@ -128,15 +116,14 @@ public class Correlation2
         Correlation2 that = (Correlation2) obj;
         return this.id == that.id &&
                 this.sourceOutputEstId == that.sourceOutputEstId &&
-                this.http2StreamId == that.http2StreamId &&
-                this.established == that.established;
+                this.http2StreamId == that.http2StreamId;
     }
 
     @Override
     public String toString()
     {
         return String.format("[id=%s, sourceOutputEstId=%s http2StreamId=%s established=%s]",
-                id, sourceOutputEstId, http2StreamId, established);
+                id, sourceOutputEstId, http2StreamId);
     }
 
 }

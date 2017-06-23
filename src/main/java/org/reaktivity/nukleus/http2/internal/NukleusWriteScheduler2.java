@@ -18,9 +18,6 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.stream.CircularEntryBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.stream.Slab;
-import org.reaktivity.nukleus.http2.internal.routable.stream.WriteScheduler;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
@@ -32,7 +29,7 @@ import java.util.LinkedList;
 import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;

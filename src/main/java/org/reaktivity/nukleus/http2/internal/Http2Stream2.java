@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.stream.CircularDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
@@ -25,7 +24,7 @@ import java.util.Deque;
 import java.util.LinkedList;
 import java.util.function.UnaryOperator;
 
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
 public class Http2Stream2
 {
