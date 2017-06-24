@@ -1712,9 +1712,10 @@ public final class SourceInputStreamFactory
             if (nameRO.equals(encodeContext.nameBuffer(1)) ||
                     nameRO.equals(encodeContext.nameBuffer(2)) ||
                     nameRO.equals(encodeContext.nameBuffer(4)) ||
-                    nameRO.equals(encodeContext.nameBuffer(6)))
+                    nameRO.equals(encodeContext.nameBuffer(6)) ||
+                    nameRO.equals(HpackContext.CONNECTION))
             {
-                return false;                             // ignore :authority, :method, :path, :scheme
+                return false;                             // ignore :authority, :method, :path, :scheme, connection
             }
 
             return true;
@@ -1727,7 +1728,6 @@ public final class SourceInputStreamFactory
             String16FW value = httpHeader.value();
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
             valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
-
             int index = encodeContext.index(nameRO, valueRO);
             if (index != -1)
             {
