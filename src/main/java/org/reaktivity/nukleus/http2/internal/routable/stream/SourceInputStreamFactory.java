@@ -1712,9 +1712,10 @@ public final class SourceInputStreamFactory
             if (nameRO.equals(encodeContext.nameBuffer(1)) ||
                     nameRO.equals(encodeContext.nameBuffer(2)) ||
                     nameRO.equals(encodeContext.nameBuffer(4)) ||
-                    nameRO.equals(encodeContext.nameBuffer(6)))
+                    nameRO.equals(encodeContext.nameBuffer(6)) ||
+                    nameRO.equals(HpackContext.CONNECTION))
             {
-                return false;                             // ignore :authority, :method, :path, :scheme
+                return false;                             // ignore :authority, :method, :path, :scheme, connection
             }
 
             return true;
