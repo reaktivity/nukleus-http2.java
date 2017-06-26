@@ -1728,6 +1728,7 @@ public final class SourceInputStreamFactory
             String16FW value = httpHeader.value();
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
             valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
+
             int index = encodeContext.index(nameRO, valueRO);
             if (index != -1)
             {
