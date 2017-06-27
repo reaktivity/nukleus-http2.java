@@ -45,7 +45,9 @@ class Http2Stream
     private int replySlot = NO_SLOT;
     CircularDirectBuffer replyBuffer;
     Deque replyQueue;
-    public boolean endStream;
+    boolean endStream;
+    boolean endStreamSent;
+
     long totalOutData;
     private ServerStreamFactory factory;
 

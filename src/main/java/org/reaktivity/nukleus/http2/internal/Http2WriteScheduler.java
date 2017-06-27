@@ -142,12 +142,13 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             return true;
         }
+        stream.endStream = true;
         boolean direct = !buffered(stream) && 0 <= connection.http2OutWindow && 0 <= stream.http2OutWindow;
-        if (direct)
+        if (direct && !stream.endStreamSent)
         {
+            stream.endStreamSent = true;
             return writer.dataEos(streamId);
         }
-        stream.endStream = true;
         return true;
     }
 
@@ -174,9 +175,9 @@ public class Http2WriteScheduler implements WriteScheduler
             {
                 entry.stream.releaseReplyBuffer();
 
-                if (entry.stream.endStream)
+                if (entry.stream.endStream && !entry.stream.endStreamSent)
                 {
-                    entry.stream.endStream = false;
+                    entry.stream.endStreamSent = true;
                     writer.dataEos(entry.stream.http2StreamId);
                 }
             }
@@ -204,9 +205,9 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             stream.releaseReplyBuffer();
 
-            if (stream.endStream)
+            if (stream.endStream && !stream.endStreamSent)
             {
-                stream.endStream = false;
+                stream.endStreamSent = true;
                 writer.dataEos(streamId);
             }
         }

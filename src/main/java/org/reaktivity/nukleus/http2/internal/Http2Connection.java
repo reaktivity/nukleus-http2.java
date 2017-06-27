@@ -1412,9 +1412,10 @@ final class Http2Connection
         if (factory.nameRO.equals(encodeContext.nameBuffer(1)) ||
                 factory.nameRO.equals(encodeContext.nameBuffer(2)) ||
                 factory.nameRO.equals(encodeContext.nameBuffer(4)) ||
-                factory.nameRO.equals(encodeContext.nameBuffer(6)))
+                factory.nameRO.equals(encodeContext.nameBuffer(6)) ||
+                factory.nameRO.equals(HpackContext.CONNECTION))
         {
-            return false;                             // ignore :authority, :method, :path, :scheme
+            return false;                             // ignore :authority, :method, :path, :scheme, connection
         }
 
         return true;
