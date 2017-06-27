@@ -1358,6 +1358,7 @@ public final class SourceInputStreamFactory
                     return http2Streams.entrySet()
                                        .stream()
                                        .map(Map.Entry::getValue)
+                                       .filter(s -> !s.endStream)
                                        .filter(s -> (s.http2StreamId & 0x01) == 1)     // client-initiated stream
                                        .filter(s -> s.state == OPEN || s.state == HALF_CLOSED_REMOTE)
                                        .mapToInt(s -> s.http2StreamId)
@@ -1788,6 +1789,8 @@ public final class SourceInputStreamFactory
         CircularDirectBuffer replyBuffer;
         Deque replyQueue;
         public boolean endStream;
+        public boolean endStreamSent;
+
         long totalOutData;
 
         Http2Stream(SourceInputStream connection, int http2StreamId, State state, Route route)
