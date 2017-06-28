@@ -148,6 +148,7 @@ public class Http2WriteScheduler implements WriteScheduler
         if (direct && !stream.endStreamSent)
         {
             stream.endStreamSent = true;
+            connection.closeStream(stream);
             return writer.dataEos(streamId);
         }
         return true;
@@ -179,6 +180,7 @@ public class Http2WriteScheduler implements WriteScheduler
                 if (entry.stream.endStream && !entry.stream.endStreamSent)
                 {
                     entry.stream.endStreamSent = true;
+                    connection.closeStream(entry.stream);
                     writer.dataEos(entry.stream.http2StreamId);
                 }
             }
@@ -209,6 +211,7 @@ public class Http2WriteScheduler implements WriteScheduler
             if (stream.endStream && !stream.endStreamSent)
             {
                 stream.endStreamSent = true;
+                connection.closeStream(stream);
                 writer.dataEos(streamId);
             }
         }
