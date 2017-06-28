@@ -27,6 +27,7 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.String16FW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
+import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
@@ -47,7 +48,9 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteHandler;
 
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -65,6 +68,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.
 
 final class Http2Connection
 {
+    private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
 
     private final MutableDirectBuffer writeBuffer;
     ServerStreamFactory factory;
@@ -122,6 +126,7 @@ final class Http2Connection
     MessageConsumer networkConsumer;
     RouteHandler router;
     String networkReplyName;
+    String sourceName;
 
     Http2Connection(ServerStreamFactory factory, RouteHandler router, long networkReplyId, MessageConsumer networkConsumer,
                     MutableDirectBuffer writeBuffer, MessageFunction<RouteFW> wrapRoute)
@@ -179,6 +184,7 @@ final class Http2Connection
     {
         this.sourceId = beginRO.streamId();
         this.sourceRef = beginRO.sourceRef();
+        this.sourceName = beginRO.source().asString();
         this.decoderState = this::decodePreface;
 
         writeScheduler.settings(localSettings.maxConcurrentStreams);
@@ -671,7 +677,7 @@ final class Http2Connection
             }
         }
 
-        RouteFW route = resolveTarget(sourceRef, headersContext.headers);
+        RouteFW route = resolveTarget(sourceRef, sourceName, headersContext.headers);
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         HttpWriter httpWriter = factory.httpWriter;
@@ -994,15 +1000,40 @@ final class Http2Connection
 
     RouteFW resolveTarget(
             long sourceRef,
+            String sourceName,
             Map<String, String> headers)
     {
-
         MessagePredicate filter = (t, b, o, l) ->
         {
-            return true;        // TODO
+            RouteFW route = factory.routeRO.wrap(b, o, l);
+            OctetsFW extension = route.extension();
+            Map<String, String> routeHeaders;
+            if (extension.sizeof() == 0)
+            {
+                routeHeaders = EMPTY_HEADERS;
+            }
+            else
+            {
+                final HttpRouteExFW routeEx = extension.get(factory.httpRouteExRO::wrap);
+                routeHeaders = new LinkedHashMap<>();
+                routeEx.headers().forEach(h -> routeHeaders.put(h.name().asString(), h.value().asString()));
+            }
+
+            return sourceRef == route.sourceRef() &&
+                    sourceName.equals(route.source().asString()) &&
+                    headers.entrySet().containsAll(routeHeaders.entrySet());
         };
 
         return router.resolve(filter, wrapRoute);
+    }
+
+    private RouteFW wrapRoute(
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
+    {
+        return factory.routeRO.wrap(buffer, index, index + length);
     }
 
     void handleWindow(WindowFW windowRO)
@@ -1082,7 +1113,7 @@ final class Http2Connection
         Map<String, String> headersMap = new HashMap<>();
         headers.forEach(
                 httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
-        RouteFW route = resolveTarget(sourceRef, headersMap);
+        RouteFW route = resolveTarget(sourceRef, sourceName, headersMap);
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         HttpWriter httpWriter = factory.httpWriter;

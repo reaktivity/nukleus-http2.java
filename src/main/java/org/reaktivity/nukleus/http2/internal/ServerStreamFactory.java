@@ -23,6 +23,7 @@ import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
+import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
@@ -53,6 +54,7 @@ import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
 public final class ServerStreamFactory implements StreamFactory
 {
+
     private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
 
     final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
@@ -71,6 +73,7 @@ public final class ServerStreamFactory implements StreamFactory
     final WindowFW windowRO = new WindowFW();
     final ResetFW resetRO = new ResetFW();
 
+    final HttpRouteExFW httpRouteExRO = new HttpRouteExFW();
     final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
     final Http2FrameFW http2RO = new Http2FrameFW();
     final Http2SettingsFW settingsRO = new Http2SettingsFW();
@@ -181,7 +184,6 @@ public final class ServerStreamFactory implements StreamFactory
         if (route != null)
         {
             final long networkId = begin.streamId();
-
 
             newStream = new ServerAcceptStream(networkThrottle, networkId, networkRef)::handleStream;
         }
