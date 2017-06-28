@@ -300,7 +300,7 @@ public final class ServerStreamFactory implements StreamFactory
             final long newNetworkReplyId = supplyStreamId.getAsLong();
 
             window = config.http2Window();
-            doWindow(networkThrottle, networkId, window, 1);
+            doWindow(networkThrottle, networkId, window, window);
 
             doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
             router.setThrottle(networkReplyName, newNetworkReplyId, this::handleThrottle);
@@ -470,7 +470,7 @@ public final class ServerStreamFactory implements StreamFactory
                 http2Connection = correlation.http2Connection;
 
                 window = config.httpWindow();
-                doWindow(applicationReplyThrottle, applicationReplyId, window, 5);
+                doWindow(applicationReplyThrottle, applicationReplyId, window, window);
                 http2Connection.handleHttpBegin(begin, correlation);
 
                 this.streamState = this::afterBegin;
@@ -498,7 +498,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void sendWindow(int update)
         {
             window += update;
-            doWindow(applicationReplyThrottle, applicationReplyId, window, 5);
+            doWindow(applicationReplyThrottle, applicationReplyId, window, 1);
         }
 
     }

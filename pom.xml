@@ -47,13 +47,10 @@
     <jmh.version>1.12</jmh.version>
 
     <nukleus.plugin.version>0.10</nukleus.plugin.version>
-    <nukleus.version>0.3</nukleus.version>
+    <nukleus.version>0.6</nukleus.version>
     <nukleus.http2.spec.version>0.12</nukleus.http2.spec.version>
     <reaktor.test.version>0.6</reaktor.test.version>
-    <reaktor.version>0.3</reaktor.version>
     <k3po.nukleus.ext.version>0.5</k3po.nukleus.ext.version>
-    <nukleus.version>0.4</nukleus.version>
-
   </properties>
 
   <dependencies>
