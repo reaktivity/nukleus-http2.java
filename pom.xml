@@ -107,6 +107,11 @@
       <version>${jmh.version}</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>org.reaktivity</groupId>
+      <artifactId>nukleus-tcp</artifactId>
+      <version>0.7</version>
+    </dependency>
   </dependencies>
 
   <build>
