@@ -19,7 +19,7 @@ class Settings
 {
     static final int DEFAULT_HEADER_TABLE_SIZE = 4096;
     static final boolean DEFAULT_ENABLE_PUSH = true;
-    static final int DEFAULT_MAX_CONCURRENT_STREAMS = 100;
+    static final int DEFAULT_MAX_CONCURRENT_STREAMS = Integer.MAX_VALUE;
     static final int DEFAULT_INITIAL_WINDOW_SIZE = 65_535;
     static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
 
@@ -29,4 +29,13 @@ class Settings
     int initialWindowSize = DEFAULT_INITIAL_WINDOW_SIZE;
     int maxFrameSize = DEFAULT_MAX_FRAME_SIZE;
     long maxHeaderListSize;
+
+    Settings(int maxConcurrentStreams)
+    {
+        this.maxConcurrentStreams = maxConcurrentStreams;
+    }
+
+    Settings()
+    {
+    }
 }

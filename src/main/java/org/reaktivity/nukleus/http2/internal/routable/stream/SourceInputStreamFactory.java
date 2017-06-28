@@ -269,7 +269,7 @@ public final class SourceInputStreamFactory
             this.throttleState = this::throttleNextWindow;
             sourceOutputEstId = supplyStreamId.getAsLong();
             http2Streams = new Int2ObjectHashMap<>();
-            localSettings = new Settings();
+            localSettings = new Settings(100);
             remoteSettings = new Settings();
             decodeContext = new HpackContext(localSettings.headerTableSize, false);
             encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
@@ -977,7 +977,7 @@ public final class SourceInputStreamFactory
             }
         }
 
-        private void closeStream(Http2Stream stream)
+        void closeStream(Http2Stream stream)
         {
             if (stream.isClientInitiated())
             {
@@ -1396,7 +1396,7 @@ public final class SourceInputStreamFactory
                     source.routableName(), OUTPUT_ESTABLISHED);
 
             correlateNew.accept(targetId, correlation);
-            newTarget.addThrottle(targetId, this::handleThrottle);
+            // TODO if upstream resets this stream, how do we know that ?
         }
 
         private Http2Stream newStream(int http2StreamId, State state, Route route)
@@ -1876,6 +1876,7 @@ public final class SourceInputStreamFactory
             resetRO.wrap(buffer, index, index + length);
             httpWriteScheduler.onReset();
             releaseReplyBuffer();
+            connection.closeStream(this);
             //source.doReset(sourceId);
         }
 
