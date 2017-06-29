@@ -185,6 +185,7 @@ public class Http2WriteScheduler implements WriteScheduler
                 }
             }
         }
+        writer.onWindow();
 
         if (entryCount == 0 && end && !endSent)
         {
@@ -203,6 +204,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             write(entry);
         }
+        writer.onWindow();
 
         if (!buffered(stream))
         {
@@ -229,14 +231,14 @@ public class Http2WriteScheduler implements WriteScheduler
         DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
         int offset1 = entry.stream.replyBuffer.readOffset();
         int read1 = entry.stream.replyBuffer.read(entry.length);
-        writer.data(entry.stream.http2StreamId, read, offset1, read1, entry.progress);
+        writer.data(entry.stream.http2StreamId, read, offset1, read1, entry.progress, false);
 
         if (read1 != entry.length)
         {
             int offset2 = entry.stream.replyBuffer.readOffset();
             int read2 = entry.stream.replyBuffer.read(entry.length - read1);
             assert read1 + read2 == entry.length;
-            writer.data(entry.stream.http2StreamId, read, offset2, read2, entry.progress);
+            writer.data(entry.stream.http2StreamId, read, offset2, read2, entry.progress, false);
         }
 
         entry.adjustWindows();
