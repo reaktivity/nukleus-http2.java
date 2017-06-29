@@ -311,7 +311,10 @@ public class Http2WriteScheduler implements WriteScheduler
 
         boolean fits()
         {
-            int min = Math.min(Math.min(length, (int) connection.http2OutWindow), (int) stream.http2OutWindow);
+            // limit by http2 windows, peer's max frame size
+            int min = Math.min((int) connection.http2OutWindow, (int) stream.http2OutWindow);
+            min = Math.min(min, length);
+            min = Math.min(min, connection.remoteSettings.maxFrameSize);
             if (min > 0)
             {
                 int remaining = length - min;
