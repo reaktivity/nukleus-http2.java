@@ -245,7 +245,7 @@ public final class SourceInputStreamFactory
 
         private boolean goaway;
         private Settings localSettings;
-        private Settings remoteSettings;
+        Settings remoteSettings;
         private boolean expectContinuation;
         private int expectContinuationStreamId;
         private boolean expectDynamicTableSizeUpdate = true;

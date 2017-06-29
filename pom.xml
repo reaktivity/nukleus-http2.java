@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
-  <version>0.11</version>
+  <version>0.12</version>
   <name>HTTP/2 Nukleus Implementation</name>
   <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
@@ -47,7 +47,7 @@
     <jmh.version>1.12</jmh.version>
 
     <nukleus.plugin.version>0.10</nukleus.plugin.version>
-    <nukleus.version>0.3</nukleus.version>
+    <nukleus.version>0.6</nukleus.version>
     <nukleus.http2.spec.version>0.12</nukleus.http2.spec.version>
     <reaktor.test.version>0.5</reaktor.test.version>
     <reaktor.version>0.3</reaktor.version>
@@ -112,6 +112,11 @@
       <artifactId>jmh-generator-annprocess</artifactId>
       <version>${jmh.version}</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.reaktivity</groupId>
+      <artifactId>nukleus-tcp</artifactId>
+      <version>0.6</version>
     </dependency>
   </dependencies>
 
