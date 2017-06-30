@@ -122,7 +122,8 @@ public class Http2WriteScheduler implements WriteScheduler
             return true;
         }
 
-        if (!buffered(stream) && length <= connection.http2OutWindow && length <= stream.http2OutWindow)
+        if (!buffered(stream) && length <= connection.http2OutWindow && length <= stream.http2OutWindow &&
+                length <= connection.remoteSettings.maxFrameSize)
         {
             connection.http2OutWindow -= length;
             stream.http2OutWindow -= length;
