@@ -56,6 +56,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.http2.internal.util.function.LongObjectBiConsumer;
 
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -76,8 +77,12 @@ import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.routable.stream.SourceInputStreamFactory.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.router.RouteKind.OUTPUT_ESTABLISHED;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.PROXY_CONNECTION;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.UPGRADE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
@@ -170,10 +175,12 @@ public final class SourceInputStreamFactory
     private static final class EncodeHeadersContext
     {
         boolean status;
+        final List<String> connectionHeaders = new ArrayList<>();
 
         void reset()
         {
             status = false;
+            connectionHeaders.clear();
         }
 
     }
@@ -1504,7 +1511,7 @@ public final class SourceInputStreamFactory
         private void connectionHeaders(DirectBuffer name, DirectBuffer value)
         {
 
-            if (!headersContext.error() && name.equals(HpackContext.CONNECTION))
+            if (!headersContext.error() && name.equals(CONNECTION))
             {
                 headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
             }
@@ -1672,7 +1679,8 @@ public final class SourceInputStreamFactory
         {
             encodeHeadersContext.reset();
 
-            httpHeaders.forEach(this::status);
+            httpHeaders.forEach(this::status)               // notes if there is :status
+                       .forEach(this::connectionHeaders);   // collects all connection headers
             if (!encodeHeadersContext.status)
             {
                 builder.header(b -> b.indexed(8));          // no mandatory :status header, add :status: 200
@@ -1703,6 +1711,22 @@ public final class SourceInputStreamFactory
             }
         }
 
+        void connectionHeaders(HttpHeaderFW httpHeader)
+        {
+            StringFW name = httpHeader.name();
+            String16FW value = httpHeader.value();
+            nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+
+            if (nameRO.equals(CONNECTION))
+            {
+                String[] headers = value.asString().split(",");
+                for (String header : headers)
+                {
+                    encodeHeadersContext.connectionHeaders.add(header.trim());
+                }
+            }
+        }
+
         boolean validHeader(HttpHeaderFW httpHeader)
         {
             StringFW name = httpHeader.name();
@@ -1710,13 +1734,33 @@ public final class SourceInputStreamFactory
             nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
             valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
 
-            if (nameRO.equals(encodeContext.nameBuffer(1)) ||
-                    nameRO.equals(encodeContext.nameBuffer(2)) ||
-                    nameRO.equals(encodeContext.nameBuffer(4)) ||
-                    nameRO.equals(encodeContext.nameBuffer(6)) ||
-                    nameRO.equals(HpackContext.CONNECTION))
+            // Removing 8.1.2.1 Pseudo-Header Fields
+            // Not sending error as it will allow requests to loop back
+            if (nameRO.equals(encodeContext.nameBuffer(1)) ||          // :authority
+                    nameRO.equals(encodeContext.nameBuffer(2)) ||      // :method
+                    nameRO.equals(encodeContext.nameBuffer(4)) ||      // :path
+                    nameRO.equals(encodeContext.nameBuffer(6)))        // :scheme
             {
-                return false;                             // ignore :authority, :method, :path, :scheme, connection
+                return false;
+            }
+
+            // Removing 8.1.2.2 connection-specific header fields from response
+            if (nameRO.equals(encodeContext.nameBuffer(57)) ||         // transfer-encoding
+                    nameRO.equals(CONNECTION) ||
+                    nameRO.equals(KEEP_ALIVE) ||
+                    nameRO.equals(PROXY_CONNECTION) ||
+                    nameRO.equals(UPGRADE))
+            {
+                return false;
+            }
+
+            // Removing any header that is nominated by Connection header field
+            for(String connectionHeader: encodeHeadersContext.connectionHeaders)
+            {
+                if (name.asString().equals(connectionHeader))
+                {
+                    return false;
+                }
             }
 
             return true;
