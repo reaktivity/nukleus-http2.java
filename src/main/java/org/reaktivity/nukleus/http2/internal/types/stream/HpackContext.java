@@ -102,6 +102,9 @@ public class HpackContext
     public static final DirectBuffer CONNECTION = new UnsafeBuffer("connection".getBytes(UTF_8));
     public static final DirectBuffer TE = new UnsafeBuffer("te".getBytes(UTF_8));
     public static final DirectBuffer TRAILERS = new UnsafeBuffer("trailers".getBytes(UTF_8));
+    public static final DirectBuffer KEEP_ALIVE = new UnsafeBuffer("keep-alive".getBytes(UTF_8));
+    public static final DirectBuffer PROXY_CONNECTION = new UnsafeBuffer("proxy-connection".getBytes(UTF_8));
+    public static final DirectBuffer UPGRADE = new UnsafeBuffer("upgrade".getBytes(UTF_8));
 
     // Dynamic table. Entries are added at the end (since it is in reverse order,
     // need to calculate the index accordingly)
