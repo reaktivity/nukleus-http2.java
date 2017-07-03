@@ -71,6 +71,15 @@ class CircularDirectBuffer
         return true;
     }
 
+    int writeContiguous(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
+    {
+        int part = (start <= end) ? Math.min(length, capacity - end) : Math.min(length, start - end);
+        dstBuffer.putBytes(end, srcBuffer, srcIndex, part);
+        count += part;
+        end = (end + part) % capacity;
+        return part;
+    }
+
     int read(int length)
     {
         if (length > count)

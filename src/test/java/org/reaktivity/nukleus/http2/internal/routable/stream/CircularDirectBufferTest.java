@@ -67,4 +67,45 @@ public class CircularDirectBufferTest
         return part1 + part2;
     }
 
+    @Test
+    public void writeContiguous()
+    {
+        int capacity = 100;
+        MutableDirectBuffer src = new UnsafeBuffer(new byte[capacity]);
+        MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
+
+        // will test all boundaries with start of the buffer at i
+        for(int i=0; i < 100; i++)
+        {
+            CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
+            assertEquals(i, cb.writeContiguous(dst, src, 0, i));
+            assertEquals(i, read(cb, i));
+
+            // now start is at i
+            assertEquals(20, write(cb, dst, src, 0, 20));
+            assertEquals(30, write(cb, dst, src, 0, 30));
+            assertEquals(40, write(cb, dst, src, 0, 40));
+            assertEquals(10, write(cb, dst, src, 0, 10));
+
+            assertEquals(5, read(cb, 5));
+            assertEquals(20, read(cb, 20));
+            assertEquals(15, read(cb, 15));
+            assertEquals(30, read(cb, 30));
+            assertEquals(30, read(cb, 30));
+        }
+    }
+
+    private int write(CircularDirectBuffer cb, MutableDirectBuffer dst, MutableDirectBuffer src, int index, int length)
+    {
+        int part1 = cb.writeContiguous(dst, src, index, length);
+        int part2 = 0;
+
+        if (part1 != length)
+        {
+            part2 = cb.writeContiguous(dst, src, index, length-part1);
+        }
+        System.out.println("part1="+part1+" part2="+part2);
+        return part1 + part2;
+    }
+
 }
