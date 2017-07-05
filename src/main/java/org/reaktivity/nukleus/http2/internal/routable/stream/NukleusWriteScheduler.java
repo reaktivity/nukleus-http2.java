@@ -66,6 +66,8 @@ class NukleusWriteScheduler
         slab.buffer(accumulatedSlot, this::accumulated);
         int length = visitor.visit(accumulated, accumulatedOffset, lengthGuess);
         accumulatedOffset += length;
+
+        assert accumulatedOffset < 65536;       // DataFW's length is 2 bytes
         return length;
     }
 
