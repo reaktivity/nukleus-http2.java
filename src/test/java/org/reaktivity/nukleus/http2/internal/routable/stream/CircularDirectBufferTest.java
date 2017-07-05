@@ -104,7 +104,7 @@ public class CircularDirectBufferTest
         {
             part2 = cb.writeContiguous(dst, src, index, length-part1);
         }
-        System.out.println("part1="+part1+" part2="+part2);
+
         return part1 + part2;
     }
 
