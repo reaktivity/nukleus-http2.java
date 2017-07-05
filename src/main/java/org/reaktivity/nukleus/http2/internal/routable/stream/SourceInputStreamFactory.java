@@ -1856,7 +1856,8 @@ public final class SourceInputStreamFactory
 
         private void onData()
         {
-            httpWriteScheduler.onData(http2DataRO);
+            boolean written = httpWriteScheduler.onData(http2DataRO);
+            assert written;
         }
 
         private void onThrottle(

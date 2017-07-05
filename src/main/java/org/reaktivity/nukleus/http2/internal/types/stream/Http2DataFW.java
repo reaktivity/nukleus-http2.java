@@ -132,17 +132,6 @@ public class Http2DataFW extends Http2FrameFW
             return this;
         }
 
-        public Builder payload(DirectBuffer buffer)
-        {
-            return payload(buffer, 0, buffer.capacity());
-        }
-
-        public Builder payload(DirectBuffer payload, int offset, int length)
-        {
-            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
-            payloadLength(length);
-            return this;
-        }
     }
 }
 

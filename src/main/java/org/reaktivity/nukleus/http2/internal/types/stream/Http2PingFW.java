@@ -123,11 +123,7 @@ public class Http2PingFW extends Http2FrameFW
             return this;
         }
 
-        public Http2PingFW.Builder payload(DirectBuffer payload)
-        {
-            return payload(payload, 0, payload.capacity());
-        }
-
+        @Override
         public Http2PingFW.Builder payload(DirectBuffer payload, int offset, int length)
         {
             if (length != 8)
@@ -135,7 +131,7 @@ public class Http2PingFW extends Http2FrameFW
                 throw new IllegalArgumentException(String.format("Invalid PING frame length = %d (must be 8)", length));
             }
 
-            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, 8);
+            super.payload(payload, offset, length);
             return this;
         }
 
