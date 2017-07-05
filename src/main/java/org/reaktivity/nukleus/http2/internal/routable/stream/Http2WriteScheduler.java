@@ -19,19 +19,38 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
-import java.util.function.Consumer;
+import java.util.Deque;
+import java.util.LinkedList;
+import java.util.function.IntConsumer;
+
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
 public class Http2WriteScheduler implements WriteScheduler
 {
     private static final DirectBuffer EMPTY = new UnsafeBuffer(new byte[0]);
+    private static final IntConsumer NOOP = x -> {};
 
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
+    private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
+
     private final SourceInputStreamFactory.SourceInputStream connection;
     private final NukleusWriteScheduler writer;
+    private final Target target;
+    private Deque<Entry> replyQueue;
 
     private boolean end;
     private boolean endSent;
@@ -45,121 +64,333 @@ public class Http2WriteScheduler implements WriteScheduler
             long targetId)
     {
         this.connection = connection;
+        this.target = target;
         this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, target, targetId);
-    }
-
-    public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
-    {
-        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::read);
-        CircularDirectBuffer cb = stream.replyBuffer;
-        boolean written = cb.write(dstBuffer, buffer, offset, length);
-        if (written)
-        {
-            StreamEntry entry = new StreamEntry(stream, length, progress);
-            stream.replyQueue.add(entry);
-            onHttp2Window(streamId);                // Make progress with partial write
-        }
-
-        return written;
+        this.replyQueue = new LinkedList<>();
     }
 
     @Override
     public boolean windowUpdate(int streamId, int update)
     {
-        return writer.windowUpdate(streamId, update);
+        int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 window size increment
+        Http2FrameType type = WINDOW_UPDATE;
+        IntConsumer progress = NOOP;
+        SourceInputStreamFactory.Http2Stream stream = stream(streamId);
+        Flyweight.Builder.Visitor visitor = target.visitWindowUpdate(streamId, update);
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            http2(stream, type, sizeof, visitor, progress);
+        }
+        else
+        {
+            WindowEntry entry = new WindowEntry(stream, streamId, sizeof, type, visitor, progress, update);
+            addEntry(entry);
+        }
+        return true;
     }
 
     @Override
     public boolean pingAck(DirectBuffer buffer, int offset, int length)
     {
-        return writer.pingAck(buffer, offset, length);
+        int streamId = 0;
+        int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for a ping
+        IntConsumer progress = NOOP;
+        SourceInputStreamFactory.Http2Stream stream = null;
+        Http2FrameType type = PING;
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            Flyweight.Builder.Visitor visitor = target.visitPingAck(buffer, offset, length);
+            http2(stream, type, sizeof, visitor, progress);
+        }
+        else
+        {
+            MutableDirectBuffer copy = new UnsafeBuffer(new byte[8]);
+            copy.putBytes(0, buffer, offset, length);
+            Flyweight.Builder.Visitor visitor = target.visitPingAck(copy, 0, length);
+            PingAckEntry entry = new PingAckEntry(stream, streamId, sizeof, type, visitor, progress);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
     public boolean goaway(int lastStreamId, Http2ErrorCode errorCode)
     {
-        return writer.goaway(lastStreamId, errorCode);
+        int streamId = 0;
+        int sizeof = 9 + 8;             // +9 for HTTP2 framing, +8 for goaway payload
+        SourceInputStreamFactory.Http2Stream stream = null;
+        Flyweight.Builder.Visitor goaway = target.visitGoaway(lastStreamId, errorCode);
+        Http2FrameType type = GO_AWAY;
+        IntConsumer progress = NOOP;
+
+        if (!buffered(0) && sizeof <= connection.outWindow)
+        {
+            http2(stream, type, sizeof, goaway, progress);
+        }
+        else
+        {
+            GoAwayEntry entry = new GoAwayEntry(stream, streamId, sizeof, type, goaway, progress, lastStreamId, errorCode);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
-        return writer.rst(streamId, errorCode);
+        int sizeof = 9 + 4;             // +9 for HTTP2 framing, +4 for RST_STREAM payload
+        Flyweight.Builder.Visitor visitor = target.visitRst(streamId, errorCode);
+        SourceInputStreamFactory.Http2Stream stream = stream(streamId);
+        Http2FrameType type = RST_STREAM;
+        IntConsumer progress = NOOP;
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            http2(stream, type, sizeof, visitor, progress);
+        }
+        else
+        {
+            RstEntry entry = new RstEntry(stream, streamId, sizeof, type, visitor, progress, errorCode);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
     public boolean settings(int maxConcurrentStreams)
     {
-        return writer.settings(maxConcurrentStreams);
+        int streamId = 0;
+        int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
+        Flyweight.Builder.Visitor settings = target.visitSettings(maxConcurrentStreams);
+        Http2FrameType type = SETTINGS;
+        IntConsumer progress = NOOP;
+        SourceInputStreamFactory.Http2Stream stream = null;
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            http2(stream, type, sizeof, settings, progress);
+        }
+        else
+        {
+            SettingsEntry entry = new SettingsEntry(stream, streamId, sizeof, type, settings, progress, maxConcurrentStreams);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
     public boolean settingsAck()
     {
-        return writer.settingsAck();
+        int streamId = 0;
+        int sizeof = 9;                 // +9 for HTTP2 framing
+        Flyweight.Builder.Visitor visitor = target.visitSettingsAck();
+        Http2FrameType type = SETTINGS;
+        IntConsumer progress = NOOP;
+        SourceInputStreamFactory.Http2Stream stream = null;
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            http2(stream, type, sizeof, visitor, progress);
+        }
+        else
+        {
+            SettingsAckEntry entry = new SettingsAckEntry(stream, streamId, sizeof, type, visitor, progress);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
     public boolean headers(int streamId, ListFW<HttpHeaderFW> headers)
     {
-        return writer.headers(streamId, headers);
+        int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
+        Http2FrameType type = HEADERS;
+        IntConsumer progress = NOOP;
+        SourceInputStreamFactory.Http2Stream stream = stream(streamId);
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            Flyweight.Builder.Visitor visitor = target.visitHeaders(streamId, headers, connection::mapHeaders);
+            http2(stream, type, sizeof, visitor, progress);
+        }
+        else
+        {
+            MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);        // TODO
+            HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();  // TODO
+            blockRW.wrap(copy, 0, copy.capacity());
+            connection.mapHeaders(headers, blockRW);
+
+            Flyweight.Builder.Visitor visitor = target.visitHeaders(streamId, copy, 0, copy.capacity());
+            HeadersEntry entry = new HeadersEntry(stream, streamId, sizeof, type, visitor, progress);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
     public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
-                               Consumer<Integer> progress)
+                               IntConsumer progress)
     {
-        return writer.pushPromise(streamId, promisedStreamId, headers, progress);
+        int sizeof = 9 + 4 + headersLength(headers);    // +9 for HTTP2 framing, +4 for promised stream id
+        Http2FrameType type = PUSH_PROMISE;
+        SourceInputStreamFactory.Http2Stream stream = stream(streamId);
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow)
+        {
+            Flyweight.Builder.Visitor pushPromise =
+                    target.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromize);
+            http2(stream, type, sizeof, pushPromise, progress);
+        }
+        else
+        {
+            MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);
+            HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();  // TODO
+            blockRW.wrap(copy, 0, copy.capacity());
+            connection.mapHeaders(headers, blockRW);
+
+            Flyweight.Builder.Visitor visitor =
+                    target.visitPushPromise(streamId, promisedStreamId, copy, 0, copy.capacity());
+
+            PushPromiseEntry entry = new PushPromiseEntry(stream, streamId, sizeof, type, visitor, progress);
+            addEntry(entry);
+        }
+
+        return true;
     }
 
     @Override
-    public boolean data(int streamId, DirectBuffer buffer, int offset, int length, Consumer<Integer> progress)
+    public boolean data(int streamId, DirectBuffer buffer, int offset, int length, IntConsumer progress)
     {
-        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+
+        assert length > 0;
+        assert streamId != 0;
+
+        int sizeof = 9 + length;    // +9 for HTTP2 framing
+        Http2FrameType type = DATA;
+        SourceInputStreamFactory.Http2Stream stream = stream(streamId);
         if (stream == null)
         {
             return true;
         }
 
-        if (!buffered(stream) && length <= connection.http2OutWindow && length <= stream.http2OutWindow &&
-                length <= connection.remoteSettings.maxFrameSize)
+        if (!buffered(0) && !buffered(streamId) && sizeof <= connection.outWindow && length <= connection.http2OutWindow &&
+                length <= stream.http2OutWindow && length <= connection.remoteSettings.maxFrameSize)
         {
-            connection.http2OutWindow -= length;
-            stream.http2OutWindow -= length;
-            stream.totalOutData += length;
-            return writer.data(streamId, buffer, offset, length, progress);
+            Flyweight.Builder.Visitor data = target.visitData(streamId, buffer, offset, length);
+            http2(stream, type, sizeof, data, progress);
         }
         else
         {
-            return http2(streamId, buffer, offset, length, progress);
+            MutableDirectBuffer replyBuffer = stream.acquireReplyBuffer(this::write);
+            CircularDirectBuffer cdb = stream.replyBuffer;
+
+            // Store as two contiguous parts (as it is circular buffer)
+            int part1 = cdb.writeContiguous(replyBuffer, buffer, offset, length);
+            assert part1 > 0;
+            Flyweight.Builder.Visitor data1 = target.visitData(streamId, buffer, offset, part1);
+            DataEntry entry1 = new DataEntry(stream, streamId, type, part1 + 9, data1, progress);
+            addEntry(entry1);
+
+            int part2 = length - part1;
+            if (part2 > 0)
+            {
+                part2 = cdb.writeContiguous(replyBuffer, buffer, offset, part2);
+                assert part2 > 0;
+                assert part1 + part2 == length;
+                Flyweight.Builder.Visitor data2 = target.visitData(streamId, buffer, offset, part2);
+                DataEntry entry2 = new DataEntry(stream, streamId, type, part2 + 9, data2, progress);
+                addEntry(entry2);
+            }
+            flush();
         }
+        return true;
     }
 
     @Override
     public boolean dataEos(int streamId)
     {
+        int sizeof = 9;    // +9 for HTTP2 framing
+        Flyweight.Builder.Visitor data = target.visitDataEos(streamId);
+        Http2FrameType type = DATA;
+        IntConsumer progress = NOOP;
+
         SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
         if (stream == null)
         {
             return true;
         }
         stream.endStream = true;
-        boolean direct = !buffered(stream) && 0 <= connection.http2OutWindow && 0 <= stream.http2OutWindow;
-        if (direct && !stream.endStreamSent)
+
+        if (!buffered(streamId) && sizeof <= connection.outWindow && 0 <= connection.http2OutWindow &&
+                0 <= stream.http2OutWindow)
         {
-            stream.endStreamSent = true;
-            connection.closeStream(stream);
-            return writer.dataEos(streamId);
+            http2(stream, type, sizeof, data, progress);
         }
+        else
+        {
+            DataEosEntry entry = new DataEosEntry(stream, streamId, sizeof, type, data, progress);
+            addEntry(entry);
+        }
+
         return true;
+    }
+
+    private void addEntry(Entry entry)
+    {
+        Deque queue = queue(entry.stream);
+        queue.add(entry);
+    }
+
+    // Since it is not encoding, this gives an approximate length of header block
+    private int headersLength(ListFW<HttpHeaderFW> headers)
+    {
+        int[] length = new int[1];
+        headers.forEach(x -> length[0] += x.name().sizeof() + x.value().sizeof() + 4);
+        return length[0];
     }
 
     @Override
     public void doEnd()
     {
         end = true;
+
+        assert entryCount >= 0;
         if (entryCount == 0 && !endSent)
+        {
+            endSent = true;
+            writer.doEnd();
+        }
+    }
+
+    void flush()
+    {
+        if (connection.outWindow < connection.outWindowThreshold)
+        {
+            // Instead of sending small updates, wait until a bigger window accumulates
+            return;
+        }
+
+        Entry entry;
+        while ((entry = pop()) != null)
+        {
+            entry.write();
+
+            if (!buffered(entry.stream) && entry.stream != null)
+            {
+                entry.stream.releaseReplyBuffer();
+            }
+        }
+        writer.flush();
+
+        if (entryCount == 0 && end && !endSent)
         {
             endSent = true;
             writer.doEnd();
@@ -169,100 +400,35 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public void onHttp2Window()
     {
-        StreamEntry entry;
-        while((entry = pop()) != null)
-        {
-            write(entry);
-
-            if (!buffered(entry.stream))
-            {
-                entry.stream.releaseReplyBuffer();
-
-                if (entry.stream.endStream && !entry.stream.endStreamSent)
-                {
-                    entry.stream.endStreamSent = true;
-                    connection.closeStream(entry.stream);
-                    writer.dataEos(entry.stream.http2StreamId);
-                }
-            }
-        }
-        writer.onWindow();
-
-        if (entryCount == 0 && end && !endSent)
-        {
-            endSent = true;
-            writer.doEnd();
-        }
+        flush();
     }
 
     @Override
     public void onHttp2Window(int streamId)
     {
-        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
-
-        StreamEntry entry;
-        while ((entry = pop(stream)) != null)
-        {
-            write(entry);
-        }
-        writer.onWindow();
-
-        if (!buffered(stream))
-        {
-            stream.releaseReplyBuffer();
-
-            if (stream.endStream && !stream.endStreamSent)
-            {
-                stream.endStreamSent = true;
-                connection.closeStream(stream);
-                writer.dataEos(streamId);
-            }
-        }
-
-        if (entryCount == 0 && end && !endSent)
-        {
-            endSent = true;
-            writer.doEnd();
-        }
-    }
-
-    private void write(StreamEntry entry)
-    {
-        // ring buffer may have split the entry into two parts
-        DirectBuffer read = entry.stream.acquireReplyBuffer(this::read);
-        int offset1 = entry.stream.replyBuffer.readOffset();
-        int read1 = entry.stream.replyBuffer.read(entry.length);
-        writer.data(entry.stream.http2StreamId, read, offset1, read1, entry.progress, false);
-
-        if (read1 != entry.length)
-        {
-            int offset2 = entry.stream.replyBuffer.readOffset();
-            int read2 = entry.stream.replyBuffer.read(entry.length - read1);
-            assert read1 + read2 == entry.length;
-            writer.data(entry.stream.http2StreamId, read, offset2, read2, entry.progress, false);
-        }
-
-        entry.adjustWindows();
+        flush();
     }
 
     @Override
     public void onWindow()
     {
-        writer.onWindow();
+        flush();
     }
 
-    private boolean buffered(SourceInputStreamFactory.Http2Stream stream)
+    private Entry pop()
     {
-        return stream.replyQueue != null && !stream.replyQueue.isEmpty();
-    }
+        if (buffered((SourceInputStreamFactory.Http2Stream)null))
+        {
+            // There are entries on streamId=0 but cannot make progress, so
+            // not make any progress on other streams
+            return pop((SourceInputStreamFactory.Http2Stream)null);
+        }
 
-    private StreamEntry pop()
-    {
         // TODO Map#values may not iterate randomly, randomly pick a stream ??
         // Select a frame on a HTTP2 stream that can be written
         for(SourceInputStreamFactory.Http2Stream stream : connection.http2Streams.values())
         {
-            StreamEntry entry = pop(stream);
+            Entry entry = pop(stream);
             if (entry != null)
             {
                 return entry;
@@ -272,15 +438,17 @@ public class Http2WriteScheduler implements WriteScheduler
         return null;
     }
 
-    private StreamEntry pop(SourceInputStreamFactory.Http2Stream stream)
+    private Entry pop(SourceInputStreamFactory.Http2Stream stream)
     {
         if (buffered(stream))
         {
-            StreamEntry entry = (StreamEntry) stream.replyQueue.peek();
+            Deque replyQueue = queue(stream);
+            Entry entry = (Entry) replyQueue.peek();
             if (entry.fits())
             {
                 entryCount--;
-                return (StreamEntry) stream.replyQueue.poll();
+                entry =  (Entry) replyQueue.poll();
+                return entry;
             }
         }
 
@@ -293,29 +461,233 @@ public class Http2WriteScheduler implements WriteScheduler
         return read;
     }
 
-    private class StreamEntry
+    private MutableDirectBuffer write(MutableDirectBuffer buffer)
     {
-        final SourceInputStreamFactory.Http2Stream stream;
-        final int length;
-        private final Consumer<Integer> progress;
+        write.wrap(buffer.addressOffset(), buffer.capacity());
+        return write;
+    }
 
-        StreamEntry(
-                SourceInputStreamFactory.Http2Stream stream,
-                int length,
-                Consumer<Integer> progress)
+    private Deque queue(SourceInputStreamFactory.Http2Stream stream)
+    {
+        return (stream == null) ? replyQueue : stream.replyQueue;
+    }
+
+    private boolean buffered(SourceInputStreamFactory.Http2Stream stream)
+    {
+        Deque queue = (stream == null) ? replyQueue : stream.replyQueue;
+        return buffered(queue);
+    }
+
+    private boolean buffered(Deque queue)
+    {
+        return !(queue == null || queue.isEmpty());
+    }
+
+    CircularDirectBuffer buffer(int streamId)
+    {
+        assert streamId != 0;
+
+        SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+        return stream.replyBuffer;
+    }
+
+
+    boolean buffered(int streamId)
+    {
+        if (streamId == 0)
         {
+            return !(replyQueue == null || replyQueue.isEmpty());
+        }
+        else
+        {
+            SourceInputStreamFactory.Http2Stream stream = connection.http2Streams.get(streamId);
+            return !(stream == null || stream.replyQueue == null || stream.replyQueue.isEmpty());
+        }
+    }
+
+    SourceInputStreamFactory.Http2Stream stream(int streamId)
+    {
+        return streamId == 0 ? null : connection.http2Streams.get(streamId);
+    }
+
+    private void http2(SourceInputStreamFactory.Http2Stream stream, Http2FrameType type,
+                       int lengthGuess, Flyweight.Builder.Visitor visitor, IntConsumer progress, boolean flush)
+    {
+        int sizeof = writer.http2Frame(lengthGuess, visitor);
+        assert sizeof >= 9;
+        assert connection.outWindow >= sizeof;
+
+        connection.outWindow -= sizeof;
+
+        int length = sizeof - 9;
+        progress.accept(length);
+        if (type == DATA)
+        {
+            stream.http2OutWindow -= length;
+            connection.http2OutWindow -= length;
+            stream.totalOutData += length;
+        }
+        if (flush)
+        {
+            writer.flush();
+        }
+
+    }
+
+    private void http2(SourceInputStreamFactory.Http2Stream stream, Http2FrameType type,
+                       int lengthGuess, Flyweight.Builder.Visitor visitor, IntConsumer progress)
+    {
+        http2(stream, type, lengthGuess, visitor, progress, true);
+    }
+
+    private class Entry
+    {
+        final int streamId;
+        final int sizeof;
+        final Http2FrameType type;
+        final Flyweight.Builder.Visitor visitor;
+        final IntConsumer progress;
+        final SourceInputStreamFactory.Http2Stream stream;
+
+        Entry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+              Flyweight.Builder.Visitor visitor, IntConsumer progress)
+        {
+            assert sizeof >= 9;
+
             this.stream = stream;
-            this.length = length;
+            this.streamId = streamId;
+            this.sizeof = sizeof;
+            this.type = type;
+            this.visitor = visitor;
             this.progress = progress;
+
             entryCount++;
         }
 
         boolean fits()
         {
-            // limit by http2 windows, peer's max frame size
+            return sizeof <= connection.outWindow;
+        }
+
+        void write()
+        {
+            http2(stream, type, sizeof, visitor, progress, false);
+        }
+
+    }
+
+    private class WindowEntry extends Entry
+    {
+        private final int update;
+
+        WindowEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                    Flyweight.Builder.Visitor visitor, IntConsumer progress, int update)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+            this.update = update;
+        }
+    }
+
+    private class PingAckEntry extends Entry
+    {
+        PingAckEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                     Flyweight.Builder.Visitor visitor, IntConsumer progress)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class GoAwayEntry extends Entry
+    {
+        GoAwayEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                    Flyweight.Builder.Visitor visitor, IntConsumer progress,
+                    int lastStreamId, Http2ErrorCode errorCode)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class RstEntry extends Entry
+    {
+        RstEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                 Flyweight.Builder.Visitor visitor, IntConsumer progress,
+                 Http2ErrorCode errorCode)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class SettingsEntry extends Entry
+    {
+        SettingsEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                      Flyweight.Builder.Visitor visitor, IntConsumer progress, int maxConcurrentStream)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class SettingsAckEntry extends Entry
+    {
+        SettingsAckEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                         Flyweight.Builder.Visitor visitor, IntConsumer progress)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class HeadersEntry extends Entry
+    {
+        HeadersEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                     Flyweight.Builder.Visitor visitor, IntConsumer progress)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class PushPromiseEntry extends Entry
+    {
+        PushPromiseEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                         Flyweight.Builder.Visitor visitor, IntConsumer progress)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class DataEosEntry extends Entry
+    {
+        DataEosEntry(SourceInputStreamFactory.Http2Stream stream, int streamId, int sizeof, Http2FrameType type,
+                     Flyweight.Builder.Visitor visitor, IntConsumer progress)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+        }
+    }
+
+    private class DataEntry extends Entry
+    {
+        final int length;
+
+        DataEntry(
+                SourceInputStreamFactory.Http2Stream stream,
+                int streamId,
+                Http2FrameType type,
+                int sizeof,
+                Flyweight.Builder.Visitor visitor,
+                IntConsumer progress)
+        {
+            super(stream, streamId, sizeof, type, visitor, progress);
+
+            assert streamId != 0;
+            length = sizeof - 9;
+        }
+
+        boolean fits()
+        {
+            // limit by nuklei window, http2 windows, peer's max frame size
             int min = Math.min((int) connection.http2OutWindow, (int) stream.http2OutWindow);
             min = Math.min(min, length);
             min = Math.min(min, connection.remoteSettings.maxFrameSize);
+            min = Math.min(min, connection.outWindow - 9);
+
             if (min > 0)
             {
                 int remaining = length - min;
@@ -323,8 +695,8 @@ public class Http2WriteScheduler implements WriteScheduler
                 {
                     entryCount--;
                     stream.replyQueue.poll();
-                    StreamEntry entry1 = new StreamEntry(stream, min, progress);
-                    StreamEntry entry2 = new StreamEntry(stream, remaining, progress);
+                    DataEntry entry1 = new DataEntry(stream, streamId, type, min + 9, visitor, progress);
+                    DataEntry entry2 = new DataEntry(stream, streamId, type, remaining + 9, visitor, progress);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
@@ -334,11 +706,15 @@ public class Http2WriteScheduler implements WriteScheduler
             return min > 0;
         }
 
-        void adjustWindows()
+        @Override
+        void write()
         {
-            connection.http2OutWindow -= length;
-            stream.http2OutWindow -= length;
-            stream.totalOutData += length;
+            DirectBuffer read = stream.acquireReplyBuffer(Http2WriteScheduler.this::read);
+            int offset = stream.replyBuffer.readOffset();
+            int readLength = stream.replyBuffer.read(length);
+            assert readLength == length;
+            Flyweight.Builder.Visitor visitor = target.visitData(streamId, read, offset, readLength);
+            http2(stream, type, readLength, visitor, progress, false);
         }
 
         public String toString()

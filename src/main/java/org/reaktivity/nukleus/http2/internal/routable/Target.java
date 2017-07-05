@@ -339,6 +339,8 @@ public final class Target implements Nukleus
             int payloadOffset,
             int payloadLength)
     {
+        assert streamId != 0;
+
         return (buffer, offset, limit) ->
                 http2DataRW.wrap(buffer, offset, limit)
                            .streamId(streamId)
@@ -349,6 +351,8 @@ public final class Target implements Nukleus
 
     public Flyweight.Builder.Visitor visitDataEos(int streamId)
     {
+        assert streamId != 0;
+
         return (buffer, offset, limit) ->
                 http2DataRW.wrap(buffer, offset, limit)
                       .streamId(streamId)
@@ -371,6 +375,21 @@ public final class Target implements Nukleus
                               .sizeof();
     }
 
+    public Flyweight.Builder.Visitor visitHeaders(
+            int streamId,
+            DirectBuffer srcBuffer,
+            int srcOffset,
+            int srcLength)
+    {
+        return (buffer, offset, limit) ->
+                http2HeadersRW.wrap(buffer, offset, limit)
+                              .streamId(streamId)
+                              .endHeaders()
+                              .payload(srcBuffer, srcOffset, srcLength)
+                              .build()
+                              .sizeof();
+    }
+
     public Flyweight.Builder.Visitor visitPushPromise(
             int streamId,
             int promisedStreamId,
@@ -383,6 +402,23 @@ public final class Target implements Nukleus
                              .promisedStreamId(promisedStreamId)
                              .endHeaders()
                              .headers(b -> builder.accept(headers, b))
+                             .build()
+                             .sizeof();
+    }
+
+    public Flyweight.Builder.Visitor visitPushPromise(
+            int streamId,
+            int promisedStreamId,
+            DirectBuffer srcBuffer,
+            int srcOffset,
+            int srcLength)
+    {
+        return (buffer, offset, limit) ->
+                pushPromiseRW.wrap(buffer, offset, limit)
+                             .streamId(streamId)
+                             .promisedStreamId(promisedStreamId)
+                             .endHeaders()
+                             .payload(srcBuffer, srcOffset, srcLength)
                              .build()
                              .sizeof();
     }

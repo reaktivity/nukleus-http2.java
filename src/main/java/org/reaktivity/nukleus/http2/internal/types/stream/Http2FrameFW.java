@@ -146,6 +146,18 @@ public class Http2FrameFW extends Flyweight
             return (B) this;
         }
 
+        public final B payload(DirectBuffer buffer)
+        {
+            return payload(buffer, 0, buffer.capacity());
+        }
+
+        public B payload(DirectBuffer payload, int offset, int length)
+        {
+            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
+            payloadLength(length);
+            return (B) this;
+        }
+
         protected final B payloadLength(int length)
         {
             buffer().putShort(offset() + LENGTH_OFFSET, (short) ((length & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
