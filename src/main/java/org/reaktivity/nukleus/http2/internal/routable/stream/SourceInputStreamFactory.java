@@ -90,7 +90,9 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.
 
 public final class SourceInputStreamFactory
 {
-    private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
+    private static final double OUTWINDOW_THRESHOLD = 0.5;      // TODO configuration
+    private static final double INWINDOW_THRESHOLD = 0.5;
+
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     private final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
 
@@ -232,8 +234,8 @@ public final class SourceInputStreamFactory
         int lastStreamId;
         long sourceRef;
         private long correlationId;
-        private final int initialWindow = 8192; // TODO config
-        int window = initialWindow;
+        private final int initialWindow = 65535; // TODO config
+        int window;
         int outWindow;
         int outWindowThreshold = -1;
 
@@ -426,7 +428,8 @@ public final class SourceInputStreamFactory
             this.correlationId = beginRO.correlationId();
             this.streamState = this::streamAfterBeginOrData;
             this.decoderState = this::decodePreface;
-            source.doWindow(sourceId, window);
+            source.doWindow(sourceId, initialWindow);
+            window = initialWindow;
 
             replyTarget.addThrottle(sourceOutputEstId, this::handleThrottle);
             replyTarget.doBegin(sourceOutputEstId, 0L, correlationId);
@@ -448,9 +451,12 @@ public final class SourceInputStreamFactory
             }
             else
             {
-                this.window += dataRO.length();
-                assert window <= initialWindow;
-                source.doWindow(sourceId, dataRO.length());
+                if (window < initialWindow * INWINDOW_THRESHOLD)
+                {
+                    int windowPending = initialWindow - window;
+                    window = initialWindow;
+                    source.doWindow(sourceId, windowPending);
+                }
                 final OctetsFW payload = dataRO.payload();
                 final int limit = payload.limit();
 
@@ -1307,7 +1313,7 @@ public final class SourceInputStreamFactory
             int update = windowRO.update();
             if (outWindowThreshold == -1)
             {
-                outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
+                outWindowThreshold = (int) (OUTWINDOW_THRESHOLD * update);
             }
             outWindow += update;
             writeScheduler.onWindow();
@@ -1831,9 +1837,8 @@ public final class SourceInputStreamFactory
 
         private int replySlot = NO_SLOT;
         CircularDirectBuffer replyBuffer;
-        Deque replyQueue;
+        Deque replyQueue = new LinkedList();
         public boolean endStream;
-        public boolean endStreamSent;
 
         long totalOutData;
 
@@ -1896,7 +1901,6 @@ public final class SourceInputStreamFactory
                 {
                     int capacity = frameSlab.buffer(replySlot).capacity();
                     replyBuffer = new CircularDirectBuffer(capacity);
-                    replyQueue = new LinkedList();
                 }
             }
             return replySlot != NO_SLOT ? frameSlab.buffer(replySlot, change) : null;
@@ -1909,7 +1913,6 @@ public final class SourceInputStreamFactory
                 frameSlab.release(replySlot);
                 replySlot = NO_SLOT;
                 replyBuffer = null;
-                replyQueue = null;
             }
         }
 
