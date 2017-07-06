@@ -170,7 +170,8 @@ public final class Target implements Nukleus
                 .payload(p -> p.set(payload, offset, length))
                 .build();
 
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+        boolean written = streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+        assert written;
     }
 
     public void doEnd(
