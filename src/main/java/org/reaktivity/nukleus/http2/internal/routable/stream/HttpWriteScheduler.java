@@ -71,7 +71,9 @@ public class HttpWriteScheduler
                 MutableDirectBuffer dst = acquire();
                 if (dst != null)
                 {
-                    return targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
+                    boolean written = targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
+                    assert written;
+                    return written;
                 }
                 return false;                           // No slots
             }
@@ -88,7 +90,10 @@ public class HttpWriteScheduler
         else
         {
             // Store the data in the existing buffer
-            return targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
+            boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
+                    http2DataRO.dataLength());
+            assert written;
+            return written;
         }
     }
 
