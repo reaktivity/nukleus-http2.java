@@ -182,6 +182,8 @@ class Http2Writer
 
     Flyweight.Builder.Visitor visitDataEos(int streamId)
     {
+        assert streamId != 0;
+
         return (buffer, offset, limit) ->
                 http2DataRW.wrap(buffer, offset, limit)
                            .streamId(streamId)
@@ -204,6 +206,23 @@ class Http2Writer
                               .sizeof();
     }
 
+    public Flyweight.Builder.Visitor visitHeaders(
+            int streamId,
+            DirectBuffer srcBuffer,
+            int srcOffset,
+            int srcLength)
+    {
+        assert streamId != 0;
+
+        return (buffer, offset, limit) ->
+                http2HeadersRW.wrap(buffer, offset, limit)
+                              .streamId(streamId)
+                              .endHeaders()
+                              .payload(srcBuffer, srcOffset, srcLength)
+                              .build()
+                              .sizeof();
+    }
+
     Flyweight.Builder.Visitor visitPushPromise(
             int streamId,
             int promisedStreamId,
@@ -216,6 +235,25 @@ class Http2Writer
                              .promisedStreamId(promisedStreamId)
                              .endHeaders()
                              .headers(b -> builder.accept(headers, b))
+                             .build()
+                             .sizeof();
+    }
+
+    public Flyweight.Builder.Visitor visitPushPromise(
+            int streamId,
+            int promisedStreamId,
+            DirectBuffer srcBuffer,
+            int srcOffset,
+            int srcLength)
+    {
+        assert streamId != 0;
+
+        return (buffer, offset, limit) ->
+                pushPromiseRW.wrap(buffer, offset, limit)
+                             .streamId(streamId)
+                             .promisedStreamId(promisedStreamId)
+                             .endHeaders()
+                             .payload(srcBuffer, srcOffset, srcLength)
                              .build()
                              .sizeof();
     }

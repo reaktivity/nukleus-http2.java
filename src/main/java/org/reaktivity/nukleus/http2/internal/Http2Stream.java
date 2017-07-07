@@ -72,7 +72,8 @@ class Http2Stream
 
     void onData()
     {
-        httpWriteScheduler.onData(factory.http2DataRO);
+        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
+        assert written;
     }
 
     void onThrottle(
@@ -136,6 +137,7 @@ class Http2Stream
         factory.resetRO.wrap(buffer, index, index + length);
         httpWriteScheduler.onReset();
         releaseReplyBuffer();
+        connection.closeStream(this);
         //source.doReset(sourceId);
     }
 

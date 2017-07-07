@@ -66,4 +66,24 @@ public class MessageFormatIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/max.frame.size/client",
+            "${nukleus}/max.frame.size/server" })
+    public void maxFrameSize() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/connection.headers/client",
+            "${nukleus}/connection.headers/server" })
+    public void connectionHeaders() throws Exception
+    {
+        k3po.finish();
+    }
 }

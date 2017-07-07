@@ -48,19 +48,26 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteHandler;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.IntConsumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.PROXY_CONNECTION;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.UPGRADE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
@@ -88,8 +95,8 @@ final class Http2Connection
     long sourceId;
     int lastStreamId;
     long sourceRef;
-    private final int initialWindow = 8192; // TODO config
-    int window = initialWindow;
+    private final int initialWindow = 65535; // TODO config
+    int window;
     int outWindow;
     int outWindowThreshold = -1;
 
@@ -137,7 +144,7 @@ final class Http2Connection
         this.wrapRoute = wrapRoute;
         sourceOutputEstId = networkReplyId;
         http2Streams = new Int2ObjectHashMap<>();
-        localSettings = new Settings();
+        localSettings = new Settings(100);
         remoteSettings = new Settings();
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
@@ -723,7 +730,7 @@ final class Http2Connection
         }
     }
 
-    private void closeStream(Http2Stream stream)
+    void closeStream(Http2Stream stream)
     {
         if (stream.isClientInitiated())
         {
@@ -1402,7 +1409,8 @@ final class Http2Connection
     {
         encodeHeadersContext.reset();
 
-        httpHeaders.forEach(this::status);
+        httpHeaders.forEach(this::status)               // notes if there is :status
+                   .forEach(this::connectionHeaders);   // collects all connection headers
         if (!encodeHeadersContext.status)
         {
             builder.header(b -> b.indexed(8));          // no mandatory :status header, add :status: 200
@@ -1433,6 +1441,22 @@ final class Http2Connection
         }
     }
 
+    void connectionHeaders(HttpHeaderFW httpHeader)
+    {
+        StringFW name = httpHeader.name();
+        String16FW value = httpHeader.value();
+        factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+
+        if (factory.nameRO.equals(CONNECTION))
+        {
+            String[] headers = value.asString().split(",");
+            for (String header : headers)
+            {
+                encodeHeadersContext.connectionHeaders.add(header.trim());
+            }
+        }
+    }
+
     boolean validHeader(HttpHeaderFW httpHeader)
     {
         StringFW name = httpHeader.name();
@@ -1440,13 +1464,33 @@ final class Http2Connection
         factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
         factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
 
-        if (factory.nameRO.equals(encodeContext.nameBuffer(1)) ||
-                factory.nameRO.equals(encodeContext.nameBuffer(2)) ||
-                factory.nameRO.equals(encodeContext.nameBuffer(4)) ||
-                factory.nameRO.equals(encodeContext.nameBuffer(6)) ||
-                factory.nameRO.equals(HpackContext.CONNECTION))
+        // Removing 8.1.2.1 Pseudo-Header Fields
+        // Not sending error as it will allow requests to loop back
+        if (factory.nameRO.equals(encodeContext.nameBuffer(1)) ||          // :authority
+                factory.nameRO.equals(encodeContext.nameBuffer(2)) ||      // :method
+                factory.nameRO.equals(encodeContext.nameBuffer(4)) ||      // :path
+                factory.nameRO.equals(encodeContext.nameBuffer(6)))        // :scheme
         {
-            return false;                             // ignore :authority, :method, :path, :scheme, connection
+            return false;
+        }
+
+        // Removing 8.1.2.2 connection-specific header fields from response
+        if (factory.nameRO.equals(encodeContext.nameBuffer(57)) ||         // transfer-encoding
+                factory.nameRO.equals(CONNECTION) ||
+                factory.nameRO.equals(KEEP_ALIVE) ||
+                factory.nameRO.equals(PROXY_CONNECTION) ||
+                factory.nameRO.equals(UPGRADE))
+        {
+            return false;
+        }
+
+        // Removing any header that is nominated by Connection header field
+        for(String connectionHeader: encodeHeadersContext.connectionHeaders)
+        {
+            if (name.asString().equals(connectionHeader))
+            {
+                return false;
+            }
         }
 
         return true;
@@ -1504,7 +1548,7 @@ final class Http2Connection
         }
     }
 
-    void handleHttpData(DataFW dataRO, Correlation correlation, Consumer<Integer> progress)
+    void handleHttpData(DataFW dataRO, Correlation correlation, IntConsumer progress)
     {
         OctetsFW extension = dataRO.extension();
         OctetsFW payload = dataRO.payload();
@@ -1576,10 +1620,12 @@ final class Http2Connection
     private static final class EncodeHeadersContext
     {
         boolean status;
+        final List<String> connectionHeaders = new ArrayList<>();
 
         void reset()
         {
             status = false;
+            connectionHeaders.clear();
         }
 
     }

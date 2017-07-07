@@ -23,8 +23,8 @@ class Http2Configuration extends Configuration
     private static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";
     private static final String HTTP_WINDOW_BYTES = "nukleus.http2.window.bytes";
 
-    private static final int HTTP2_WINDOW_BYTES_DEFAULT = 8192;
-    private static final int HTTP_WINDOW_BYTES_DEFAULT = 8192;
+    private static final int HTTP2_WINDOW_BYTES_DEFAULT = 65535;
+    private static final int HTTP_WINDOW_BYTES_DEFAULT = 65535;
 
     Http2Configuration(Configuration config)
     {

@@ -56,6 +56,7 @@ public final class ServerStreamFactory implements StreamFactory
 {
 
     private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
+    private static final double INWINDOW_THRESHOLD = 0.5;
 
     final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
     final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
@@ -227,6 +228,7 @@ public final class ServerStreamFactory implements StreamFactory
 
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
+        private final int initialWindow = 65535; // TODO config
         private int window;
         private int outWindow;
         private int outWindowThreshold = -1;
@@ -300,7 +302,8 @@ public final class ServerStreamFactory implements StreamFactory
             final long newNetworkReplyId = supplyStreamId.getAsLong();
 
             window = config.http2Window();
-            doWindow(networkThrottle, networkId, window, window);
+            doWindow(networkThrottle, networkId, initialWindow, window);
+            window = initialWindow;
 
             doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
             router.setThrottle(networkReplyName, newNetworkReplyId, this::handleThrottle);
@@ -325,9 +328,12 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                this.window += dataRO.length();
-                assert window <= config.http2Window();
-                doWindow(networkThrottle, networkId, dataRO.length(), 1);
+                if (window < initialWindow * INWINDOW_THRESHOLD)
+                {
+                    int windowPending = initialWindow - window;
+                    window = initialWindow;
+                    doWindow(networkThrottle, networkId, windowPending, 1);
+                }
 
                 http2Connection.handleData(data);
             }
