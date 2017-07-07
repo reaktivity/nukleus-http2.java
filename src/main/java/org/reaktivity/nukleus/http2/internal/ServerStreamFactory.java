@@ -230,8 +230,8 @@ public final class ServerStreamFactory implements StreamFactory
         private Http2Connection http2Connection;
         private final int initialWindow = 65535; // TODO config
         private int window;
-        private int outWindow;
-        private int outWindowThreshold = -1;
+        //private int outWindow;
+        //private int outWindowThreshold = -1;
 
         private ServerAcceptStream(
                 MessageConsumer networkThrottle,
@@ -302,7 +302,7 @@ public final class ServerStreamFactory implements StreamFactory
             final long newNetworkReplyId = supplyStreamId.getAsLong();
 
             window = config.http2Window();
-            doWindow(networkThrottle, networkId, initialWindow, window);
+            doWindow(networkThrottle, networkId, initialWindow, initialWindow);
             window = initialWindow;
 
             doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
@@ -332,7 +332,7 @@ public final class ServerStreamFactory implements StreamFactory
                 {
                     int windowPending = initialWindow - window;
                     window = initialWindow;
-                    doWindow(networkThrottle, networkId, windowPending, 1);
+                    doWindow(networkThrottle, networkId, windowPending, windowPending);
                 }
 
                 http2Connection.handleData(data);
@@ -371,20 +371,12 @@ public final class ServerStreamFactory implements StreamFactory
                 WindowFW window)
         {
             int update = windowRO.update();
-            if (outWindowThreshold == -1)
+            if (http2Connection.outWindowThreshold == -1)
             {
-                outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
+                http2Connection.outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * update);
             }
-            outWindow += update;
-
-            if (http2Connection != null)
-            {
-                // TODO remove the following and use SeverAcceptStream.outWindow
-                http2Connection.outWindowThreshold = outWindowThreshold;
-                http2Connection.outWindow = outWindow;
-
-                http2Connection.handleWindow(window);
-            }
+            http2Connection.outWindow += update;
+            http2Connection.handleWindow(window);
         }
 
         private void handleReset(
@@ -504,7 +496,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void sendWindow(int update)
         {
             window += update;
-            doWindow(applicationReplyThrottle, applicationReplyId, window, 1);
+            doWindow(applicationReplyThrottle, applicationReplyId, window, window);
         }
 
     }

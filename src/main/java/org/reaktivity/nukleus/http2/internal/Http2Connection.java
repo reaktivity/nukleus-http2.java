@@ -211,7 +211,15 @@ final class Http2Connection
 
     void handleReset(ResetFW reset)
     {
-        // TODO
+        releaseSlot();
+        if (headersSlotIndex != NO_SLOT)
+        {
+            factory.headersSlab.release(headersSlotIndex);
+            headersSlotIndex = NO_SLOT;
+            headersSlotPosition = 0;
+        }
+
+        cleanConnection();
     }
 
     void handleEnd(EndFW end)
@@ -1014,34 +1022,36 @@ final class Http2Connection
         {
             RouteFW route = factory.routeRO.wrap(b, o, l);
             OctetsFW extension = route.extension();
-            Map<String, String> routeHeaders;
-            if (extension.sizeof() == 0)
+            if (sourceRef == route.sourceRef() && sourceName.equals(route.source().asString()))
             {
-                routeHeaders = EMPTY_HEADERS;
-            }
-            else
-            {
-                final HttpRouteExFW routeEx = extension.get(factory.httpRouteExRO::wrap);
-                routeHeaders = new LinkedHashMap<>();
-                routeEx.headers().forEach(h -> routeHeaders.put(h.name().asString(), h.value().asString()));
-            }
+                Map<String, String> routeHeaders;
+                if (extension.sizeof() == 0)
+                {
+                    routeHeaders = EMPTY_HEADERS;
+                }
+                else
+                {
+                    final HttpRouteExFW routeEx = extension.get(factory.httpRouteExRO::wrap);
+                    routeHeaders = new LinkedHashMap<>();
+                    routeEx.headers().forEach(h -> routeHeaders.put(h.name().asString(), h.value().asString()));
+                }
 
-            return sourceRef == route.sourceRef() &&
-                    sourceName.equals(route.source().asString()) &&
-                    headers.entrySet().containsAll(routeHeaders.entrySet());
+                return headers.entrySet().containsAll(routeHeaders.entrySet());
+            }
+            return false;
         };
 
         return router.resolve(filter, wrapRoute);
     }
 
-    private RouteFW wrapRoute(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        return factory.routeRO.wrap(buffer, index, index + length);
-    }
+//    private RouteFW wrapRoute(
+//            int msgTypeId,
+//            DirectBuffer buffer,
+//            int index,
+//            int length)
+//    {
+//        return factory.routeRO.wrap(buffer, index, index + length);
+//    }
 
     void handleWindow(WindowFW windowRO)
     {
@@ -1050,22 +1060,22 @@ final class Http2Connection
     }
 
 
-    private void processReset(
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        factory.resetRO.wrap(buffer, index, index + length);
-        releaseSlot();
-        if (headersSlotIndex != NO_SLOT)
-        {
-            factory.headersSlab.release(headersSlotIndex);
-            headersSlotIndex = NO_SLOT;
-            headersSlotPosition = 0;
-        }
-
-        cleanConnection();
-    }
+//    private void processReset(
+//            DirectBuffer buffer,
+//            int index,
+//            int length)
+//    {
+//        factory.resetRO.wrap(buffer, index, index + length);
+//        releaseSlot();
+//        if (headersSlotIndex != NO_SLOT)
+//        {
+//            factory.headersSlab.release(headersSlotIndex);
+//            headersSlotIndex = NO_SLOT;
+//            headersSlotPosition = 0;
+//        }
+//
+//        cleanConnection();
+//    }
 
     void error(Http2ErrorCode errorCode)
     {
