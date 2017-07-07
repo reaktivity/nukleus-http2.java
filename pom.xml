@@ -50,7 +50,6 @@
     <nukleus.version>0.6</nukleus.version>
     <nukleus.http2.spec.version>0.15</nukleus.http2.spec.version>
     <reaktor.test.version>0.6</reaktor.test.version>
-    <reaktor.version>0.3</reaktor.version>
     <k3po.nukleus.ext.version>0.5</k3po.nukleus.ext.version>
   </properties>
 
