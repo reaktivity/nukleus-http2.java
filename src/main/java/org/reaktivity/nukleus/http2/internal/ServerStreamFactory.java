@@ -50,7 +50,6 @@ import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
-import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
 
 public final class ServerStreamFactory implements StreamFactory
 {
@@ -63,13 +62,11 @@ public final class ServerStreamFactory implements StreamFactory
 
     final RouteFW routeRO = new RouteFW();
 
-    final BeginFW beginRO = new BeginFW();
-    final DataFW dataRO = new DataFW();
-    final EndFW endRO = new EndFW();
+    private final BeginFW beginRO = new BeginFW();
+    private final DataFW dataRO = new DataFW();
+    private final EndFW endRO = new EndFW();
 
-    final BeginFW.Builder beginRW = new BeginFW.Builder();
-    final DataFW.Builder dataRW = new DataFW.Builder();
-    final EndFW.Builder endRW = new EndFW.Builder();
+    private final BeginFW.Builder beginRW = new BeginFW.Builder();
 
     final WindowFW windowRO = new WindowFW();
     final ResetFW resetRO = new ResetFW();
@@ -93,13 +90,13 @@ public final class ServerStreamFactory implements StreamFactory
 
     final Http2PingFW pingRO = new Http2PingFW();
 
-    final WindowFW.Builder windowRW = new WindowFW.Builder();
-    final ResetFW.Builder resetRW = new ResetFW.Builder();
+    private final WindowFW.Builder windowRW = new WindowFW.Builder();
+    private final ResetFW.Builder resetRW = new ResetFW.Builder();
 
     private final Http2Configuration config;
     private final RouteHandler router;
     private final MutableDirectBuffer writeBuffer;
-    private final BufferPool bufferPool;
+    //private final BufferPool bufferPool;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
@@ -112,7 +109,7 @@ public final class ServerStreamFactory implements StreamFactory
     final Slab headersSlab;
 
 
-    public ServerStreamFactory(
+    ServerStreamFactory(
             Http2Configuration config,
             RouteHandler router,
             MutableDirectBuffer writeBuffer,
@@ -124,7 +121,7 @@ public final class ServerStreamFactory implements StreamFactory
         this.config = config;
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
-        this.bufferPool = requireNonNull(supplyBufferPool).get();
+        //this.bufferPool = requireNonNull(supplyBufferPool).get();
         this.supplyStreamId = requireNonNull(supplyStreamId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
@@ -150,7 +147,7 @@ public final class ServerStreamFactory implements StreamFactory
         final BeginFW begin = beginRO.wrap(buffer, index, index + length);
         final long sourceRef = begin.sourceRef();
 
-        MessageConsumer newStream = null;
+        MessageConsumer newStream;
 
         if (sourceRef == 0L)
         {
@@ -186,7 +183,7 @@ public final class ServerStreamFactory implements StreamFactory
         {
             final long networkId = begin.streamId();
 
-            newStream = new ServerAcceptStream(networkThrottle, networkId, networkRef)::handleStream;
+            newStream = new ServerAcceptStream(networkThrottle, networkId)::handleStream;
         }
 
         return newStream;
@@ -214,33 +211,18 @@ public final class ServerStreamFactory implements StreamFactory
     {
         private final MessageConsumer networkThrottle;
         private final long networkId;
-        private final long networkRef;
-
-        private String networkReplyName;
-        private MessageConsumer networkReply;
-        private long networkReplyId;
-
-        private int networkSlot = NO_SLOT;
-        private int networkSlotOffset;
-
-        private MessageConsumer applicationTarget;
-        private long applicationId;
 
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
         private int initialWindow = 65535;
         private int window;
-        //private int outWindow;
-        //private int outWindowThreshold = -1;
 
         private ServerAcceptStream(
                 MessageConsumer networkThrottle,
-                long networkId,
-                long networkRef)
+                long networkId)
         {
             this.networkThrottle = networkThrottle;
             this.networkId = networkId;
-            this.networkRef = networkRef;
             this.streamState = this::beforeBegin;
         }
 
@@ -309,9 +291,6 @@ public final class ServerStreamFactory implements StreamFactory
             router.setThrottle(networkReplyName, newNetworkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
-            this.networkReplyName = networkReplyName;
-            this.networkReply = networkReply;
-            this.networkReplyId = newNetworkReplyId;
             http2Connection = new Http2Connection(ServerStreamFactory.this, router, newNetworkReplyId,
                     networkReply, wrapRoute);
             http2Connection.handleBegin(begin);
@@ -501,7 +480,7 @@ public final class ServerStreamFactory implements StreamFactory
 
     }
 
-    void doBegin(
+    private void doBegin(
             final MessageConsumer target,
             final long targetId,
             final long targetRef,
@@ -518,7 +497,7 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
-    void doWindow(
+    private void doWindow(
             final MessageConsumer throttle,
             final long throttleId,
             final int writableBytes,
@@ -533,7 +512,7 @@ public final class ServerStreamFactory implements StreamFactory
         throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
     }
 
-    void doReset(
+    private void doReset(
             final MessageConsumer throttle,
             final long throttleId)
     {
