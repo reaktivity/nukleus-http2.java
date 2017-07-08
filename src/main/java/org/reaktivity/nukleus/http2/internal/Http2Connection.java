@@ -1039,38 +1039,11 @@ final class Http2Connection
         return router.resolve(filter, wrapRoute);
     }
 
-//    private RouteFW wrapRoute(
-//            int msgTypeId,
-//            DirectBuffer buffer,
-//            int index,
-//            int length)
-//    {
-//        return factory.routeRO.wrap(buffer, index, index + length);
-//    }
-
     void handleWindow(WindowFW windowRO)
     {
 
         writeScheduler.onWindow();
     }
-
-
-//    private void processReset(
-//            DirectBuffer buffer,
-//            int index,
-//            int length)
-//    {
-//        factory.resetRO.wrap(buffer, index, index + length);
-//        releaseSlot();
-//        if (headersSlotIndex != NO_SLOT)
-//        {
-//            factory.headersSlab.release(headersSlotIndex);
-//            headersSlotIndex = NO_SLOT;
-//            headersSlotPosition = 0;
-//        }
-//
-//        cleanConnection();
-//    }
 
     void error(Http2ErrorCode errorCode)
     {
