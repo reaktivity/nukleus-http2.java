@@ -345,11 +345,11 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         stream.endStream = true;
 
-        connection.closeStream(stream);
         if (!buffered(streamId) && sizeof <= connection.outWindow && 0 <= connection.http2OutWindow &&
                 0 <= stream.http2OutWindow)
         {
             http2(stream, type, sizeof, data, progress);
+            connection.closeStream(stream);
         }
         else
         {
@@ -363,7 +363,10 @@ public class Http2WriteScheduler implements WriteScheduler
     private void addEntry(Entry entry)
     {
         Deque queue = queue(entry.stream);
-        queue.add(entry);
+        if (queue != null)
+        {
+            queue.add(entry);
+        }
     }
 
     // Since it is not encoding, this gives an approximate length of header block
@@ -676,6 +679,13 @@ public class Http2WriteScheduler implements WriteScheduler
                      Flyweight.Builder.Visitor visitor, IntConsumer progress)
         {
             super(stream, streamId, sizeof, type, visitor, progress);
+        }
+
+        @Override
+        void write()
+        {
+            super.write();
+            connection.closeStream(stream);
         }
     }
 

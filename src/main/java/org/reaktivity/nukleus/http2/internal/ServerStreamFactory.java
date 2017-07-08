@@ -228,7 +228,7 @@ public final class ServerStreamFactory implements StreamFactory
 
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
-        private final int initialWindow = 65535; // TODO config
+        private int initialWindow = 65535;
         private int window;
         //private int outWindow;
         //private int outWindowThreshold = -1;
@@ -301,7 +301,7 @@ public final class ServerStreamFactory implements StreamFactory
             final MessageConsumer networkReply = router.supplyTarget(networkReplyName);
             final long newNetworkReplyId = supplyStreamId.getAsLong();
 
-            window = config.http2Window();
+            initialWindow = config.http2Window();
             doWindow(networkThrottle, networkId, initialWindow, initialWindow);
             window = initialWindow;
 
@@ -496,7 +496,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void sendWindow(int update)
         {
             window += update;
-            doWindow(applicationReplyThrottle, applicationReplyId, window, window);
+            doWindow(applicationReplyThrottle, applicationReplyId, update, update);
         }
 
     }

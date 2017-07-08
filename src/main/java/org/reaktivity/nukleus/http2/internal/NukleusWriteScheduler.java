@@ -54,7 +54,6 @@ class NukleusWriteScheduler
 
     int http2Frame(
             int lengthGuess,
-
             Flyweight.Builder.Visitor visitor)
     {
         if (accumulatedSlot == NO_SLOT)
