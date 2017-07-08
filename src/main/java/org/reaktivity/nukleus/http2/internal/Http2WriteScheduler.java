@@ -42,7 +42,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
 public class Http2WriteScheduler implements WriteScheduler
 {
     private final Http2Connection connection;
-    private static final DirectBuffer EMPTY = new UnsafeBuffer(new byte[0]);
     private static final IntConsumer NOOP = x -> {};
 
     private final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
@@ -69,22 +68,6 @@ public class Http2WriteScheduler implements WriteScheduler
         this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, networkConsumer, http2Writer, targetId);
         this.replyQueue = new LinkedList<>();
     }
-
-//    public boolean http2(int streamId, DirectBuffer buffer, int offset, int length, IntConsumer progress)
-//    {
-//        Http2Stream stream = connection.http2Streams.get(streamId);
-//        MutableDirectBuffer dstBuffer = stream.acquireReplyBuffer(this::read);
-//        CircularDirectBuffer cb = stream.replyBuffer;
-//        boolean written = cb.write(dstBuffer, buffer, offset, length);
-//        if (written)
-//        {
-//            StreamEntry entry = new StreamEntry(stream, length, progress);
-//            stream.replyQueue.add(entry);
-//            onHttp2Window(streamId);                // Make progress with partial write
-//        }
-//
-//        return written;
-//    }
 
     @Override
     public boolean windowUpdate(int streamId, int update)

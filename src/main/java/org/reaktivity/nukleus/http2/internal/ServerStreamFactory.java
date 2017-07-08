@@ -313,7 +313,7 @@ public final class ServerStreamFactory implements StreamFactory
             this.networkReply = networkReply;
             this.networkReplyId = newNetworkReplyId;
             http2Connection = new Http2Connection(ServerStreamFactory.this, router, newNetworkReplyId,
-                    networkReply, writeBuffer, wrapRoute);
+                    networkReply, wrapRoute);
             http2Connection.handleBegin(begin);
         }
 

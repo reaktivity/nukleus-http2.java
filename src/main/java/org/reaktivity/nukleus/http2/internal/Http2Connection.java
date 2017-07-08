@@ -77,7 +77,6 @@ final class Http2Connection
 {
     private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
 
-    private final MutableDirectBuffer writeBuffer;
     ServerStreamFactory factory;
     private DecoderState decoderState;
 
@@ -95,8 +94,6 @@ final class Http2Connection
     long sourceId;
     int lastStreamId;
     long sourceRef;
-    private final int initialWindow = 65535; // TODO config
-    int window;
     int outWindow;
     int outWindowThreshold = -1;
 
@@ -132,15 +129,13 @@ final class Http2Connection
     final Http2Writer http2Writer;
     MessageConsumer networkConsumer;
     RouteHandler router;
-    String networkReplyName;
     String sourceName;
 
     Http2Connection(ServerStreamFactory factory, RouteHandler router, long networkReplyId, MessageConsumer networkConsumer,
-                    MutableDirectBuffer writeBuffer, MessageFunction<RouteFW> wrapRoute)
+                    MessageFunction<RouteFW> wrapRoute)
     {
         this.factory = factory;
         this.router = router;
-        this.writeBuffer = writeBuffer;
         this.wrapRoute = wrapRoute;
         sourceOutputEstId = networkReplyId;
         http2Streams = new Int2ObjectHashMap<>();
