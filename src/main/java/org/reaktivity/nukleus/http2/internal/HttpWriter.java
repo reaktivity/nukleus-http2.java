@@ -62,7 +62,7 @@ class HttpWriter
                                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
                                .sourceRef(targetRef)
                                .correlationId(correlationId)
-                               .extension(e -> e.set(extBuffer, extOffset, extLength))
+                               .extension(extBuffer, extOffset, extLength)
                                .build();
 
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
