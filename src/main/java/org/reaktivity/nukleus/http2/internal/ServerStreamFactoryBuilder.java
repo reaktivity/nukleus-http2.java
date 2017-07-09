@@ -36,7 +36,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private LongSupplier supplyCorrelationId;
     private Supplier<BufferPool> supplyBufferPool;
 
-    public ServerStreamFactoryBuilder(
+    ServerStreamFactoryBuilder(
             Http2Configuration config)
     {
         this.config = config;
