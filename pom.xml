@@ -52,9 +52,9 @@
 
     <nukleus.plugin.version>0.10</nukleus.plugin.version>
     <nukleus.version>0.6.2</nukleus.version>
+
     <nukleus.http2.spec.version>0.16</nukleus.http2.spec.version>
     <reaktor.test.version>0.9.2</reaktor.test.version>
-    <k3po.nukleus.ext.version>0.5</k3po.nukleus.ext.version>
   </properties>
 
   <dependencies>
