@@ -24,7 +24,7 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class HttpWriteScheduler
 {
-    private final BufferPool httpWriterSlab;
+    private final BufferPool httpWriterPool;
     private final HttpWriter target;
     private final long targetId;
     private final MessageConsumer applicationTarget;
@@ -35,10 +35,10 @@ class HttpWriteScheduler
     private boolean end;
     private boolean endSent;
 
-    HttpWriteScheduler(BufferPool httpWriterSlab, MessageConsumer applicationTarget, HttpWriter target, long targetId,
+    HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
     {
-        this.httpWriterSlab = httpWriterSlab;
+        this.httpWriterPool = httpWriterPool;
         this.applicationTarget = applicationTarget;
         this.target = target;
         this.targetId = targetId;
@@ -153,21 +153,21 @@ class HttpWriteScheduler
     {
         if (slot == NO_SLOT)
         {
-            slot = httpWriterSlab.acquire(targetId);
+            slot = httpWriterPool.acquire(targetId);
             if (slot != NO_SLOT)
             {
-                int capacity = httpWriterSlab.buffer(slot).capacity();
+                int capacity = httpWriterPool.buffer(slot).capacity();
                 targetBuffer = new CircularDirectBuffer(capacity);
             }
         }
-        return slot != NO_SLOT ? httpWriterSlab.buffer(slot) : null;
+        return slot != NO_SLOT ? httpWriterPool.buffer(slot) : null;
     }
 
     private void release()
     {
         if (slot != NO_SLOT)
         {
-            httpWriterSlab.release(slot);
+            httpWriterPool.release(slot);
             slot = NO_SLOT;
             targetBuffer = null;
         }

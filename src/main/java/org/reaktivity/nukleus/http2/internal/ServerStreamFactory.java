@@ -92,11 +92,11 @@ public final class ServerStreamFactory implements StreamFactory
     private final RouteHandler router;
     private final MutableDirectBuffer writeBuffer;
     final BufferPool bufferPool;
-    final BufferPool frameSlab;
-    final BufferPool headersSlab;
-    final BufferPool nukleusWriterSlab;
-    final BufferPool httpWriterSlab;
-    final BufferPool http2ReplySlab;
+    final BufferPool framePool;
+    final BufferPool headersPool;
+    final BufferPool nukleusWriterPool;
+    final BufferPool httpWriterPool;
+    final BufferPool http2ReplyPool;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
@@ -125,11 +125,11 @@ public final class ServerStreamFactory implements StreamFactory
                     bufferPool.slotCapacity(), Settings.DEFAULT_INITIAL_WINDOW_SIZE);
             throw new IllegalArgumentException(msg);
         }
-        this.frameSlab = bufferPool.duplicate();
-        this.headersSlab = bufferPool.duplicate();
-        this.nukleusWriterSlab = bufferPool.duplicate();
-        this.httpWriterSlab = bufferPool.duplicate();
-        this.http2ReplySlab = bufferPool.duplicate();
+        this.framePool = bufferPool.duplicate();
+        this.headersPool = bufferPool.duplicate();
+        this.nukleusWriterPool = bufferPool.duplicate();
+        this.httpWriterPool = bufferPool.duplicate();
+        this.http2ReplyPool = bufferPool.duplicate();
         this.supplyStreamId = requireNonNull(supplyStreamId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);

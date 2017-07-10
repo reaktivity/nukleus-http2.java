@@ -144,7 +144,7 @@ final class Http2Connection
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         http2Writer = factory.http2Writer;
-        writeScheduler = new Http2WriteScheduler(this, sourceOutputEstId, factory.nukleusWriterSlab, networkConsumer,
+        writeScheduler = new Http2WriteScheduler(this, sourceOutputEstId, factory.nukleusWriterPool, networkConsumer,
                 http2Writer, sourceOutputEstId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
@@ -209,7 +209,7 @@ final class Http2Connection
         releaseSlot();
         if (headersSlotIndex != NO_SLOT)
         {
-            factory.headersSlab.release(headersSlotIndex);
+            factory.headersPool.release(headersSlotIndex);
             headersSlotIndex = NO_SLOT;
             headersSlotPosition = 0;
         }
@@ -231,13 +231,13 @@ final class Http2Connection
 
         if (frameSlotIndex != NO_SLOT)
         {
-            factory.frameSlab.release(frameSlotIndex);
+            factory.framePool.release(frameSlotIndex);
             frameSlotIndex = NO_SLOT;
             frameSlotPosition = 0;
         }
         if (headersSlotIndex != NO_SLOT)
         {
-            factory.headersSlab.release(headersSlotIndex);
+            factory.headersPool.release(headersSlotIndex);
             headersSlotIndex = NO_SLOT;
             headersSlotPosition = 0;
         }
@@ -281,13 +281,13 @@ final class Http2Connection
 
         if (frameSlotPosition > 0 && frameSlotPosition + available >= PRI_REQUEST.length)
         {
-            MutableDirectBuffer prefaceBuffer = factory.frameSlab.buffer(frameSlotIndex);
+            MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
             int remainingLength = PRI_REQUEST.length - frameSlotPosition;
             prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
             factory.prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
             if (frameSlotIndex != NO_SLOT)
             {
-                factory.frameSlab.release(frameSlotIndex);
+                factory.framePool.release(frameSlotIndex);
                 frameSlotIndex = NO_SLOT;
                 frameSlotPosition = 0;
             }
@@ -302,7 +302,7 @@ final class Http2Connection
         }
 
         assert frameSlotIndex == NO_SLOT;
-        frameSlotIndex = factory.frameSlab.acquire(sourceId);
+        frameSlotIndex = factory.framePool.acquire(sourceId);
         if (frameSlotIndex == NO_SLOT)
         {
             // all slots are in use, just reset the connection
@@ -311,7 +311,7 @@ final class Http2Connection
             return available;               // assume everything is consumed
         }
         frameSlotPosition = 0;
-        MutableDirectBuffer prefaceBuffer = factory.frameSlab.buffer(frameSlotIndex);
+        MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
         prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
         frameSlotPosition += available;
         prefaceAvailable = false;
@@ -332,7 +332,7 @@ final class Http2Connection
 
         if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
         {
-            MutableDirectBuffer frameBuffer = factory.frameSlab.buffer(frameSlotIndex);
+            MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
             if (frameSlotPosition < 3)
             {
                 frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
@@ -373,7 +373,7 @@ final class Http2Connection
             return available;
         }
 
-        MutableDirectBuffer frameBuffer = factory.frameSlab.buffer(frameSlotIndex);
+        MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
         frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
         frameSlotPosition += available;
         http2FrameAvailable = false;
@@ -385,7 +385,7 @@ final class Http2Connection
         if (frameSlotPosition == 0)
         {
             assert frameSlotIndex == NO_SLOT;
-            frameSlotIndex = factory.frameSlab.acquire(sourceId);
+            frameSlotIndex = factory.framePool.acquire(sourceId);
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
@@ -401,7 +401,7 @@ final class Http2Connection
     {
         if (frameSlotIndex != NO_SLOT)
         {
-            factory.frameSlab.release(frameSlotIndex);
+            factory.framePool.release(frameSlotIndex);
             frameSlotIndex = NO_SLOT;
             frameSlotPosition = 0;
         }
@@ -479,7 +479,7 @@ final class Http2Connection
         {
             if (headersSlotPosition > 0)
             {
-                MutableDirectBuffer headersBuffer = factory.headersSlab.buffer(headersSlotIndex);
+                MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
                 headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
                 headersSlotPosition += length;
                 buffer = headersBuffer;
@@ -490,7 +490,7 @@ final class Http2Connection
             expectContinuation = false;
             if (headersSlotIndex != NO_SLOT)
             {
-                factory.headersSlab.release(headersSlotIndex);      // early release, but fine
+                factory.headersPool.release(headersSlotIndex);      // early release, but fine
                 headersSlotIndex = NO_SLOT;
                 headersSlotPosition = 0;
             }
@@ -502,7 +502,7 @@ final class Http2Connection
         {
             if (headersSlotIndex == NO_SLOT)
             {
-                headersSlotIndex = factory.headersSlab.acquire(sourceId);
+                headersSlotIndex = factory.headersPool.acquire(sourceId);
                 if (headersSlotIndex == NO_SLOT)
                 {
                     // all slots are in use, just reset the connection
@@ -511,7 +511,7 @@ final class Http2Connection
                 }
                 headersSlotPosition = 0;
             }
-            MutableDirectBuffer headersBuffer = factory.headersSlab.buffer(headersSlotIndex);
+            MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
             headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
             headersSlotPosition += length;
             expectContinuation = true;

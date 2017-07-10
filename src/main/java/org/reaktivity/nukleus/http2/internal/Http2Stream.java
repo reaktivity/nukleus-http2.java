@@ -60,7 +60,7 @@ class Http2Stream
         this.http2InWindow = connection.localSettings.initialWindowSize;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.httpWriterSlab, applicationTarget, httpWriter, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory.httpWriterPool, applicationTarget, httpWriter, targetId, this);
     }
 
     boolean isClientInitiated()
@@ -105,21 +105,21 @@ class Http2Stream
     {
         if (replySlot == NO_SLOT)
         {
-            replySlot = factory.http2ReplySlab.acquire(connection.sourceOutputEstId);
+            replySlot = factory.http2ReplyPool.acquire(connection.sourceOutputEstId);
             if (replySlot != NO_SLOT)
             {
-                int capacity = factory.http2ReplySlab.buffer(replySlot).capacity();
+                int capacity = factory.http2ReplyPool.buffer(replySlot).capacity();
                 replyBuffer = new CircularDirectBuffer(capacity);
             }
         }
-        return replySlot != NO_SLOT ? factory.http2ReplySlab.buffer(replySlot) : null;
+        return replySlot != NO_SLOT ? factory.http2ReplyPool.buffer(replySlot) : null;
     }
 
     void releaseReplyBuffer()
     {
         if (replySlot != NO_SLOT)
         {
-            factory.http2ReplySlab.release(replySlot);
+            factory.http2ReplyPool.release(replySlot);
             replySlot = NO_SLOT;
             replyBuffer = null;
         }
