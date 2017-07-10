@@ -15,26 +15,49 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import static org.hamcrest.Matchers.instanceOf;
-import static org.junit.Assert.assertThat;
-
-import java.util.Properties;
-
+import org.jmock.Expectations;
+import org.jmock.integration.junit4.JUnitRuleMockery;
+import org.junit.Rule;
 import org.junit.Test;
 import org.reaktivity.nukleus.Configuration;
 import org.reaktivity.nukleus.Nukleus;
+import org.reaktivity.nukleus.NukleusBuilder;
 import org.reaktivity.nukleus.NukleusFactory;
+import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
+
+import java.util.Properties;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.IsInstanceOf.instanceOf;
+import static org.reaktivity.nukleus.route.RouteKind.SERVER;
 
 public class Http2NukleusFactorySpiTest
 {
+    private NukleusBuilder builder;
+
+    @Rule
+    public JUnitRuleMockery context = new JUnitRuleMockery()
+    {
+        {
+            builder = mock(NukleusBuilder.class, "builder");
+        }
+    };
+
     @Test
     public void shouldCreateHttp2Nukleus()
     {
+        context.checking(new Expectations()
+        {
+            {
+                oneOf(builder).streamFactory(with(SERVER), with(any(StreamFactoryBuilder.class)));
+            }
+        });
+
         NukleusFactory factory = NukleusFactory.instantiate();
         Properties properties = new Properties();
-        properties.setProperty(Configuration.DIRECTORY_PROPERTY_NAME, "target/nuklei-tests");
+        properties.setProperty(Configuration.DIRECTORY_PROPERTY_NAME, "target/nukleus-tests");
         Configuration config = new Configuration(properties);
-        Nukleus nukleus = factory.create("http2", config, null);
+        Nukleus nukleus = factory.create("http2", config, builder);
         assertThat(nukleus, instanceOf(Nukleus.class));
     }
 

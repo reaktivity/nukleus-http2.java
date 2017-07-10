@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
-  <version>0.17</version>
+  <version>0.18</version>
   <name>HTTP/2 Nukleus Implementation</name>
   <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
@@ -45,6 +45,7 @@
 
     <junit.version>4.12</junit.version>
     <jmh.version>1.12</jmh.version>
+    <jmock.version>2.6.0</jmock.version>
 
     <k3po.version>3.0.0-alpha-77</k3po.version>
     <k3po.nukleus.ext.version>0.7.1</k3po.nukleus.ext.version>
@@ -108,6 +109,12 @@
       <groupId>org.openjdk.jmh</groupId>
       <artifactId>jmh-generator-annprocess</artifactId>
       <version>${jmh.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.jmock</groupId>
+      <artifactId>jmock-junit4</artifactId>
+      <version>${jmock.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

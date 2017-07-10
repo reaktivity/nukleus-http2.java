@@ -13,27 +13,16 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal.routable;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
+package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.collections.Long2ObjectHashMap;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.MessageHandler;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.agrona.concurrent.ringbuffer.RingBuffer;
-import org.reaktivity.nukleus.Nukleus;
-import org.reaktivity.nukleus.http2.internal.Http2Nukleus;
-import org.reaktivity.nukleus.http2.internal.layouts.StreamsLayout;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
@@ -44,208 +33,61 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 
 import java.util.function.BiConsumer;
-import java.util.function.Consumer;
 
-public final class Target implements Nukleus
+class Http2Writer
 {
-    private static final DirectBuffer SOURCE_NAME_BUFFER = new UnsafeBuffer(Http2Nukleus.NAME.getBytes(UTF_8));
-
-    private final FrameFW frameRO = new FrameFW();
-
-    private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
 
-    private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
+    private final ResetFW.Builder resetRW = new ResetFW.Builder();
+
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
-    private final Http2RstStreamFW.Builder resetRW = new Http2RstStreamFW.Builder();
+    private final Http2RstStreamFW.Builder http2ResetRW = new Http2RstStreamFW.Builder();
     private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
     private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
-    private final Http2WindowUpdateFW.Builder windowRW = new Http2WindowUpdateFW.Builder();
+    private final Http2WindowUpdateFW.Builder http2WindowRW = new Http2WindowUpdateFW.Builder();
     private final Http2DataFW.Builder http2DataRW = new Http2DataFW.Builder();
     private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
     private final Http2PushPromiseFW.Builder pushPromiseRW = new Http2PushPromiseFW.Builder();
 
-    private final String name;
-    private final StreamsLayout layout;
-    private final AtomicBuffer writeBuffer;
+    private final MutableDirectBuffer writeBuffer;
 
-    private final RingBuffer streamsBuffer;
-    private final RingBuffer throttleBuffer;
-    private final Long2ObjectHashMap<MessageHandler> throttles;
-
-    public Target(
-        String name,
-        StreamsLayout layout,
-        AtomicBuffer writeBuffer)
+    Http2Writer(MutableDirectBuffer writeBuffer)
     {
-        this.name = name;
-        this.layout = layout;
         this.writeBuffer = writeBuffer;
-        this.streamsBuffer = layout.streamsBuffer();
-        this.throttleBuffer = layout.throttleBuffer();
-        this.throttles = new Long2ObjectHashMap<>();
     }
 
-    @Override
-    public int process()
-    {
-        return throttleBuffer.read(this::handleRead);
-    }
-
-    @Override
-    public void close() throws Exception
-    {
-        layout.close();
-    }
-
-    @Override
-    public String name()
-    {
-        return name;
-    }
-
-    @Override
-    public String toString()
-    {
-        return name;
-    }
-
-    public void addThrottle(
-        long streamId,
-        MessageHandler throttle)
-    {
-        throttles.put(streamId, throttle);
-    }
-
-    public void removeThrottle(
-        long streamId)
-    {
-        throttles.remove(streamId);
-    }
-
-    private void handleRead(
-        int msgTypeId,
-        MutableDirectBuffer buffer,
-        int index,
-        int length)
-    {
-        frameRO.wrap(buffer, index, index + length);
-
-        final long streamId = frameRO.streamId();
-        final MessageHandler throttle = throttles.get(streamId);
-
-        if (throttle != null)
-        {
-            throttle.onMessage(msgTypeId, buffer, index, length);
-        }
-    }
-
-    public void doBegin(
-        long targetId,
-        long targetRef,
-        long correlationId)
-    {
-        BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
-                .sourceRef(targetRef)
-                .correlationId(correlationId)
-                .build();
-
-        streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
-    }
-
-    public void doData(
-        long targetId,
-        DirectBuffer payload,
-        int offset,
-        int length)
+    void doData(
+            MessageConsumer target,
+            long targetId,
+            DirectBuffer payload,
+            int offset,
+            int length)
     {
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .payload(p -> p.set(payload, offset, length))
-                .build();
+                            .streamId(targetId)
+                            .payload(p -> p.set(payload, offset, length))
+                            .build();
 
-        boolean written = streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-        assert written;
+        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
     }
 
-    public void doEnd(
-        long targetId)
+    void doEnd(
+            MessageConsumer target,
+            long targetId)
     {
         EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .build();
+                         .streamId(targetId)
+                         .build();
 
-        streamsBuffer.write(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
-    public void doHttpBegin(
-        long targetId,
-        long targetRef,
-        long correlationId,
-        Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> mutator)
-    {
-        BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
-                .sourceRef(targetRef)
-                .correlationId(correlationId)
-                .extension(e -> e.set(visitHttpBeginEx(mutator)))
-                .build();
-
-        streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
-    }
-
-    // HTTP begin frame's extension data is written using the given buffer
-    public void doHttpBegin(
-        long targetId,
-        long targetRef,
-        long correlationId,
-        DirectBuffer extBuffer,
-        int extOffset,
-        int extLength)
-    {
-        BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                               .streamId(targetId)
-                               .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
-                               .sourceRef(targetRef)
-                               .correlationId(correlationId)
-                               .extension(e -> e.set(extBuffer, extOffset, extLength))
-                               .build();
-
-        streamsBuffer.write(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
-    }
-
-    public void doHttpData(
-        long targetId,
-        DirectBuffer payload,
-        int offset,
-        int length)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .payload(p -> p.set(payload, offset, length))
-                .build();
-
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    public void doHttpEnd(
-        long targetId)
-    {
-        EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId(targetId)
-                .build();
-
-        streamsBuffer.write(end.typeId(), end.buffer(), end.offset(), end.sizeof());
-    }
-
-    public int doHttp2(
+    int doHttp2(
+            MessageConsumer target,
             long targetId,
             Flyweight.Builder.Visitor visitor)
     {
@@ -254,21 +96,11 @@ public final class Target implements Nukleus
                             .payload(p -> p.set(visitor))
                             .build();
 
-        streamsBuffer.write(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
         return data.length();
     }
 
-    private Flyweight.Builder.Visitor visitHttpBeginEx(
-        Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> headers)
-    {
-        return (buffer, offset, limit) ->
-            httpBeginExRW.wrap(buffer, offset, limit)
-                         .headers(headers)
-                         .build()
-                         .sizeof();
-    }
-
-    public Flyweight.Builder.Visitor visitSettings(
+    Flyweight.Builder.Visitor visitSettings(
             int maxConcurrentStreams)
     {
         return (buffer, offset, limit) ->
@@ -278,7 +110,7 @@ public final class Target implements Nukleus
                           .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitSettingsAck()
+    Flyweight.Builder.Visitor visitSettingsAck()
     {
         return (buffer, offset, limit) ->
                 settingsRW.wrap(buffer, offset, limit)
@@ -287,19 +119,19 @@ public final class Target implements Nukleus
                           .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitRst(
+    Flyweight.Builder.Visitor visitRst(
             int streamId,
             Http2ErrorCode errorCode)
     {
         return (buffer, offset, limit) ->
-                resetRW.wrap(buffer, offset, limit)
+                http2ResetRW.wrap(buffer, offset, limit)
                        .streamId(streamId)
                        .errorCode(errorCode)
                        .build()
                        .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitGoaway(
+    Flyweight.Builder.Visitor visitGoaway(
             int lastStreamId,
             Http2ErrorCode errorCode)
     {
@@ -311,7 +143,7 @@ public final class Target implements Nukleus
                         .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitPingAck(
+    Flyweight.Builder.Visitor visitPingAck(
             DirectBuffer payloadBuffer, int payloadOffset, int payloadLength)
     {
         return (buffer, offset, limit) ->
@@ -322,26 +154,24 @@ public final class Target implements Nukleus
                       .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitWindowUpdate(
+    Flyweight.Builder.Visitor visitWindowUpdate(
             int streamId,
             int update)
     {
         return (buffer, offset, limit) ->
-                windowRW.wrap(buffer, offset, limit)
+                http2WindowRW.wrap(buffer, offset, limit)
                         .streamId(streamId)
                         .size(update)
                         .build()
                         .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitData(
+    Flyweight.Builder.Visitor visitData(
             int streamId,
             DirectBuffer payloadBuffer,
             int payloadOffset,
             int payloadLength)
     {
-        assert streamId != 0;
-
         return (buffer, offset, limit) ->
                 http2DataRW.wrap(buffer, offset, limit)
                            .streamId(streamId)
@@ -350,19 +180,19 @@ public final class Target implements Nukleus
                            .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitDataEos(int streamId)
+    Flyweight.Builder.Visitor visitDataEos(int streamId)
     {
         assert streamId != 0;
 
         return (buffer, offset, limit) ->
                 http2DataRW.wrap(buffer, offset, limit)
-                      .streamId(streamId)
-                      .endStream()
-                      .build()
-                      .sizeof();
+                           .streamId(streamId)
+                           .endStream()
+                           .build()
+                           .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitHeaders(
+    Flyweight.Builder.Visitor visitHeaders(
             int streamId,
             ListFW<HttpHeaderFW> headers,
             BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
@@ -382,6 +212,8 @@ public final class Target implements Nukleus
             int srcOffset,
             int srcLength)
     {
+        assert streamId != 0;
+
         return (buffer, offset, limit) ->
                 http2HeadersRW.wrap(buffer, offset, limit)
                               .streamId(streamId)
@@ -391,7 +223,7 @@ public final class Target implements Nukleus
                               .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitPushPromise(
+    Flyweight.Builder.Visitor visitPushPromise(
             int streamId,
             int promisedStreamId,
             ListFW<HttpHeaderFW> headers,
@@ -414,6 +246,8 @@ public final class Target implements Nukleus
             int srcOffset,
             int srcLength)
     {
+        assert streamId != 0;
+
         return (buffer, offset, limit) ->
                 pushPromiseRW.wrap(buffer, offset, limit)
                              .streamId(streamId)
@@ -424,4 +258,14 @@ public final class Target implements Nukleus
                              .sizeof();
     }
 
+    void doReset(
+            final MessageConsumer throttle,
+            final long throttleId)
+    {
+        final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                     .streamId(throttleId)
+                                     .build();
+
+        throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+    }
 }
