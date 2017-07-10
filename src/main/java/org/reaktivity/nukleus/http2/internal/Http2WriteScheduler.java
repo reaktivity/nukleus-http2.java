@@ -55,14 +55,15 @@ public class Http2WriteScheduler implements WriteScheduler
     Http2WriteScheduler(
             Http2Connection connection,
             long sourceOutputEstId,
-            BufferPool slab,
+            BufferPool nukleusWriterSlab,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
         this.http2Writer = http2Writer;
-        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, slab, networkConsumer, http2Writer, targetId);
+        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, nukleusWriterSlab, networkConsumer,
+                http2Writer, targetId);
         this.replyQueue = new LinkedList<>();
     }
 
@@ -285,11 +286,11 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         else
         {
-            boolean acquired = stream.acquireReplyBuffer();
+            MutableDirectBuffer replyBuffer = stream.acquireReplyBuffer();
             CircularDirectBuffer cdb = stream.replyBuffer;
 
             // Store as two contiguous parts (as it is circular buffer)
-            int part1 = cdb.writeContiguous(buffer, offset, length);
+            int part1 = cdb.writeContiguous(replyBuffer, buffer, offset, length);
             assert part1 > 0;
             Flyweight.Builder.Visitor data1 = http2Writer.visitData(streamId, buffer, offset, part1);
             DataEntry entry1 = new DataEntry(stream, streamId, type, part1 + 9, data1, progress);
@@ -298,7 +299,7 @@ public class Http2WriteScheduler implements WriteScheduler
             int part2 = length - part1;
             if (part2 > 0)
             {
-                part2 = cdb.writeContiguous(buffer, offset, part2);
+                part2 = cdb.writeContiguous(replyBuffer, buffer, offset, part2);
                 assert part2 > 0;
                 assert part1 + part2 == length;
                 Flyweight.Builder.Visitor data2 = http2Writer.visitData(streamId, buffer, offset, part2);
@@ -704,11 +705,11 @@ public class Http2WriteScheduler implements WriteScheduler
         @Override
         void write()
         {
-            stream.acquireReplyBuffer();
+            DirectBuffer read = stream.acquireReplyBuffer();
             int offset = stream.replyBuffer.readOffset();
             int readLength = stream.replyBuffer.read(length);
             assert readLength == length;
-            Flyweight.Builder.Visitor visitor = http2Writer.visitData(streamId, stream.replyBuffer.buffer, offset, readLength);
+            Flyweight.Builder.Visitor visitor = http2Writer.visitData(streamId, read, offset, readLength);
             http2(stream, type, readLength, visitor, progress, false);
         }
 

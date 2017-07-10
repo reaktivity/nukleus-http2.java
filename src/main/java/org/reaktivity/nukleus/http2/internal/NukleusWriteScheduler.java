@@ -32,20 +32,20 @@ class NukleusWriteScheduler
     private final long sourceOutputEstId;
     private final MessageConsumer networkConsumer;
 
-    private BufferPool slab;
+    private BufferPool nukleusWriterSlab;
     private int accumulatedOffset;
 
     NukleusWriteScheduler(
             Http2Connection connection,
             long sourceOutputEstId,
-            BufferPool slab,
+            BufferPool nukleusWriterSlab,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
         this.sourceOutputEstId = sourceOutputEstId;
-        this.slab = slab.duplicate();
+        this.nukleusWriterSlab = nukleusWriterSlab;
         this.networkConsumer = networkConsumer;
         this.http2Writer = http2Writer;
         this.targetId = targetId;
@@ -57,7 +57,7 @@ class NukleusWriteScheduler
     {
         if (accumulatedSlot == NO_SLOT)
         {
-            accumulatedSlot = slab.acquire(sourceOutputEstId);
+            accumulatedSlot = nukleusWriterSlab.acquire(sourceOutputEstId);
         }
 
         if (accumulatedSlot == NO_SLOT)
@@ -65,7 +65,7 @@ class NukleusWriteScheduler
             connection.cleanConnection();
             return -1;
         }
-        MutableDirectBuffer accumulated = slab.buffer(accumulatedSlot);
+        MutableDirectBuffer accumulated = nukleusWriterSlab.buffer(accumulatedSlot);
         int length = visitor.visit(accumulated, accumulatedOffset, lengthGuess);
         accumulatedOffset += length;
 
@@ -84,14 +84,14 @@ class NukleusWriteScheduler
         {
             assert accumulatedSlot != NO_SLOT;
 
-            MutableDirectBuffer accumulated = slab.buffer(accumulatedSlot);
+            MutableDirectBuffer accumulated = nukleusWriterSlab.buffer(accumulatedSlot);
             http2Writer.doData(networkConsumer, targetId, accumulated, 0, accumulatedOffset);
             accumulatedOffset = 0;
         }
 
         if (accumulatedSlot != NO_SLOT)
         {
-            slab.release(accumulatedSlot);
+            nukleusWriterSlab.release(accumulatedSlot);
             accumulatedSlot = NO_SLOT;
         }
 

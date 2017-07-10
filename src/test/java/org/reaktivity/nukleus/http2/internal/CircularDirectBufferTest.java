@@ -36,16 +36,16 @@ public class CircularDirectBufferTest
         // will test all boundaries with start of the buffer at i
         for(int i=0; i < 100; i++)
         {
-            CircularDirectBuffer cb = new CircularDirectBuffer(dst);
-            assertTrue(cb.write(src, 0, i));
+            CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
+            assertTrue(cb.write(dst, src, 0, i));
             assertEquals(i, read(cb, i));
 
             // now start is at i
-            assertTrue(cb.write(src, 0, 20));
-            assertTrue(cb.write(src, 0, 30));
-            assertTrue(cb.write(src, 0, 40));
-            assertTrue(cb.write(src, 0, 10));
-            assertFalse(cb.write(src, 0, 20));
+            assertTrue(cb.write(dst, src, 0, 20));
+            assertTrue(cb.write(dst, src, 0, 30));
+            assertTrue(cb.write(dst, src, 0, 40));
+            assertTrue(cb.write(dst, src, 0, 10));
+            assertFalse(cb.write(dst, src, 0, 20));
 
             assertEquals(5, read(cb, 5));
             assertEquals(20, read(cb, 20));
@@ -77,8 +77,8 @@ public class CircularDirectBufferTest
         // will test all boundaries with start of the buffer at i
         for(int i=0; i < 100; i++)
         {
-            CircularDirectBuffer cb = new CircularDirectBuffer(dst);
-            assertEquals(i, cb.writeContiguous(src, 0, i));
+            CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
+            assertEquals(i, cb.writeContiguous(dst, src, 0, i));
             assertEquals(i, read(cb, i));
 
             // now start is at i
@@ -97,12 +97,12 @@ public class CircularDirectBufferTest
 
     private int write(CircularDirectBuffer cb, MutableDirectBuffer dst, MutableDirectBuffer src, int index, int length)
     {
-        int part1 = cb.writeContiguous(src, index, length);
+        int part1 = cb.writeContiguous(dst, src, index, length);
         int part2 = 0;
 
         if (part1 != length)
         {
-            part2 = cb.writeContiguous(src, index, length-part1);
+            part2 = cb.writeContiguous(dst, src, index, length-part1);
         }
 
         return part1 + part2;

@@ -92,10 +92,16 @@ public final class ServerStreamFactory implements StreamFactory
     private final RouteHandler router;
     private final MutableDirectBuffer writeBuffer;
     final BufferPool bufferPool;
+    final BufferPool frameSlab;
+    final BufferPool headersSlab;
+    final BufferPool nukleusWriterSlab;
+    final BufferPool httpWriterSlab;
+    final BufferPool http2ReplySlab;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
     final Http2Writer http2Writer;
+
 
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
@@ -119,6 +125,11 @@ public final class ServerStreamFactory implements StreamFactory
                     bufferPool.slotCapacity(), Settings.DEFAULT_INITIAL_WINDOW_SIZE);
             throw new IllegalArgumentException(msg);
         }
+        this.frameSlab = bufferPool.duplicate();
+        this.headersSlab = bufferPool.duplicate();
+        this.nukleusWriterSlab = bufferPool.duplicate();
+        this.httpWriterSlab = bufferPool.duplicate();
+        this.http2ReplySlab = bufferPool.duplicate();
         this.supplyStreamId = requireNonNull(supplyStreamId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);

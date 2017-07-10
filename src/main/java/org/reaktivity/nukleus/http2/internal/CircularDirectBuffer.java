@@ -21,9 +21,7 @@ import org.agrona.MutableDirectBuffer;
 
 class CircularDirectBuffer
 {
-    final MutableDirectBuffer buffer;
-    final int capacity;
-
+    private final int capacity;
     /*
      *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      *  |   |x x x x x x x x x x|         |
@@ -44,13 +42,12 @@ class CircularDirectBuffer
     private int end;
     private int count;
 
-    CircularDirectBuffer(MutableDirectBuffer buffer)
+    CircularDirectBuffer(int capacity)
     {
-        this.buffer = buffer;
-        this.capacity = buffer.capacity();
+        this.capacity = capacity;
     }
 
-    boolean write(DirectBuffer srcBuffer, int srcIndex, int length)
+    boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
         if (count + length > capacity)
         {
@@ -61,12 +58,12 @@ class CircularDirectBuffer
         {
             int firstPart = capacity - end;
             int secondPart = length - firstPart;
-            buffer.putBytes(end, srcBuffer, srcIndex, firstPart);
-            buffer.putBytes(0, srcBuffer, srcIndex + firstPart, secondPart);
+            dstBuffer.putBytes(end, srcBuffer, srcIndex, firstPart);
+            dstBuffer.putBytes(0, srcBuffer, srcIndex + firstPart, secondPart);
         }
         else
         {
-            buffer.putBytes(end, srcBuffer, srcIndex, length);
+            dstBuffer.putBytes(end, srcBuffer, srcIndex, length);
         }
 
         count += length;
@@ -74,10 +71,10 @@ class CircularDirectBuffer
         return true;
     }
 
-    int writeContiguous(DirectBuffer srcBuffer, int srcIndex, int length)
+    int writeContiguous(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
         int part = (start <= end) ? Math.min(length, capacity - end) : Math.min(length, start - end);
-        buffer.putBytes(end, srcBuffer, srcIndex, part);
+        dstBuffer.putBytes(end, srcBuffer, srcIndex, part);
         count += part;
         end = (end + part) % capacity;
         return part;
