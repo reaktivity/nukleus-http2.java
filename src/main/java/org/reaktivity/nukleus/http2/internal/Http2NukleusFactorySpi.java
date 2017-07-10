@@ -19,39 +19,25 @@ import org.reaktivity.nukleus.Configuration;
 import org.reaktivity.nukleus.Nukleus;
 import org.reaktivity.nukleus.NukleusBuilder;
 import org.reaktivity.nukleus.NukleusFactorySpi;
-import org.reaktivity.nukleus.http2.internal.conductor.Conductor;
-import org.reaktivity.nukleus.http2.internal.router.Router;
-import org.reaktivity.nukleus.http2.internal.watcher.Watcher;
+
+import static org.reaktivity.nukleus.route.RouteKind.SERVER;
 
 public final class Http2NukleusFactorySpi implements NukleusFactorySpi
 {
     @Override
     public String name()
     {
-        return Http2Nukleus.NAME;
+        return "http2";
     }
 
     @Override
     public Nukleus create(
-        Configuration config,
-        NukleusBuilder builder)
+            Configuration config,
+            NukleusBuilder builder)
     {
-        int window = InternalSystemProperty.WINDOW_SIZE.intValue();
-        int maximumSlots = InternalSystemProperty.MAXIMUM_SLOTS.intValue();
-
-        Context context = new Context();
-        context.window(window)
-               .maximumSlots(maximumSlots)
-               .conclude(config);
-
-        Conductor conductor = new Conductor(context);
-        Watcher watcher = new Watcher(context);
-        Router router = new Router(context);
-
-        conductor.setRouter(router);
-        watcher.setRouter(router);
-        router.setConductor(conductor);
-
-        return new Http2Nukleus(conductor, watcher, router, context);
+        Http2Configuration http2Config = new Http2Configuration(config);
+        ServerStreamFactoryBuilder streamFactoryBuilder = new ServerStreamFactoryBuilder(http2Config);
+        return builder.streamFactory(SERVER, streamFactoryBuilder)
+                      .build();
     }
 }

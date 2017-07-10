@@ -35,19 +35,12 @@ public final class Http2ControllerFactorySpi implements ControllerFactorySpi<Htt
 
     @Override
     public Http2Controller create(
-        Configuration config,
-        ControllerBuilder<Http2Controller> builder)
+            Configuration config,
+            ControllerBuilder<Http2Controller> builder)
     {
-        int window = InternalSystemProperty.WINDOW_SIZE.intValue();
-        int maximumSlots = InternalSystemProperty.MAXIMUM_SLOTS.intValue();
-
-        Context context = new Context();
-        context.readonly(true)
-               .window(window)
-               .maximumSlots(maximumSlots)
-               .conclude(config);
-
-        return new Http2Controller(context);
+        return builder.setName(name())
+                      .setFactory(Http2Controller::new)
+                      .build();
     }
 
 }

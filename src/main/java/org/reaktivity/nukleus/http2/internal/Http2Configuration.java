@@ -15,34 +15,30 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import org.agrona.concurrent.status.AtomicCounter;
-import org.agrona.concurrent.status.CountersManager;
+import org.reaktivity.nukleus.Configuration;
 
-public final class Counters implements AutoCloseable
+class Http2Configuration extends Configuration
 {
-    private final AtomicCounter routes;
-    private final AtomicCounter streams;
 
-    Counters(CountersManager countersManager)
+    private static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";
+    private static final String HTTP_WINDOW_BYTES = "nukleus.http2.window.bytes";
+
+    private static final int HTTP2_WINDOW_BYTES_DEFAULT = 65535;
+    private static final int HTTP_WINDOW_BYTES_DEFAULT = 65535;
+
+    Http2Configuration(Configuration config)
     {
-        routes = countersManager.newCounter("routesSourced");
-        streams = countersManager.newCounter("streamsSourced");
+        super(config);
     }
 
-    @Override
-    public void close() throws Exception
+    int http2Window()
     {
-        routes.close();
-        streams.close();
+        return getInteger(HTTP2_WINDOW_BYTES, HTTP2_WINDOW_BYTES_DEFAULT);
     }
 
-    public AtomicCounter routes()
+    int httpWindow()
     {
-        return routes;
+        return getInteger(HTTP_WINDOW_BYTES, HTTP_WINDOW_BYTES_DEFAULT);
     }
 
-    public AtomicCounter streams()
-    {
-        return streams;
-    }
 }

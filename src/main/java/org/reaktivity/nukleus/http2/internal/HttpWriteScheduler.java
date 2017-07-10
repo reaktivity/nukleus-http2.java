@@ -13,32 +13,33 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal.routable.stream;
+package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.http2.internal.routable.Target;
+import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
-import static org.reaktivity.nukleus.http2.internal.routable.stream.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
-public class HttpWriteScheduler
+class HttpWriteScheduler
 {
-    private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[0]);
-
-    private final Slab slab;
-    private final Target target;
+    private final BufferPool httpWriterPool;
+    private final HttpWriter target;
     private final long targetId;
+    private final MessageConsumer applicationTarget;
 
-    private SourceInputStreamFactory.Http2Stream stream;
+    private Http2Stream stream;
     private int slot = NO_SLOT;
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
 
-    HttpWriteScheduler(Slab slab, Target target, long targetId, SourceInputStreamFactory.Http2Stream stream)
+    HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
+                       Http2Stream stream)
     {
-        this.slab = slab;
+        this.httpWriterPool = httpWriterPool;
+        this.applicationTarget = applicationTarget;
         this.target = target;
         this.targetId = targetId;
         this.stream = stream;
@@ -61,7 +62,7 @@ public class HttpWriteScheduler
             // Send to http if there is available window
             if (toHttp > 0)
             {
-                target.doHttpData(targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
+                target.doHttpData(applicationTarget, targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
                 stream.sendHttp2Window(toHttp);
             }
 
@@ -82,7 +83,7 @@ public class HttpWriteScheduler
             if (end && !endSent)
             {
                 endSent = true;
-                target.doHttpEnd(targetId);
+                target.doHttpEnd(applicationTarget, targetId);
             }
 
             return true;
@@ -90,6 +91,7 @@ public class HttpWriteScheduler
         else
         {
             // Store the data in the existing buffer
+            MutableDirectBuffer buffer = acquire();
             boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
                     http2DataRO.dataLength());
             assert written;
@@ -106,9 +108,10 @@ public class HttpWriteScheduler
             // Send to http if there is available window
             if (toHttp > 0)
             {
+                MutableDirectBuffer buffer = acquire();
                 int offset1 = targetBuffer.readOffset();
                 int read1 = targetBuffer.read(toHttp);
-                target.doHttpData(targetId, buffer, offset1, read1);
+                target.doHttpData(applicationTarget, targetId, buffer, offset1, read1);
 
                 // toHttp may span across the boundary, one more read may be required
                 if (read1 != toHttp)
@@ -117,7 +120,7 @@ public class HttpWriteScheduler
                     int read2 = targetBuffer.read(toHttp-read1);
                     assert read1 + read2 == toHttp;
 
-                    target.doHttpData(targetId, buffer, offset2, read2);
+                    target.doHttpData(applicationTarget, targetId, buffer, offset2, read2);
                 }
 
                 stream.sendHttp2Window(toHttp);
@@ -129,7 +132,7 @@ public class HttpWriteScheduler
                 if (end && !endSent)
                 {
                     endSent = true;
-                    target.doHttpEnd(targetId);
+                    target.doHttpEnd(applicationTarget, targetId);
                 }
 
                 release();
@@ -150,30 +153,24 @@ public class HttpWriteScheduler
     {
         if (slot == NO_SLOT)
         {
-            slot = slab.acquire(targetId);
+            slot = httpWriterPool.acquire(targetId);
             if (slot != NO_SLOT)
             {
-                int capacity = slab.buffer(slot, this::buffer).capacity();
+                int capacity = httpWriterPool.buffer(slot).capacity();
                 targetBuffer = new CircularDirectBuffer(capacity);
             }
         }
-        return slot != NO_SLOT ? buffer : null;
+        return slot != NO_SLOT ? httpWriterPool.buffer(slot) : null;
     }
 
     private void release()
     {
         if (slot != NO_SLOT)
         {
-            slab.release(slot);
+            httpWriterPool.release(slot);
             slot = NO_SLOT;
             targetBuffer = null;
         }
-    }
-
-    private MutableDirectBuffer buffer(MutableDirectBuffer src)
-    {
-        buffer.wrap(src.addressOffset(), src.capacity());
-        return buffer;
     }
 
 }

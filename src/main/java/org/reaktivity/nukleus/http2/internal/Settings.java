@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal.routable.stream;
+package org.reaktivity.nukleus.http2.internal;
 
 class Settings
 {
@@ -21,7 +21,7 @@ class Settings
     static final boolean DEFAULT_ENABLE_PUSH = true;
     static final int DEFAULT_MAX_CONCURRENT_STREAMS = Integer.MAX_VALUE;
     static final int DEFAULT_INITIAL_WINDOW_SIZE = 65_535;
-    static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
+    private static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
 
     int headerTableSize = DEFAULT_HEADER_TABLE_SIZE;
     boolean enablePush = DEFAULT_ENABLE_PUSH;
