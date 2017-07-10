@@ -16,15 +16,14 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
-import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class NukleusWriteScheduler
 {
-    private final MutableDirectBuffer accumulated = new UnsafeBuffer(new byte[0]);
     private int accumulatedSlot = NO_SLOT;
 
     private final Http2Connection connection;
@@ -33,20 +32,20 @@ class NukleusWriteScheduler
     private final long sourceOutputEstId;
     private final MessageConsumer networkConsumer;
 
-    private Slab slab;
+    private BufferPool slab;
     private int accumulatedOffset;
 
     NukleusWriteScheduler(
             Http2Connection connection,
             long sourceOutputEstId,
-            Slab slab,
+            BufferPool slab,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
         this.sourceOutputEstId = sourceOutputEstId;
-        this.slab = slab;
+        this.slab = slab.duplicate();
         this.networkConsumer = networkConsumer;
         this.http2Writer = http2Writer;
         this.targetId = targetId;
@@ -66,7 +65,7 @@ class NukleusWriteScheduler
             connection.cleanConnection();
             return -1;
         }
-        slab.buffer(accumulatedSlot, this::accumulated);
+        MutableDirectBuffer accumulated = slab.buffer(accumulatedSlot);
         int length = visitor.visit(accumulated, accumulatedOffset, lengthGuess);
         accumulatedOffset += length;
 
@@ -83,6 +82,9 @@ class NukleusWriteScheduler
     {
         if (accumulatedOffset > 0)
         {
+            assert accumulatedSlot != NO_SLOT;
+
+            MutableDirectBuffer accumulated = slab.buffer(accumulatedSlot);
             http2Writer.doData(networkConsumer, targetId, accumulated, 0, accumulatedOffset);
             accumulatedOffset = 0;
         }
@@ -92,12 +94,9 @@ class NukleusWriteScheduler
             slab.release(accumulatedSlot);
             accumulatedSlot = NO_SLOT;
         }
-    }
 
-    private MutableDirectBuffer accumulated(MutableDirectBuffer buffer)
-    {
-        accumulated.wrap(buffer.addressOffset(), buffer.capacity());
-        return accumulated;
+        assert accumulatedOffset == 0;
+        assert accumulatedSlot == NO_SLOT;
     }
 
 }

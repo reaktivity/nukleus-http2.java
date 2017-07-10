@@ -86,7 +86,9 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     @Override
     public StreamFactory build()
     {
-        return new ServerStreamFactory(config, router, writeBuffer, supplyBufferPool, supplyStreamId,
+        final BufferPool bufferPool = supplyBufferPool.get();
+
+        return new ServerStreamFactory(config, router, writeBuffer, bufferPool, supplyStreamId,
                 supplyCorrelationId, correlations);
     }
 }

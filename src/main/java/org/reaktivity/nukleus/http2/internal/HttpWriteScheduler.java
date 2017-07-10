@@ -16,17 +16,15 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
-import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class HttpWriteScheduler
 {
-    private final MutableDirectBuffer buffer = new UnsafeBuffer(new byte[0]);
-
-    private final Slab slab;
+    private final BufferPool slab;
     private final HttpWriter target;
     private final long targetId;
     private final MessageConsumer applicationTarget;
@@ -37,9 +35,9 @@ class HttpWriteScheduler
     private boolean end;
     private boolean endSent;
 
-    HttpWriteScheduler(Slab slab, MessageConsumer applicationTarget, HttpWriter target, long targetId, Http2Stream stream)
+    HttpWriteScheduler(BufferPool slab, MessageConsumer applicationTarget, HttpWriter target, long targetId, Http2Stream stream)
     {
-        this.slab = slab;
+        this.slab = slab.duplicate();
         this.applicationTarget = applicationTarget;
         this.target = target;
         this.targetId = targetId;
@@ -70,10 +68,10 @@ class HttpWriteScheduler
             // Store the remaining to a buffer
             if (toSlab > 0)
             {
-                MutableDirectBuffer dst = acquire();
-                if (dst != null)
+                boolean acquired = acquire();
+                if (acquired)
                 {
-                    boolean written = targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
+                    boolean written = targetBuffer.write(http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
                     assert written;
                     return written;
                 }
@@ -92,8 +90,7 @@ class HttpWriteScheduler
         else
         {
             // Store the data in the existing buffer
-            boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
-                    http2DataRO.dataLength());
+            boolean written = targetBuffer.write(http2DataRO.buffer(), http2DataRO.dataOffset(), http2DataRO.dataLength());
             assert written;
             return written;
         }
@@ -110,7 +107,7 @@ class HttpWriteScheduler
             {
                 int offset1 = targetBuffer.readOffset();
                 int read1 = targetBuffer.read(toHttp);
-                target.doHttpData(applicationTarget, targetId, buffer, offset1, read1);
+                target.doHttpData(applicationTarget, targetId, targetBuffer.buffer, offset1, read1);
 
                 // toHttp may span across the boundary, one more read may be required
                 if (read1 != toHttp)
@@ -119,7 +116,7 @@ class HttpWriteScheduler
                     int read2 = targetBuffer.read(toHttp-read1);
                     assert read1 + read2 == toHttp;
 
-                    target.doHttpData(applicationTarget, targetId, buffer, offset2, read2);
+                    target.doHttpData(applicationTarget, targetId, targetBuffer.buffer, offset2, read2);
                 }
 
                 stream.sendHttp2Window(toHttp);
@@ -148,18 +145,18 @@ class HttpWriteScheduler
      * @return buffer if there is a slot, buffer is wrapped on that slot
      *         null if all slots are taken
      */
-    private MutableDirectBuffer acquire()
+    private boolean acquire()
     {
         if (slot == NO_SLOT)
         {
             slot = slab.acquire(targetId);
             if (slot != NO_SLOT)
             {
-                int capacity = slab.buffer(slot, this::buffer).capacity();
-                targetBuffer = new CircularDirectBuffer(capacity);
+                MutableDirectBuffer buffer = slab.buffer(slot);
+                targetBuffer = new CircularDirectBuffer(buffer);
             }
         }
-        return slot != NO_SLOT ? buffer : null;
+        return slot != NO_SLOT;
     }
 
     private void release()
@@ -170,12 +167,6 @@ class HttpWriteScheduler
             slot = NO_SLOT;
             targetBuffer = null;
         }
-    }
-
-    private MutableDirectBuffer buffer(MutableDirectBuffer src)
-    {
-        buffer.wrap(src.addressOffset(), src.capacity());
-        return buffer;
     }
 
 }

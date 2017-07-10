@@ -17,20 +17,21 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
 import java.util.Deque;
 import java.util.LinkedList;
-import java.util.function.UnaryOperator;
 
-import static org.reaktivity.nukleus.http2.internal.Slab.NO_SLOT;
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class Http2Stream
 {
     private final Http2Connection connection;
     private final HttpWriteScheduler httpWriteScheduler;
+    private final BufferPool slab;
     final int http2StreamId;
     final long targetId;
     final long correlationId;
@@ -44,9 +45,8 @@ class Http2Stream
 
     private int replySlot = NO_SLOT;
     CircularDirectBuffer replyBuffer;
-    Deque replyQueue;
+    Deque replyQueue = new LinkedList();
     boolean endStream;
-    boolean endStreamSent;
 
     long totalOutData;
     private ServerStreamFactory factory;
@@ -62,7 +62,8 @@ class Http2Stream
         this.http2InWindow = connection.localSettings.initialWindowSize;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.frameSlab, applicationTarget, httpWriter, targetId, this);
+        this.slab = connection.frameSlab.duplicate();
+        this.httpWriteScheduler = new HttpWriteScheduler(connection.frameSlab, applicationTarget, httpWriter, targetId, this);
     }
 
     boolean isClientInitiated()
@@ -103,29 +104,27 @@ class Http2Stream
      * @return true if there is a buffer
      *         false if all slots are taken
      */
-    MutableDirectBuffer acquireReplyBuffer(UnaryOperator<MutableDirectBuffer> change)
+    boolean acquireReplyBuffer()
     {
         if (replySlot == NO_SLOT)
         {
-            replySlot = factory.frameSlab.acquire(connection.sourceOutputEstId);
+            replySlot = slab.acquire(connection.sourceOutputEstId);
             if (replySlot != NO_SLOT)
             {
-                int capacity = factory.frameSlab.buffer(replySlot).capacity();
-                replyBuffer = new CircularDirectBuffer(capacity);
-                replyQueue = new LinkedList();
+                MutableDirectBuffer buffer = slab.buffer(replySlot);
+                replyBuffer = new CircularDirectBuffer(buffer);
             }
         }
-        return replySlot != NO_SLOT ? factory.frameSlab.buffer(replySlot, change) : null;
+        return replySlot != NO_SLOT;
     }
 
     void releaseReplyBuffer()
     {
         if (replySlot != NO_SLOT)
         {
-            factory.frameSlab.release(replySlot);
+            slab.release(replySlot);
             replySlot = NO_SLOT;
             replyBuffer = null;
-            replyQueue = null;
         }
     }
 

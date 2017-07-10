@@ -46,19 +46,14 @@ import org.reaktivity.nukleus.route.RouteHandler;
 import org.reaktivity.nukleus.stream.StreamFactory;
 
 import java.util.function.LongSupplier;
-import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
-import static org.agrona.BitUtil.findNextPositivePowerOfTwo;
 
 public final class ServerStreamFactory implements StreamFactory
 {
 
     private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
     private static final double INWINDOW_THRESHOLD = 0.5;
-
-    final MutableDirectBuffer read = new UnsafeBuffer(new byte[0]);
-    final MutableDirectBuffer write = new UnsafeBuffer(new byte[0]);
 
     final RouteFW routeRO = new RouteFW();
 
@@ -96,7 +91,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final Http2Configuration config;
     private final RouteHandler router;
     private final MutableDirectBuffer writeBuffer;
-    //private final BufferPool bufferPool;
+    final BufferPool bufferPool;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
@@ -105,15 +100,11 @@ public final class ServerStreamFactory implements StreamFactory
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
 
-    final Slab frameSlab;
-    final Slab headersSlab;
-
-
     ServerStreamFactory(
             Http2Configuration config,
             RouteHandler router,
             MutableDirectBuffer writeBuffer,
-            Supplier<BufferPool> supplyBufferPool,
+            BufferPool bufferPool,
             LongSupplier supplyStreamId,
             LongSupplier supplyCorrelationId,
             Long2ObjectHashMap<Correlation> correlations)
@@ -121,15 +112,17 @@ public final class ServerStreamFactory implements StreamFactory
         this.config = config;
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
-        //this.bufferPool = requireNonNull(supplyBufferPool).get();
+        this.bufferPool = requireNonNull(bufferPool);
+        if (bufferPool.slotCapacity() < Settings.DEFAULT_INITIAL_WINDOW_SIZE)
+        {
+            String msg = String.format("Need larger slot, current slot=%d window=%d",
+                    bufferPool.slotCapacity(), Settings.DEFAULT_INITIAL_WINDOW_SIZE);
+            throw new IllegalArgumentException(msg);
+        }
         this.supplyStreamId = requireNonNull(supplyStreamId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
 
-        int slotCapacity = findNextPositivePowerOfTwo(Settings.DEFAULT_INITIAL_WINDOW_SIZE);
-        int totalCapacity = findNextPositivePowerOfTwo(128) * slotCapacity;
-        this.frameSlab = new Slab(totalCapacity, slotCapacity);
-        this.headersSlab = new Slab(totalCapacity, slotCapacity);
         this.httpWriter = new HttpWriter(writeBuffer);
         this.http2Writer = new Http2Writer(writeBuffer);
 
