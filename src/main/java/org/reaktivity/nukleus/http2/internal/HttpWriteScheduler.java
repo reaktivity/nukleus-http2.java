@@ -145,6 +145,12 @@ class HttpWriteScheduler
         release();
     }
 
+    void doAbort()
+    {
+        target.doHttpAbort(applicationTarget, targetId);
+        release();
+    }
+
     /*
      * @return buffer if there is a slot, buffer is wrapped on that slot
      *         null if all slots are taken
