@@ -29,7 +29,7 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 class Http2Stream
 {
     private final Http2Connection connection;
-    private final HttpWriteScheduler httpWriteScheduler;
+    final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
     final long targetId;
     final long correlationId;
@@ -48,6 +48,9 @@ class Http2Stream
 
     long totalOutData;
     private ServerStreamFactory factory;
+
+    MessageConsumer applicationReplyThrottle;
+    long applicationReplyId;
 
     Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
                 MessageConsumer applicationTarget, HttpWriter httpWriter)
@@ -72,6 +75,11 @@ class Http2Stream
     {
         boolean written = httpWriteScheduler.onData(factory.http2DataRO);
         assert written;
+    }
+
+    void onAbort()
+    {
+        httpWriteScheduler.doAbort();
     }
 
     void onThrottle(
@@ -134,7 +142,6 @@ class Http2Stream
         httpWriteScheduler.onReset();
         releaseReplyBuffer();
         connection.closeStream(this);
-        //source.doReset(sourceId);
     }
 
     void sendHttp2Window(int update)

@@ -29,7 +29,6 @@ class NukleusWriteScheduler
     private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final long targetId;
-    private final long sourceOutputEstId;
     private final MessageConsumer networkConsumer;
 
     private BufferPool nukleusWriterPool;
@@ -37,14 +36,12 @@ class NukleusWriteScheduler
 
     NukleusWriteScheduler(
             Http2Connection connection,
-            long sourceOutputEstId,
             BufferPool nukleusWriterPool,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
-        this.sourceOutputEstId = sourceOutputEstId;
         this.nukleusWriterPool = nukleusWriterPool;
         this.networkConsumer = networkConsumer;
         this.http2Writer = http2Writer;
@@ -57,7 +54,7 @@ class NukleusWriteScheduler
     {
         if (accumulatedSlot == NO_SLOT)
         {
-            accumulatedSlot = nukleusWriterPool.acquire(sourceOutputEstId);
+            accumulatedSlot = nukleusWriterPool.acquire(targetId);
         }
 
         if (accumulatedSlot == NO_SLOT)

@@ -54,7 +54,6 @@ public class Http2WriteScheduler implements WriteScheduler
 
     Http2WriteScheduler(
             Http2Connection connection,
-            long sourceOutputEstId,
             BufferPool nukleusWriterPool,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
@@ -62,7 +61,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         this.connection = connection;
         this.http2Writer = http2Writer;
-        this.writer = new NukleusWriteScheduler(connection, sourceOutputEstId, nukleusWriterPool, networkConsumer,
+        this.writer = new NukleusWriteScheduler(connection, nukleusWriterPool, networkConsumer,
                 http2Writer, targetId);
         this.replyQueue = new LinkedList<>();
     }
