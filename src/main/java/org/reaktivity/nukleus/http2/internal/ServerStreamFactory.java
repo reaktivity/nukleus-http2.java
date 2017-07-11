@@ -25,6 +25,7 @@ import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
 import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
@@ -60,8 +61,10 @@ public final class ServerStreamFactory implements StreamFactory
     private final BeginFW beginRO = new BeginFW();
     private final DataFW dataRO = new DataFW();
     private final EndFW endRO = new EndFW();
+    final AbortFW abortRO = new AbortFW();
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
+    private final AbortFW.Builder abortRW = new AbortFW.Builder();
 
     final WindowFW windowRO = new WindowFW();
     final ResetFW resetRO = new ResetFW();
@@ -216,6 +219,10 @@ public final class ServerStreamFactory implements StreamFactory
         private final MessageConsumer networkThrottle;
         private final long networkId;
 
+        private long networkCorrelationId;
+        private MessageConsumer networkReply;
+        private long networkReplyId;
+
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
         private int initialWindow = 65535;
@@ -272,6 +279,10 @@ public final class ServerStreamFactory implements StreamFactory
                     final EndFW end = endRO.wrap(buffer, index, index + length);
                     handleEnd(end);
                     break;
+                case AbortFW.TYPE_ID:
+                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
+                    handleAbort(abort);
+                    break;
                 default:
                     doReset(networkThrottle, networkId);
                     break;
@@ -282,20 +293,20 @@ public final class ServerStreamFactory implements StreamFactory
                 BeginFW begin)
         {
             final String networkReplyName = begin.source().asString();
-            final long networkCorrelationId = begin.correlationId();
+            networkCorrelationId = begin.correlationId();
 
-            final MessageConsumer networkReply = router.supplyTarget(networkReplyName);
-            final long newNetworkReplyId = supplyStreamId.getAsLong();
+            networkReply = router.supplyTarget(networkReplyName);
+            networkReplyId = supplyStreamId.getAsLong();
 
             initialWindow = config.http2Window();
             doWindow(networkThrottle, networkId, initialWindow, initialWindow);
             window = initialWindow;
 
-            doBegin(networkReply, newNetworkReplyId, 0L, networkCorrelationId);
-            router.setThrottle(networkReplyName, newNetworkReplyId, this::handleThrottle);
+            doBegin(networkReply, networkReplyId, 0L, networkCorrelationId);
+            router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
-            http2Connection = new Http2Connection(ServerStreamFactory.this, router, newNetworkReplyId,
+            http2Connection = new Http2Connection(ServerStreamFactory.this, router, networkReplyId,
                     networkReply, wrapRoute);
             http2Connection.handleBegin(begin);
         }
@@ -326,6 +337,18 @@ public final class ServerStreamFactory implements StreamFactory
                 EndFW end)
         {
             http2Connection.handleEnd(end);
+        }
+
+        private void handleAbort(
+                AbortFW abort)
+        {
+            correlations.remove(networkCorrelationId);
+
+            // aborts reply stream
+            doAbort(networkReply, networkReplyId);
+
+            // aborts http request stream, resets http response stream
+            http2Connection.handleAbort(abort);
         }
 
         private void handleThrottle(
@@ -434,6 +457,10 @@ public final class ServerStreamFactory implements StreamFactory
                     final EndFW end = endRO.wrap(buffer, index, index + length);
                     handleEnd(end);
                     break;
+                case AbortFW.TYPE_ID:
+                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
+                    handleAbort(abort);
+                    break;
                 default:
                     doReset(applicationReplyThrottle, applicationReplyId);
                     break;
@@ -452,7 +479,7 @@ public final class ServerStreamFactory implements StreamFactory
 
                 window = config.httpWindow();
                 doWindow(applicationReplyThrottle, applicationReplyId, window, window);
-                http2Connection.handleHttpBegin(begin, correlation);
+                http2Connection.handleHttpBegin(begin, applicationReplyThrottle, applicationReplyId, correlation);
 
                 this.streamState = this::afterBegin;
             }
@@ -474,6 +501,12 @@ public final class ServerStreamFactory implements StreamFactory
                 EndFW end)
         {
             http2Connection.handleHttpEnd(end, correlation);
+        }
+
+        private void handleAbort(
+                AbortFW abort)
+        {
+            http2Connection.handleHttpAbort(abort, correlation);
         }
 
         private void sendWindow(int update)
@@ -501,6 +534,18 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
+    private void doAbort(
+            final MessageConsumer target,
+            final long targetId)
+    {
+        final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                     .streamId(targetId)
+                                     .extension(e -> e.reset())
+                                     .build();
+
+        target.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
+    }
+
     private void doWindow(
             final MessageConsumer throttle,
             final long throttleId,
@@ -516,7 +561,7 @@ public final class ServerStreamFactory implements StreamFactory
         throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
     }
 
-    private void doReset(
+    void doReset(
             final MessageConsumer throttle,
             final long throttleId)
     {
