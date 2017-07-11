@@ -207,53 +207,22 @@ final class Http2Connection
 
     void handleAbort(AbortFW abort)
     {
-        for(Http2Stream stream : http2Streams.values())
-        {
-            if (stream.state == State.HALF_CLOSED_REMOTE)
-            {
-                factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
-            }
-            else
-            {
-                stream.onAbort();
-            }
-        }
-
+        http2Streams.forEach((i, s) -> s.onAbort());
         cleanConnection();
     }
 
     void handleReset(ResetFW reset)
     {
-        for(Http2Stream stream : http2Streams.values())
-        {
-            // more request data to be sent, so send ABORT
-            if (stream.state != State.HALF_CLOSED_REMOTE)
-            {
-                stream.onAbort();
-            }
-
-            // reset the response stream
-            factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
-        }
-
+        http2Streams.forEach((i, s) -> s.onReset());
         cleanConnection();
     }
 
     void handleEnd(EndFW end)
     {
-
         decoderState = (b, o, l) -> o;
 
-        for(Http2Stream stream : http2Streams.values())
-        {
-            if (stream.state != State.HALF_CLOSED_REMOTE)
-            {
-                stream.onAbort();
-            }
-        }
-
+        http2Streams.forEach((i, s) -> s.onEnd());
         writeScheduler.doEnd();
-
         cleanConnection();
     }
 

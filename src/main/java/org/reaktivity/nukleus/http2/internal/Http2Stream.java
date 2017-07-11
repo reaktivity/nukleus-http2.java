@@ -79,7 +79,35 @@ class Http2Stream
 
     void onAbort()
     {
-        httpWriteScheduler.doAbort();
+        // more request data to be sent, so send ABORT
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            httpWriteScheduler.doAbort();
+        }
+
+        // reset the response stream
+        factory.doReset(applicationReplyThrottle, applicationReplyId);
+    }
+
+    void onReset()
+    {
+        // more request data to be sent, so send ABORT
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            httpWriteScheduler.doAbort();
+        }
+
+        // reset the response stream
+        factory.doReset(applicationReplyThrottle, applicationReplyId);
+    }
+
+    void onEnd()
+    {
+        // more request data to be sent, so send ABORT
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            httpWriteScheduler.doAbort();
+        }
     }
 
     void onThrottle(

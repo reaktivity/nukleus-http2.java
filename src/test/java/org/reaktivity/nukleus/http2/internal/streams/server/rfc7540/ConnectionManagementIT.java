@@ -131,7 +131,6 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
-    @Ignore("write aborted is not happening")
     @Test
     @Specification({
             "${route}/server/controller",
