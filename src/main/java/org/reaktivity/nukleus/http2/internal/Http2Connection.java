@@ -1499,13 +1499,20 @@ final class Http2Connection
     {
         OctetsFW extension = begin.extension();
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
-        stream.applicationReplyThrottle = applicationReplyThrottle;
-        stream.applicationReplyId = applicationReplyId;
-
-        if (extension.sizeof() > 0)
+        if (stream == null)
         {
-            HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
-            writeScheduler.headers(correlation.http2StreamId, beginEx.headers());
+            factory.doReset(applicationReplyThrottle, applicationReplyId);
+        }
+        else
+        {
+            stream.applicationReplyThrottle = applicationReplyThrottle;
+            stream.applicationReplyId = applicationReplyId;
+
+            if (extension.sizeof() > 0)
+            {
+                HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
+                writeScheduler.headers(correlation.http2StreamId, beginEx.headers());
+            }
         }
     }
 
