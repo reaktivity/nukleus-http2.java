@@ -1548,16 +1548,20 @@ final class Http2Connection
     void handleHttpAbort(AbortFW abort, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
-        if (stream.state == State.HALF_CLOSED_REMOTE)
-        {
-            factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
-        }
-        else
-        {
-            stream.onAbort();
-        }
 
-        writeScheduler.rst(correlation.http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+        if (stream != null)
+        {
+            if (stream.state == State.HALF_CLOSED_REMOTE)
+            {
+                factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
+            }
+            else
+            {
+                stream.onAbort();
+            }
+
+            writeScheduler.rst(correlation.http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+        }
     }
 
     enum State
