@@ -21,7 +21,7 @@ import java.util.function.Supplier;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.reaktivity.nukleus.buffer.BufferPool;
-import org.reaktivity.nukleus.route.RouteHandler;
+import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
 import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 
@@ -30,22 +30,22 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private final Http2Configuration config;
     private final Long2ObjectHashMap<Correlation> correlations;
 
-    private RouteHandler router;
+    private RouteManager router;
     private MutableDirectBuffer writeBuffer;
     private LongSupplier supplyStreamId;
     private LongSupplier supplyCorrelationId;
     private Supplier<BufferPool> supplyBufferPool;
 
     ServerStreamFactoryBuilder(
-            Http2Configuration config)
+        Http2Configuration config)
     {
         this.config = config;
         this.correlations = new Long2ObjectHashMap<>();
     }
 
     @Override
-    public ServerStreamFactoryBuilder setRouteHandler(
-            RouteHandler router)
+    public ServerStreamFactoryBuilder setRouteManager(
+        RouteManager router)
     {
         this.router = router;
         return this;
@@ -53,7 +53,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 
     @Override
     public ServerStreamFactoryBuilder setWriteBuffer(
-            MutableDirectBuffer writeBuffer)
+        MutableDirectBuffer writeBuffer)
     {
         this.writeBuffer = writeBuffer;
         return this;
@@ -61,7 +61,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 
     @Override
     public ServerStreamFactoryBuilder setStreamIdSupplier(
-            LongSupplier supplyStreamId)
+        LongSupplier supplyStreamId)
     {
         this.supplyStreamId = supplyStreamId;
         return this;
@@ -69,7 +69,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 
     @Override
     public ServerStreamFactoryBuilder setCorrelationIdSupplier(
-            LongSupplier supplyCorrelationId)
+        LongSupplier supplyCorrelationId)
     {
         this.supplyCorrelationId = supplyCorrelationId;
         return this;
@@ -77,7 +77,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 
     @Override
     public StreamFactoryBuilder setBufferPoolSupplier(
-            Supplier<BufferPool> supplyBufferPool)
+        Supplier<BufferPool> supplyBufferPool)
     {
         this.supplyBufferPool = supplyBufferPool;
         return this;

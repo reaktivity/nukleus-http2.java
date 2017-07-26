@@ -47,7 +47,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
-import org.reaktivity.nukleus.route.RouteHandler;
+import org.reaktivity.nukleus.route.RouteManager;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -129,10 +129,10 @@ final class Http2Connection
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
     final Http2Writer http2Writer;
     MessageConsumer networkConsumer;
-    RouteHandler router;
+    RouteManager router;
     String sourceName;
 
-    Http2Connection(ServerStreamFactory factory, RouteHandler router, long networkReplyId, MessageConsumer networkConsumer,
+    Http2Connection(ServerStreamFactory factory, RouteManager router, long networkReplyId, MessageConsumer networkConsumer,
                     MessageFunction<RouteFW> wrapRoute)
     {
         this.factory = factory;
