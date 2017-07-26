@@ -43,7 +43,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
-import org.reaktivity.nukleus.route.RouteHandler;
+import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
 
 import java.util.function.LongSupplier;
@@ -92,7 +92,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final ResetFW.Builder resetRW = new ResetFW.Builder();
 
     private final Http2Configuration config;
-    private final RouteHandler router;
+    private final RouteManager router;
     private final MutableDirectBuffer writeBuffer;
     final BufferPool bufferPool;
     final BufferPool framePool;
@@ -111,7 +111,7 @@ public final class ServerStreamFactory implements StreamFactory
 
     ServerStreamFactory(
             Http2Configuration config,
-            RouteHandler router,
+            RouteManager router,
             MutableDirectBuffer writeBuffer,
             BufferPool bufferPool,
             LongSupplier supplyStreamId,
