@@ -86,7 +86,10 @@ class Http2Stream
         }
 
         // reset the response stream
-        factory.doReset(applicationReplyThrottle, applicationReplyId);
+        if (applicationReplyThrottle != null)
+        {
+            factory.doReset(applicationReplyThrottle, applicationReplyId);
+        }
     }
 
     void onReset()
@@ -98,7 +101,10 @@ class Http2Stream
         }
 
         // reset the response stream
-        factory.doReset(applicationReplyThrottle, applicationReplyId);
+        if (applicationReplyThrottle != null)
+        {
+            factory.doReset(applicationReplyThrottle, applicationReplyId);
+        }
     }
 
     void onEnd()
