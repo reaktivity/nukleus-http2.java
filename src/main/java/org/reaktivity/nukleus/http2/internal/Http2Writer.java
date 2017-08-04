@@ -86,20 +86,6 @@ class Http2Writer
         target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
-    int doHttp2(
-            MessageConsumer target,
-            long targetId,
-            Flyweight.Builder.Visitor visitor)
-    {
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .payload(p -> p.set(visitor))
-                            .build();
-
-        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-        return data.length();
-    }
-
     Flyweight.Builder.Visitor visitSettings(
             int maxConcurrentStreams)
     {
@@ -206,7 +192,7 @@ class Http2Writer
                               .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitHeaders(
+    Flyweight.Builder.Visitor visitHeaders(
             int streamId,
             DirectBuffer srcBuffer,
             int srcOffset,
@@ -239,7 +225,7 @@ class Http2Writer
                              .sizeof();
     }
 
-    public Flyweight.Builder.Visitor visitPushPromise(
+    Flyweight.Builder.Visitor visitPushPromise(
             int streamId,
             int promisedStreamId,
             DirectBuffer srcBuffer,
