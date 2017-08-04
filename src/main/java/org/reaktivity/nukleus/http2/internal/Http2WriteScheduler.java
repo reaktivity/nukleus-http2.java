@@ -243,7 +243,7 @@ public class Http2WriteScheduler implements WriteScheduler
         if (!buffered(streamId) && sizeof <= connection.outWindow)
         {
             Flyweight.Builder.Visitor pushPromise =
-                    http2Writer.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromize);
+                    http2Writer.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromise);
             http2(stream, type, sizeof, pushPromise, progress);
         }
         else
@@ -251,7 +251,7 @@ public class Http2WriteScheduler implements WriteScheduler
             MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);
             HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();  // TODO
             blockRW.wrap(copy, 0, copy.capacity());
-            connection.mapHeaders(headers, blockRW);
+            connection.mapPushPromise(headers, blockRW);
 
             Flyweight.Builder.Visitor visitor =
                     http2Writer.visitPushPromise(streamId, promisedStreamId, copy, 0, copy.capacity());

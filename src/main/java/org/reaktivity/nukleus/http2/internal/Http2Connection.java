@@ -1357,7 +1357,7 @@ final class Http2Connection
     }
 
 
-    void mapPushPromize(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
+    void mapPushPromise(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
     {
         httpHeaders.forEach(h -> builder.header(b -> mapHeader(h, b)));
     }
