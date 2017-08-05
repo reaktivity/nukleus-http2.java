@@ -23,7 +23,6 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
@@ -219,10 +218,9 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         else
         {
-            MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);        // TODO
-            HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();  // TODO
-            blockRW.wrap(copy, 0, copy.capacity());
-            connection.mapHeaders(headers, blockRW);
+            MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);
+            connection.factory.blockRW.wrap(copy, 0, copy.capacity());
+            connection.mapHeaders(headers, connection.factory.blockRW);
 
             Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, copy, 0, copy.capacity());
             HeadersEntry entry = new HeadersEntry(stream, streamId, sizeof, type, visitor, progress);
@@ -249,9 +247,8 @@ public class Http2WriteScheduler implements WriteScheduler
         else
         {
             MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);
-            HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();  // TODO
-            blockRW.wrap(copy, 0, copy.capacity());
-            connection.mapPushPromise(headers, blockRW);
+            connection.factory.blockRW.wrap(copy, 0, copy.capacity());
+            connection.mapPushPromise(headers, connection.factory.blockRW);
 
             Flyweight.Builder.Visitor visitor =
                     http2Writer.visitPushPromise(streamId, promisedStreamId, copy, 0, copy.capacity());
