@@ -109,6 +109,7 @@ class HttpWriter
     {
         EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                          .streamId(targetId)
+                         .extension(e -> e.reset())
                          .build();
 
         target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
