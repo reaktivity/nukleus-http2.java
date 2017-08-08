@@ -85,6 +85,7 @@ public final class ServerStreamFactory implements StreamFactory
     final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
     final HttpBeginExFW beginExRO = new HttpBeginExFW();
     final Http2DataExFW dataExRO = new Http2DataExFW();
+    final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
     final Http2PingFW pingRO = new Http2PingFW();
 
