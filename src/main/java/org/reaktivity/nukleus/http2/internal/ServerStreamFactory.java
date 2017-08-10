@@ -225,7 +225,7 @@ public final class ServerStreamFactory implements StreamFactory
 
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
-        private int initialWindow = 65535;
+        private int initialWindow = bufferPool.slotCapacity();
         private int window;
 
         private ServerAcceptStream(
@@ -298,7 +298,7 @@ public final class ServerStreamFactory implements StreamFactory
             networkReply = router.supplyTarget(networkReplyName);
             networkReplyId = supplyStreamId.getAsLong();
 
-            initialWindow = config.http2Window();
+            initialWindow = bufferPool.slotCapacity();
             doWindow(networkThrottle, networkId, initialWindow, initialWindow);
             window = initialWindow;
 
@@ -477,7 +477,7 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 http2Connection = correlation.http2Connection;
 
-                window = config.httpWindow();
+                window = bufferPool.slotCapacity();
                 doWindow(applicationReplyThrottle, applicationReplyId, window, window);
                 http2Connection.handleHttpBegin(begin, applicationReplyThrottle, applicationReplyId, correlation);
 
