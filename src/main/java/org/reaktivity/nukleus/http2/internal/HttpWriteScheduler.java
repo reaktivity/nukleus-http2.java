@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
@@ -62,7 +63,7 @@ class HttpWriteScheduler
             // Send to http if there is available window
             if (toHttp > 0)
             {
-                target.doHttpData(applicationTarget, targetId, http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
+                toHttp(http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
                 stream.sendHttp2Window(toHttp);
             }
 
@@ -111,7 +112,7 @@ class HttpWriteScheduler
                 MutableDirectBuffer buffer = acquire();
                 int offset1 = targetBuffer.readOffset();
                 int read1 = targetBuffer.read(toHttp);
-                target.doHttpData(applicationTarget, targetId, buffer, offset1, read1);
+                toHttp(buffer, offset1, read1);
 
                 // toHttp may span across the boundary, one more read may be required
                 if (read1 != toHttp)
@@ -120,7 +121,7 @@ class HttpWriteScheduler
                     int read2 = targetBuffer.read(toHttp-read1);
                     assert read1 + read2 == toHttp;
 
-                    target.doHttpData(applicationTarget, targetId, buffer, offset2, read2);
+                    toHttp(buffer, offset2, read2);
                 }
 
                 stream.sendHttp2Window(toHttp);
@@ -137,6 +138,17 @@ class HttpWriteScheduler
 
                 release();
             }
+        }
+    }
+
+    private void toHttp(DirectBuffer buffer, int offset, int length)
+    {
+        while (length > 0)
+        {
+            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
+            target.doHttpData(applicationTarget, targetId, buffer, offset, chunk);
+            offset += chunk;
+            length -= chunk;
         }
     }
 

@@ -348,11 +348,13 @@ public class HpackContext
     {
         private final DirectBuffer name;
         private final DirectBuffer value;
+        private final int hash;
 
         NameValue(DirectBuffer name, DirectBuffer value)
         {
             this.name = name;
             this.value = value;
+            this.hash = Objects.hash(name, value);
         }
 
         @Override
@@ -369,7 +371,7 @@ public class HpackContext
         @Override
         public int hashCode()
         {
-            return Objects.hash(name, value);
+            return hash;
         }
     }
 
