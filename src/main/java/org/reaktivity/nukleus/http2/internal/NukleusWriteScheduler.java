@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
@@ -66,7 +67,6 @@ class NukleusWriteScheduler
         int length = visitor.visit(accumulated, accumulatedOffset, lengthGuess);
         accumulatedOffset += length;
 
-        assert accumulatedOffset < 65536;       // DataFW's length is 2 bytes
         return length;
     }
 
@@ -82,7 +82,7 @@ class NukleusWriteScheduler
             assert accumulatedSlot != NO_SLOT;
 
             MutableDirectBuffer accumulated = nukleusWriterPool.buffer(accumulatedSlot);
-            http2Writer.doData(networkConsumer, targetId, accumulated, 0, accumulatedOffset);
+            toNetwork(accumulated, 0, accumulatedOffset);
             accumulatedOffset = 0;
         }
 
@@ -94,6 +94,17 @@ class NukleusWriteScheduler
 
         assert accumulatedOffset == 0;
         assert accumulatedSlot == NO_SLOT;
+    }
+
+    private void toNetwork(DirectBuffer buffer, int offset, int length)
+    {
+        while (length > 0)
+        {
+            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
+            http2Writer.doData(networkConsumer, targetId, buffer, offset, chunk);
+            offset += chunk;
+            length -= chunk;
+        }
     }
 
 }

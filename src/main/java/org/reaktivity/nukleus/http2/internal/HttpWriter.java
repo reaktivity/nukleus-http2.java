@@ -95,6 +95,8 @@ class HttpWriter
             int offset,
             int length)
     {
+        assert length < 65536;          // DATA frame length is 2 bytes
+
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .payload(p -> p.set(payload, offset, length))
