@@ -48,7 +48,7 @@ public interface WriteScheduler
 
     boolean settingsAck();
 
-    boolean headers(int streamId, ListFW<HttpHeaderFW> headers);
+    boolean headers(int streamId, byte flags, ListFW<HttpHeaderFW> headers);
 
     boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers, IntConsumer progress);
 

@@ -42,6 +42,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
@@ -669,10 +670,22 @@ final class Http2Connection
         }
 
         RouteFW route = resolveTarget(sourceRef, sourceName, headersContext.headers);
+        if (route == null)
+        {
+            noRoute(streamId);
+        }
+        else
+        {
+            followRoute(streamId, state, route);
+        }
+    }
+
+    private void followRoute(int streamId, State state, RouteFW route)
+    {
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         HttpWriter httpWriter = factory.httpWriter;
-        stream = newStream(streamId, state, applicationTarget, httpWriter);
+        Http2Stream stream = newStream(streamId, state, applicationTarget, httpWriter);
         final long targetRef = route.targetRef();
 
         stream.contentLength = headersContext.contentLength;
@@ -682,11 +695,21 @@ final class Http2Connection
                 beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
         router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
 
-
         if (factory.headersRO.endStream())
         {
             httpWriter.doHttpEnd(applicationTarget, stream.targetId);  // TODO use HttpWriteScheduler
         }
+    }
+
+    // No route for the HTTP2 request, send 404 on the corresponding HTTP2 stream
+    private void noRoute(int streamId)
+    {
+        ListFW<HttpHeaderFW> headers =
+                factory.headersRW.wrap(factory.errorBuf, 0, factory.errorBuf.capacity())
+                                 .item(b -> b.representation((byte)0).name(":status").value("404"))
+                                 .build();
+
+        writeScheduler.headers(streamId, Http2Flags.END_STREAM, headers);
     }
 
     private void doRst()
@@ -1511,7 +1534,7 @@ final class Http2Connection
             if (extension.sizeof() > 0)
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
-                writeScheduler.headers(correlation.http2StreamId, beginEx.headers());
+                writeScheduler.headers(correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
             }
         }
     }
