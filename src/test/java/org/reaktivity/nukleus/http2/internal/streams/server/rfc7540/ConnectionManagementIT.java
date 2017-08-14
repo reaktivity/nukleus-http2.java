@@ -71,6 +71,15 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/server/controller",
+            "${spec}/http.unknown.authority/client" })
+    public void httpUnknownAuthority() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
             "${spec}/http.post.exchange/client",
             "${nukleus}/http.post.exchange/server" })
     public void httpPostExchange() throws Exception

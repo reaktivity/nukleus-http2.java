@@ -669,6 +669,11 @@ final class Http2Connection
         }
 
         RouteFW route = resolveTarget(sourceRef, sourceName, headersContext.headers);
+        if (route == null)
+        {
+            noRoute(streamId);
+            return;
+        }
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         HttpWriter httpWriter = factory.httpWriter;
@@ -687,6 +692,17 @@ final class Http2Connection
         {
             httpWriter.doHttpEnd(applicationTarget, stream.targetId);  // TODO use HttpWriteScheduler
         }
+    }
+
+    // No route for the HTTP2 request, send 404 on the corresponding HTTP2 stream
+    private void noRoute(int streamId)
+    {
+        ListFW<HttpHeaderFW> headers =
+                factory.headersRW.wrap(factory.errorBuf, 0, factory.errorBuf.capacity())
+                                 .item(b -> b.representation((byte)0).name(":status").value("404"))
+                                 .build();
+
+        writeScheduler.headers(streamId, true, headers);
     }
 
     private void doRst()
@@ -1511,7 +1527,7 @@ final class Http2Connection
             if (extension.sizeof() > 0)
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
-                writeScheduler.headers(correlation.http2StreamId, beginEx.headers());
+                writeScheduler.headers(correlation.http2StreamId, false, beginEx.headers());
             }
         }
     }

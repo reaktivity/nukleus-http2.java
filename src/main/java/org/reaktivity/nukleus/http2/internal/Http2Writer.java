@@ -26,6 +26,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
@@ -183,20 +184,29 @@ class Http2Writer
 
     Flyweight.Builder.Visitor visitHeaders(
             int streamId,
+            boolean endStream,
             ListFW<HttpHeaderFW> headers,
             BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
         return (buffer, offset, limit) ->
-                http2HeadersRW.wrap(buffer, offset, limit)
-                              .streamId(streamId)
-                              .endHeaders()
-                              .headers(b -> builder.accept(headers, b))
-                              .build()
-                              .sizeof();
+        {
+            byte flags = Http2Flags.END_HEADERS;
+            if (endStream)
+            {
+                flags |= Http2Flags.END_STREAM;
+            }
+            return http2HeadersRW.wrap(buffer, offset, limit)
+                          .streamId(streamId)
+                          .flags(flags)
+                          .headers(b -> builder.accept(headers, b))
+                          .build()
+                          .sizeof();
+        };
     }
 
     Flyweight.Builder.Visitor visitHeaders(
             int streamId,
+            boolean endStream,
             DirectBuffer srcBuffer,
             int srcOffset,
             int srcLength)
@@ -204,12 +214,19 @@ class Http2Writer
         assert streamId != 0;
 
         return (buffer, offset, limit) ->
-                http2HeadersRW.wrap(buffer, offset, limit)
-                              .streamId(streamId)
-                              .endHeaders()
-                              .payload(srcBuffer, srcOffset, srcLength)
-                              .build()
-                              .sizeof();
+        {
+            byte flags = Http2Flags.END_HEADERS;
+            if (endStream)
+            {
+                flags |= Http2Flags.END_STREAM;
+            }
+            return http2HeadersRW.wrap(buffer, offset, limit)
+                          .streamId(streamId)
+                          .flags(flags)
+                          .payload(srcBuffer, srcOffset, srcLength)
+                          .build()
+                          .sizeof();
+        };
     }
 
     Flyweight.Builder.Visitor visitPushPromise(

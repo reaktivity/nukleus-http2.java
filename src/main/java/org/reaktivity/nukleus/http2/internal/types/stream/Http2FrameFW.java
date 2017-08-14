@@ -140,6 +140,14 @@ public class Http2FrameFW extends Flyweight
             return (B) this;
         }
 
+        public final B flags(byte f)
+        {
+            byte flags = buffer().getByte(offset() + FLAGS_OFFSET);
+            flags |= f;
+            buffer().putByte(offset() + FLAGS_OFFSET, flags);
+            return (B) this;
+        }
+
         public final B streamId(int streamId)
         {
             buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, BIG_ENDIAN);

@@ -204,7 +204,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean headers(int streamId, ListFW<HttpHeaderFW> headers)
+    public boolean headers(int streamId, boolean endStream, ListFW<HttpHeaderFW> headers)
     {
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
         Http2FrameType type = HEADERS;
@@ -213,7 +213,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered(streamId) && sizeof <= connection.outWindow)
         {
-            Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, headers, connection::mapHeaders);
+            Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, endStream, headers, connection::mapHeaders);
             http2(stream, type, sizeof, visitor, progress);
         }
         else
@@ -222,7 +222,7 @@ public class Http2WriteScheduler implements WriteScheduler
             connection.factory.blockRW.wrap(copy, 0, copy.capacity());
             connection.mapHeaders(headers, connection.factory.blockRW);
 
-            Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, copy, 0, copy.capacity());
+            Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, endStream, copy, 0, copy.capacity());
             HeadersEntry entry = new HeadersEntry(stream, streamId, sizeof, type, visitor, progress);
             addEntry(entry);
         }
