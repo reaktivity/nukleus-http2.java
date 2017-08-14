@@ -23,6 +23,8 @@ import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
@@ -81,6 +83,8 @@ public final class ServerStreamFactory implements StreamFactory
     final Http2PriorityFW priorityRO = new Http2PriorityFW();
     final UnsafeBuffer scratch = new UnsafeBuffer(new byte[8192]);  // TODO
     final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
+    final ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW> headersRW =
+            new ListFW.Builder<>(new HttpHeaderFW.Builder(), new HttpHeaderFW());
     final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
     final HttpBeginExFW beginExRO = new HttpBeginExFW();
@@ -105,6 +109,9 @@ public final class ServerStreamFactory implements StreamFactory
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
     final Http2Writer http2Writer;
+
+    // Buf to build HTTP error status code header
+    final MutableDirectBuffer errorBuf = new UnsafeBuffer(new byte[64]);
 
 
     final Long2ObjectHashMap<Correlation> correlations;

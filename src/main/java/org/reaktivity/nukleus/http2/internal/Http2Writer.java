@@ -26,6 +26,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
@@ -183,13 +184,16 @@ class Http2Writer
 
     Flyweight.Builder.Visitor visitHeaders(
             int streamId,
+            byte flags,
             ListFW<HttpHeaderFW> headers,
             BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
+        byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
+
         return (buffer, offset, limit) ->
                 http2HeadersRW.wrap(buffer, offset, limit)
                               .streamId(streamId)
-                              .endHeaders()
+                              .flags(headersFlags)
                               .headers(b -> builder.accept(headers, b))
                               .build()
                               .sizeof();
@@ -197,16 +201,18 @@ class Http2Writer
 
     Flyweight.Builder.Visitor visitHeaders(
             int streamId,
+            byte flags,
             DirectBuffer srcBuffer,
             int srcOffset,
             int srcLength)
     {
         assert streamId != 0;
 
+        byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
         return (buffer, offset, limit) ->
                 http2HeadersRW.wrap(buffer, offset, limit)
                               .streamId(streamId)
-                              .endHeaders()
+                              .flags(headersFlags)
                               .payload(srcBuffer, srcOffset, srcLength)
                               .build()
                               .sizeof();
