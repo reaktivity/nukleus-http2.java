@@ -184,49 +184,38 @@ class Http2Writer
 
     Flyweight.Builder.Visitor visitHeaders(
             int streamId,
-            boolean endStream,
+            byte flags,
             ListFW<HttpHeaderFW> headers,
             BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
+        byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
+
         return (buffer, offset, limit) ->
-        {
-            byte flags = Http2Flags.END_HEADERS;
-            if (endStream)
-            {
-                flags |= Http2Flags.END_STREAM;
-            }
-            return http2HeadersRW.wrap(buffer, offset, limit)
-                          .streamId(streamId)
-                          .flags(flags)
-                          .headers(b -> builder.accept(headers, b))
-                          .build()
-                          .sizeof();
-        };
+                http2HeadersRW.wrap(buffer, offset, limit)
+                              .streamId(streamId)
+                              .flags(headersFlags)
+                              .headers(b -> builder.accept(headers, b))
+                              .build()
+                              .sizeof();
     }
 
     Flyweight.Builder.Visitor visitHeaders(
             int streamId,
-            boolean endStream,
+            byte flags,
             DirectBuffer srcBuffer,
             int srcOffset,
             int srcLength)
     {
         assert streamId != 0;
 
+        byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
         return (buffer, offset, limit) ->
-        {
-            byte flags = Http2Flags.END_HEADERS;
-            if (endStream)
-            {
-                flags |= Http2Flags.END_STREAM;
-            }
-            return http2HeadersRW.wrap(buffer, offset, limit)
-                          .streamId(streamId)
-                          .flags(flags)
-                          .payload(srcBuffer, srcOffset, srcLength)
-                          .build()
-                          .sizeof();
-        };
+                http2HeadersRW.wrap(buffer, offset, limit)
+                              .streamId(streamId)
+                              .flags(headersFlags)
+                              .payload(srcBuffer, srcOffset, srcLength)
+                              .build()
+                              .sizeof();
     }
 
     Flyweight.Builder.Visitor visitPushPromise(
