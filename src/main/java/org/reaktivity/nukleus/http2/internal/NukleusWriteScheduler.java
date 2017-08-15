@@ -15,57 +15,37 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 
 class NukleusWriteScheduler
 {
-    private int accumulatedSlot = NO_SLOT;
-
-    private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final long targetId;
     private final MessageConsumer networkConsumer;
+    private final MutableDirectBuffer writeBuffer;
 
-    private BufferPool nukleusWriterPool;
-    private int accumulatedOffset;
+    private int accumulatedLength;
 
     NukleusWriteScheduler(
-            Http2Connection connection,
-            BufferPool nukleusWriterPool,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
-        this.connection = connection;
-        this.nukleusWriterPool = nukleusWriterPool;
         this.networkConsumer = networkConsumer;
         this.http2Writer = http2Writer;
         this.targetId = targetId;
+        this.writeBuffer = http2Writer.writeBuffer;
     }
 
     int http2Frame(
             int lengthGuess,
             Flyweight.Builder.Visitor visitor)
     {
-        if (accumulatedSlot == NO_SLOT)
-        {
-            accumulatedSlot = nukleusWriterPool.acquire(targetId);
-        }
-
-        if (accumulatedSlot == NO_SLOT)
-        {
-            connection.cleanConnection();
-            return -1;
-        }
-        MutableDirectBuffer accumulated = nukleusWriterPool.buffer(accumulatedSlot);
-        int length = visitor.visit(accumulated, accumulatedOffset, lengthGuess);
-        accumulatedOffset += length;
+        int length = visitor.visit(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD + accumulatedLength, lengthGuess);
+        accumulatedLength += length;
 
         return length;
     }
@@ -77,26 +57,16 @@ class NukleusWriteScheduler
 
     void flush()
     {
-        if (accumulatedOffset > 0)
+        if (accumulatedLength > 0)
         {
-            assert accumulatedSlot != NO_SLOT;
-
-            MutableDirectBuffer accumulated = nukleusWriterPool.buffer(accumulatedSlot);
-            toNetwork(accumulated, 0, accumulatedOffset);
-            accumulatedOffset = 0;
+            toNetwork(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
+            accumulatedLength = 0;
         }
 
-        if (accumulatedSlot != NO_SLOT)
-        {
-            nukleusWriterPool.release(accumulatedSlot);
-            accumulatedSlot = NO_SLOT;
-        }
-
-        assert accumulatedOffset == 0;
-        assert accumulatedSlot == NO_SLOT;
+        assert accumulatedLength == 0;
     }
 
-    private void toNetwork(DirectBuffer buffer, int offset, int length)
+    private void toNetwork(MutableDirectBuffer buffer, int offset, int length)
     {
         while (length > 0)
         {

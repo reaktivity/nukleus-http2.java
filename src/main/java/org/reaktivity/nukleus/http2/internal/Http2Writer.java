@@ -54,7 +54,7 @@ class Http2Writer
     private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
     private final Http2PushPromiseFW.Builder pushPromiseRW = new Http2PushPromiseFW.Builder();
 
-    private final MutableDirectBuffer writeBuffer;
+    final MutableDirectBuffer writeBuffer;
 
     Http2Writer(MutableDirectBuffer writeBuffer)
     {
@@ -64,15 +64,16 @@ class Http2Writer
     void doData(
             MessageConsumer target,
             long targetId,
-            DirectBuffer payload,
+            MutableDirectBuffer payload,
             int offset,
             int length)
     {
+        assert offset >= DataFW.FIELD_OFFSET_PAYLOAD;
         assert length < 65536;      // DATA frame length is 2 bytes
 
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+        DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
                             .streamId(targetId)
-                            .payload(p -> p.set(payload, offset, length))
+                            .payload(p -> p.set((b, o, l) -> length))
                             .build();
 
         target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());

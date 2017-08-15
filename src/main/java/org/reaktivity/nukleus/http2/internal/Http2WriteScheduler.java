@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -53,15 +52,13 @@ public class Http2WriteScheduler implements WriteScheduler
 
     Http2WriteScheduler(
             Http2Connection connection,
-            BufferPool nukleusWriterPool,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
         this.http2Writer = http2Writer;
-        this.writer = new NukleusWriteScheduler(connection, nukleusWriterPool, networkConsumer,
-                http2Writer, targetId);
+        this.writer = new NukleusWriteScheduler(networkConsumer, http2Writer, targetId);
         this.replyQueue = new LinkedList<>();
     }
 
