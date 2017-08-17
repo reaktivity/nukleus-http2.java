@@ -155,11 +155,11 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean settings(int maxConcurrentStreams)
+    public boolean settings(int maxConcurrentStreams, int initialWindowSize)
     {
         int streamId = 0;
         int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
-        Flyweight.Builder.Visitor settings = http2Writer.visitSettings(maxConcurrentStreams);
+        Flyweight.Builder.Visitor settings = http2Writer.visitSettings(maxConcurrentStreams, initialWindowSize);
         Http2FrameType type = SETTINGS;
         IntConsumer progress = NOOP;
         Http2Stream stream = null;
