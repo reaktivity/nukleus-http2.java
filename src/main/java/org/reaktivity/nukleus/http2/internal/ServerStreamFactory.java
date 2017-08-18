@@ -102,7 +102,6 @@ public final class ServerStreamFactory implements StreamFactory
     final BufferPool bufferPool;
     final BufferPool framePool;
     final BufferPool headersPool;
-    final BufferPool nukleusWriterPool;
     final BufferPool httpWriterPool;
     final BufferPool http2ReplyPool;
     final LongSupplier supplyStreamId;
@@ -138,7 +137,6 @@ public final class ServerStreamFactory implements StreamFactory
         }
         this.framePool = bufferPool.duplicate();
         this.headersPool = bufferPool.duplicate();
-        this.nukleusWriterPool = bufferPool.duplicate();
         this.httpWriterPool = bufferPool.duplicate();
         this.http2ReplyPool = bufferPool.duplicate();
         this.supplyStreamId = requireNonNull(supplyStreamId);

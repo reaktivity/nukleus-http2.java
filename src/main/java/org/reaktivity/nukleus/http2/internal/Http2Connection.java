@@ -115,6 +115,7 @@ final class Http2Connection
     private int maxPushPromiseStreamId;
 
     private boolean goaway;
+    Settings initialSettings;
     Settings localSettings;
     Settings remoteSettings;
     private boolean expectContinuation;
@@ -141,13 +142,12 @@ final class Http2Connection
         this.wrapRoute = wrapRoute;
         sourceOutputEstId = networkReplyId;
         http2Streams = new Int2ObjectHashMap<>();
-        localSettings = new Settings(100);
+        localSettings = new Settings();
         remoteSettings = new Settings();
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         http2Writer = factory.http2Writer;
-        writeScheduler = new Http2WriteScheduler(this, factory.nukleusWriterPool, networkConsumer,
-                http2Writer, sourceOutputEstId);
+        writeScheduler = new Http2WriteScheduler(this, networkConsumer, http2Writer, sourceOutputEstId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
         this.networkConsumer = networkConsumer;
@@ -190,8 +190,8 @@ final class Http2Connection
         this.sourceRef = beginRO.sourceRef();
         this.sourceName = beginRO.source().asString();
         this.decoderState = this::decodePreface;
-
-        writeScheduler.settings(localSettings.maxConcurrentStreams);
+        initialSettings = new Settings(100, 0);
+        writeScheduler.settings(initialSettings.maxConcurrentStreams, initialSettings.initialWindowSize);
     }
 
     void handleData(DataFW dataRO)
@@ -901,6 +901,17 @@ final class Http2Connection
         {
             factory.settingsRO.accept(this::doSetting);
             writeScheduler.settingsAck();
+        }
+        else
+        {
+            int update =  initialSettings.initialWindowSize - localSettings.initialWindowSize;
+            for(Http2Stream http2Stream: http2Streams.values())
+            {
+                http2Stream.http2InWindow += update;           // http2InWindow can become negative
+            }
+
+            // now that peer acked our initial settings, can use them as our local settings
+            localSettings = initialSettings;
         }
     }
 

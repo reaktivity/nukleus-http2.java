@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -53,15 +52,13 @@ public class Http2WriteScheduler implements WriteScheduler
 
     Http2WriteScheduler(
             Http2Connection connection,
-            BufferPool nukleusWriterPool,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
         this.connection = connection;
         this.http2Writer = http2Writer;
-        this.writer = new NukleusWriteScheduler(connection, nukleusWriterPool, networkConsumer,
-                http2Writer, targetId);
+        this.writer = new NukleusWriteScheduler(networkConsumer, http2Writer, targetId);
         this.replyQueue = new LinkedList<>();
     }
 
@@ -158,11 +155,11 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean settings(int maxConcurrentStreams)
+    public boolean settings(int maxConcurrentStreams, int initialWindowSize)
     {
         int streamId = 0;
         int sizeof = 9 + 6;             // +9 for HTTP2 framing, +6 for a setting
-        Flyweight.Builder.Visitor settings = http2Writer.visitSettings(maxConcurrentStreams);
+        Flyweight.Builder.Visitor settings = http2Writer.visitSettings(maxConcurrentStreams, initialWindowSize);
         Http2FrameType type = SETTINGS;
         IntConsumer progress = NOOP;
         Http2Stream stream = null;

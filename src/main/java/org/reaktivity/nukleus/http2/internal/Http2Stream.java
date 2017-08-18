@@ -125,10 +125,23 @@ class Http2Stream
         switch (msgTypeId)
         {
             case WindowFW.TYPE_ID:
-                factory.windowRO.wrap(buffer, index, index + length);
-                int update = factory.windowRO.update();
-                targetWindow += update;
-                httpWriteScheduler.onWindow();
+                if (isClientInitiated())
+                {
+                    factory.windowRO.wrap(buffer, index, index + length);
+                    int update = factory.windowRO.update();
+                    targetWindow += update;
+
+                    httpWriteScheduler.onWindow();
+
+                    // HTTP2 connection-level flow-control
+                    connection.writeScheduler.windowUpdate(0, update);
+
+                    // HTTP2 stream-level flow-control
+                    connection.writeScheduler.windowUpdate(http2StreamId, update);
+
+                    http2InWindow += update;
+                    connection.http2InWindow += update;
+                }
                 break;
             case ResetFW.TYPE_ID:
                 doReset(buffer, index, length);
@@ -181,15 +194,6 @@ class Http2Stream
     void sendHttp2Window(int update)
     {
         targetWindow -= update;
-
-        http2InWindow += update;
-        connection.http2InWindow += update;
-
-        // connection-level flow-control
-        connection.writeScheduler.windowUpdate(0, update);
-
-        // stream-level flow-control
-        connection.writeScheduler.windowUpdate(http2StreamId, update);
     }
 
 }
