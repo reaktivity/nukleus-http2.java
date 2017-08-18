@@ -30,9 +30,10 @@ class Settings
     int maxFrameSize = DEFAULT_MAX_FRAME_SIZE;
     long maxHeaderListSize;
 
-    Settings(int maxConcurrentStreams)
+    Settings(int maxConcurrentStreams, int initialWindowSize)
     {
         this.maxConcurrentStreams = maxConcurrentStreams;
+        this.initialWindowSize = initialWindowSize;
     }
 
     Settings()
