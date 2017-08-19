@@ -22,6 +22,7 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
@@ -218,8 +219,10 @@ public class Http2WriteScheduler implements WriteScheduler
             MutableDirectBuffer copy = new UnsafeBuffer(new byte[8192]);
             connection.factory.blockRW.wrap(copy, 0, copy.capacity());
             connection.mapHeaders(headers, connection.factory.blockRW);
-
-            Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, flags, copy, 0, copy.capacity());
+            HpackHeaderBlockFW block = connection.factory.blockRW.build();
+            int length = block.sizeof();
+            sizeof = 9 + length;
+            Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, flags, copy, 0, length);
             HeadersEntry entry = new HeadersEntry(stream, streamId, sizeof, type, visitor, progress);
             addEntry(entry);
         }
