@@ -97,4 +97,14 @@ public class MessageFormatIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/stream.id.order/client",
+            "${nukleus}/stream.id.order/server" })
+    public void streamIdOrder() throws Exception
+    {
+        k3po.finish();
+    }
 }
