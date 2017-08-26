@@ -240,9 +240,9 @@ class Http2Writer
     Flyweight.Builder.Visitor visitPushPromise(
             int streamId,
             int promisedStreamId,
-            DirectBuffer srcBuffer,
-            int srcOffset,
-            int srcLength)
+            DirectBuffer headersBuffer,
+            int headersOffset,
+            int headersLength)
     {
         assert streamId != 0;
 
@@ -251,7 +251,7 @@ class Http2Writer
                              .streamId(streamId)
                              .promisedStreamId(promisedStreamId)
                              .endHeaders()
-                             .payload(srcBuffer, srcOffset, srcLength)
+                             .headers(headersBuffer, headersOffset, headersLength)
                              .build()
                              .sizeof();
     }

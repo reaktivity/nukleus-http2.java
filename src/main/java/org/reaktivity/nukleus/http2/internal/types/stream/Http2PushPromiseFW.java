@@ -182,6 +182,13 @@ public class Http2PushPromiseFW extends Http2FrameFW
             return this;
         }
 
+        public Builder headers(DirectBuffer headersBuf, int headersOffset, int headersLength)
+        {
+            buffer().putBytes(offset() + PAYLOAD_OFFSET + 4, headersBuf, headersOffset, headersLength);
+            payloadLength(headersLength + 4);
+            return this;
+        }
+
     }
 }
 
