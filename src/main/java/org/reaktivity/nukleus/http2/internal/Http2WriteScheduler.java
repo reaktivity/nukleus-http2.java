@@ -234,14 +234,14 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers,
-                               IntConsumer progress)
+    public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);            // estimate only
         int sizeof = 9 + 4 + length;                    // +9 for HTTP2 framing, +4 for promised stream id
         Http2FrameType type = PUSH_PROMISE;
         Http2Stream stream = stream(streamId);
+        IntConsumer progress = NOOP;
 
         if (buffered() || sizeof > connection.outWindow)
         {
@@ -272,12 +272,14 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean data(int streamId, DirectBuffer buffer, int offset, int length, IntConsumer progress)
+    public boolean data(int streamId, DirectBuffer buffer, int offset, int length)
     {
         assert length > 0;
         assert streamId != 0;
 
-        int sizeof = 9 + length;    // +9 for HTTP2 framing
+        IntConsumer progress = NOOP;
+        int noFrames = (int) Math.ceil((double)length/ connection.remoteSettings.maxFrameSize);
+        int sizeof = length + 9 * noFrames;    // + 9 * n for HTTP2 framing
         Http2FrameType type = DATA;
         Http2Stream stream = stream(streamId);
         if (stream == null)
@@ -287,13 +289,21 @@ public class Http2WriteScheduler implements WriteScheduler
 
 
         if (!buffered() && !buffered(streamId) && sizeof <= connection.outWindow && length <= connection.http2OutWindow &&
-                length <= stream.http2OutWindow && length <= connection.remoteSettings.maxFrameSize)
+                length <= stream.http2OutWindow)
         {
-            Flyweight.Builder.Visitor data = http2Writer.visitData(streamId, buffer, offset, length);
-            http2(stream, type, sizeof, data, progress);
+            // Send multiple DATA frames (because of max frame size)
+            while (length > 0)
+            {
+                int chunk = Math.min(length, connection.remoteSettings.maxFrameSize);
+                Flyweight.Builder.Visitor data = http2Writer.visitData(streamId, buffer, offset, chunk);
+                http2(stream, type, chunk + 9, data, progress);
+                offset += chunk;
+                length -= chunk;
+            }
         }
         else
         {
+            // Buffer the data as there is no window
             MutableDirectBuffer replyBuffer = stream.acquireReplyBuffer();
             CircularDirectBuffer cdb = stream.replyBuffer;
 
@@ -315,6 +325,7 @@ public class Http2WriteScheduler implements WriteScheduler
                 addEntry(entry2);
             }
             flush();
+            connection.sendHttpWindow(stream);
         }
         return true;
     }
@@ -423,6 +434,8 @@ public class Http2WriteScheduler implements WriteScheduler
     public void onHttp2Window(int streamId)
     {
         flush();
+        Http2Stream stream = connection.http2Streams.get(streamId);
+        connection.sendHttpWindow(stream);
     }
 
     @Override
@@ -514,9 +527,9 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     private void http2(Http2Stream stream, Http2FrameType type,
-                       int lengthGuess, Flyweight.Builder.Visitor visitor, IntConsumer progress, boolean flush)
+                       int sizeofGuess, Flyweight.Builder.Visitor visitor, IntConsumer progress, boolean flush)
     {
-        int sizeof = writer.http2Frame(lengthGuess, visitor);
+        int sizeof = writer.http2Frame(sizeofGuess, visitor);
         assert sizeof >= 9;
         assert connection.outWindow >= sizeof;
 
@@ -526,21 +539,24 @@ public class Http2WriteScheduler implements WriteScheduler
         progress.accept(length);
         if (type == DATA)
         {
+
             stream.http2OutWindow -= length;
             connection.http2OutWindow -= length;
             stream.totalOutData += length;
+
+            stream.httpOutWindow -= length;
         }
         if (flush)
         {
             writer.flush();
+            connection.sendHttpWindow(stream);
         }
-
     }
 
     private void http2(Http2Stream stream, Http2FrameType type,
-                       int lengthGuess, Flyweight.Builder.Visitor visitor, IntConsumer progress)
+                       int sizeofGuess, Flyweight.Builder.Visitor visitor, IntConsumer progress)
     {
-        http2(stream, type, lengthGuess, visitor, progress, true);
+        http2(stream, type, sizeofGuess, visitor, progress, true);
     }
 
     private class Entry
@@ -556,6 +572,7 @@ public class Http2WriteScheduler implements WriteScheduler
               Flyweight.Builder.Visitor visitor, IntConsumer progress)
         {
             assert sizeof >= 9;
+            assert progress != null;
 
             this.stream = stream;
             this.streamId = streamId;

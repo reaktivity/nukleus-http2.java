@@ -58,7 +58,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.IntConsumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
@@ -1542,6 +1541,8 @@ final class Http2Connection
             stream.applicationReplyThrottle = applicationReplyThrottle;
             stream.applicationReplyId = applicationReplyId;
 
+            sendHttpWindow(stream);
+
             if (extension.sizeof() > 0)
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
@@ -1550,7 +1551,27 @@ final class Http2Connection
         }
     }
 
-    void handleHttpData(DataFW dataRO, Correlation correlation, IntConsumer progress)
+    void sendHttpWindow(Http2Stream stream)
+    {
+        if (stream == null)
+        {
+            return;
+        }
+        long maxWindow = Math.min(stream.http2OutWindow, factory.bufferPool.slotCapacity());  // - 200);
+        // target already has stream.httpOutWindow, calculate how much more it can send
+        long more = maxWindow - stream.httpOutWindow;
+        if (more > 0)
+        {
+            if (stream.applicationReplyThrottle != null)
+            {
+                factory.doWindow(stream.applicationReplyThrottle, stream.applicationReplyId,
+                        (int) more, (int) more);
+                stream.httpOutWindow += more;
+            }
+        }
+    }
+
+    void handleHttpData(DataFW dataRO, Correlation correlation)
     {
         OctetsFW extension = dataRO.extension();
         OctetsFW payload = dataRO.payload();
@@ -1563,13 +1584,13 @@ final class Http2Connection
             {
                 int promisedStreamId = correlation.promisedStreamIds.getAsInt();
                 Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
-                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers(), progress);
+                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers());
                 correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
             }
         }
         if (payload.sizeof() > 0)
         {
-            writeScheduler.data(correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof(), progress);
+            writeScheduler.data(correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
         }
 
     }

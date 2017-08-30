@@ -35,6 +35,7 @@ class Http2Stream
     final long correlationId;
     Http2Connection.State state;
     long http2OutWindow;
+    long httpOutWindow;
     long http2InWindow;
 
     long contentLength;
