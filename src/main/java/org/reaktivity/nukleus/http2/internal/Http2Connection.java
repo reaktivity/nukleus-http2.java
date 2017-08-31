@@ -1541,26 +1541,13 @@ final class Http2Connection
             stream.applicationReplyThrottle = applicationReplyThrottle;
             stream.applicationReplyId = applicationReplyId;
 
-            sendHttpWindow(stream);
+            stream.sendHttpWindow(this);
 
             if (extension.sizeof() > 0)
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
                 writeScheduler.headers(correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
             }
-        }
-    }
-
-    void sendHttpWindow(Http2Stream stream)
-    {
-        long maxWindow = Math.min(stream.http2OutWindow, factory.bufferPool.slotCapacity());  // - 200);
-        // target already has stream.httpOutWindow, calculate how much more it can send
-        long more = maxWindow - stream.httpOutWindow;
-        if (more > 0)
-        {
-            factory.doWindow(stream.applicationReplyThrottle, stream.applicationReplyId,
-                    (int) more, (int) more);
-            stream.httpOutWindow += more;
         }
     }
 

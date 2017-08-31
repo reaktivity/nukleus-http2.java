@@ -325,7 +325,7 @@ public class Http2WriteScheduler implements WriteScheduler
                 addEntry(entry2);
             }
             flush();
-            connection.sendHttpWindow(stream);
+            stream.sendHttpWindow(connection);
         }
         return true;
     }
@@ -435,7 +435,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         flush();
         Http2Stream stream = connection.http2Streams.get(streamId);
-        connection.sendHttpWindow(stream);
+        stream.sendHttpWindow(connection);
     }
 
     @Override
@@ -551,7 +551,7 @@ public class Http2WriteScheduler implements WriteScheduler
             writer.flush();
             if (type == DATA)
             {
-                connection.sendHttpWindow(stream);
+                stream.sendHttpWindow(connection);
             }
         }
     }
