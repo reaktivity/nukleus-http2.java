@@ -549,7 +549,10 @@ public class Http2WriteScheduler implements WriteScheduler
         if (flush)
         {
             writer.flush();
-            connection.sendHttpWindow(stream);
+            if (type == DATA)
+            {
+                connection.sendHttpWindow(stream);
+            }
         }
     }
 

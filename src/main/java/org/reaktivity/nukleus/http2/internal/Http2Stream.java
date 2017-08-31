@@ -40,7 +40,6 @@ class Http2Stream
 
     long contentLength;
     long totalData;
-    int targetWindow;
 
     private int replySlot = NO_SLOT;
     CircularDirectBuffer replyBuffer;
@@ -130,9 +129,8 @@ class Http2Stream
                 {
                     factory.windowRO.wrap(buffer, index, index + length);
                     int update = factory.windowRO.update();
-                    targetWindow += update;
 
-                    httpWriteScheduler.onWindow();
+                    httpWriteScheduler.onWindow(update);
 
                     // HTTP2 connection-level flow-control
                     connection.writeScheduler.windowUpdate(0, update);
@@ -192,9 +190,6 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    void sendHttp2Window(int update)
-    {
-        targetWindow -= update;
-    }
+
 
 }

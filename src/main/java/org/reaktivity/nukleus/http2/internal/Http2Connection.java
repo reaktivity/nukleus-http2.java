@@ -1553,21 +1553,14 @@ final class Http2Connection
 
     void sendHttpWindow(Http2Stream stream)
     {
-        if (stream == null)
-        {
-            return;
-        }
         long maxWindow = Math.min(stream.http2OutWindow, factory.bufferPool.slotCapacity());  // - 200);
         // target already has stream.httpOutWindow, calculate how much more it can send
         long more = maxWindow - stream.httpOutWindow;
         if (more > 0)
         {
-            if (stream.applicationReplyThrottle != null)
-            {
-                factory.doWindow(stream.applicationReplyThrottle, stream.applicationReplyId,
-                        (int) more, (int) more);
-                stream.httpOutWindow += more;
-            }
+            factory.doWindow(stream.applicationReplyThrottle, stream.applicationReplyId,
+                    (int) more, (int) more);
+            stream.httpOutWindow += more;
         }
     }
 
