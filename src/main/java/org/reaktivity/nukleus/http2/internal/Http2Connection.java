@@ -1541,7 +1541,7 @@ final class Http2Connection
             stream.applicationReplyThrottle = applicationReplyThrottle;
             stream.applicationReplyId = applicationReplyId;
 
-            stream.sendHttpWindow(this);
+            stream.sendHttpWindow();
 
             if (extension.sizeof() > 0)
             {
