@@ -35,11 +35,11 @@ class Http2Stream
     final long correlationId;
     Http2Connection.State state;
     long http2OutWindow;
+    long httpOutWindow;
     long http2InWindow;
 
     long contentLength;
     long totalData;
-    int targetWindow;
 
     private int replySlot = NO_SLOT;
     CircularDirectBuffer replyBuffer;
@@ -129,9 +129,8 @@ class Http2Stream
                 {
                     factory.windowRO.wrap(buffer, index, index + length);
                     int update = factory.windowRO.update();
-                    targetWindow += update;
 
-                    httpWriteScheduler.onWindow();
+                    httpWriteScheduler.onWindow(update);
 
                     // HTTP2 connection-level flow-control
                     connection.writeScheduler.windowUpdate(0, update);
@@ -191,9 +190,16 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    void sendHttp2Window(int update)
+    void sendHttpWindow()
     {
-        targetWindow -= update;
+        long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity());
+        // target already has stream.httpOutWindow, calculate how much more it can send
+        long windowDelta = maxWindow - httpOutWindow;
+        if (windowDelta > 0)
+        {
+            connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
+                    (int) windowDelta, (int) windowDelta);
+            httpOutWindow += windowDelta;
+        }
     }
-
 }

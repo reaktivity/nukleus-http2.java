@@ -407,7 +407,6 @@ public final class ServerStreamFactory implements StreamFactory
         private final long applicationReplyId;
 
         private MessageConsumer streamState;
-        private int window;
 
         private Http2Connection http2Connection;
         private Correlation correlation;
@@ -483,8 +482,6 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 http2Connection = correlation.http2Connection;
 
-                window = bufferPool.slotCapacity();
-                doWindow(applicationReplyThrottle, applicationReplyId, window, window);
                 http2Connection.handleHttpBegin(begin, applicationReplyThrottle, applicationReplyId, correlation);
 
                 this.streamState = this::afterBegin;
@@ -498,9 +495,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleData(
                 DataFW data)
         {
-            window -= data.length();
-
-            http2Connection.handleHttpData(data, correlation, this::sendWindow);
+            http2Connection.handleHttpData(data, correlation);
         }
 
         private void handleEnd(
@@ -513,12 +508,6 @@ public final class ServerStreamFactory implements StreamFactory
                 AbortFW abort)
         {
             http2Connection.handleHttpAbort(abort, correlation);
-        }
-
-        private void sendWindow(int update)
-        {
-            window += update;
-            doWindow(applicationReplyThrottle, applicationReplyId, update, update);
         }
 
     }
@@ -552,7 +541,7 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
     }
 
-    private void doWindow(
+    void doWindow(
             final MessageConsumer throttle,
             final long throttleId,
             final int writableBytes,
