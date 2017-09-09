@@ -1286,9 +1286,9 @@ final class Http2Connection
     {
         if (!headersContext.error())
         {
-            factory.httpBeginExRW.headers(b -> b.item(item -> item.representation((byte) 0)
+            factory.httpBeginExRW.headersItem(item -> item.representation((byte) 0)
                                                           .name(name, 0, name.capacity())
-                                                          .value(value, 0, value.capacity())));
+                                                          .value(value, 0, value.capacity()));
         }
     }
 
