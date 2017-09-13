@@ -35,6 +35,7 @@ class HttpWriteScheduler
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
+    private int targetWindow;
 
     HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
@@ -57,14 +58,14 @@ class HttpWriteScheduler
         if (targetBuffer == null)
         {
             int data = http2DataRO.dataLength();
-            int toHttp = Math.min(data, stream.targetWindow);
+            int toHttp = Math.min(data, targetWindow);
             int toSlab = data - toHttp;
 
             // Send to http if there is available window
             if (toHttp > 0)
             {
                 toHttp(http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
-                stream.sendHttp2Window(toHttp);
+                updateTargetWindow(toHttp);
             }
 
             // Store the remaining to a buffer
@@ -100,11 +101,13 @@ class HttpWriteScheduler
         }
     }
 
-    void onWindow()
+    void onWindow(int update)
     {
+        targetWindow += update;
+
         if (targetBuffer != null)
         {
-            int toHttp = Math.min(targetBuffer.size(), stream.targetWindow);
+            int toHttp = Math.min(targetBuffer.size(), targetWindow);
 
             // Send to http if there is available window
             if (toHttp > 0)
@@ -124,7 +127,7 @@ class HttpWriteScheduler
                     toHttp(buffer, offset2, read2);
                 }
 
-                stream.sendHttp2Window(toHttp);
+                updateTargetWindow(toHttp);
             }
 
             if (targetBuffer.size() == 0)
@@ -189,6 +192,11 @@ class HttpWriteScheduler
             slot = NO_SLOT;
             targetBuffer = null;
         }
+    }
+
+    private void updateTargetWindow(int update)
+    {
+        targetWindow -= update;
     }
 
 }
