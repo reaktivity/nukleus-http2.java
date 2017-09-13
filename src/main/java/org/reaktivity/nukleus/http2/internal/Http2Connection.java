@@ -705,7 +705,7 @@ final class Http2Connection
     {
         ListFW<HttpHeaderFW> headers =
                 factory.headersRW.wrap(factory.errorBuf, 0, factory.errorBuf.capacity())
-                                 .item(b -> b.representation((byte)0).name(":status").value("404"))
+                                 .item(b -> b.name(":status").value("404"))
                                  .build();
 
         writeScheduler.headers(streamId, Http2Flags.END_STREAM, headers);
@@ -1119,8 +1119,7 @@ final class Http2Connection
         long targetRef = route.targetRef();
 
         httpWriter.doHttpBegin(applicationTarget, targetId, targetRef, http2Stream.correlationId,
-                hs -> headers.forEach(h -> hs.item(b -> b.representation((byte) 0)
-                                                         .name(h.name())
+                hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
         httpWriter.doHttpEnd(applicationTarget, targetId);
 
@@ -1286,9 +1285,8 @@ final class Http2Connection
     {
         if (!headersContext.error())
         {
-            factory.httpBeginExRW.headers(b -> b.item(item -> item.representation((byte) 0)
-                                                          .name(name, 0, name.capacity())
-                                                          .value(value, 0, value.capacity())));
+            factory.httpBeginExRW.headersItem(item -> item.name(name, 0, name.capacity())
+                                                          .value(value, 0, value.capacity()));
         }
     }
 
