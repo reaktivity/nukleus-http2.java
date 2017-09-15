@@ -22,6 +22,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 
 class NukleusWriteScheduler
 {
+    private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final long targetId;
     private final MessageConsumer networkConsumer;
@@ -30,10 +31,12 @@ class NukleusWriteScheduler
     private int accumulatedLength;
 
     NukleusWriteScheduler(
+            Http2Connection connection,
             MessageConsumer networkConsumer,
             Http2Writer http2Writer,
             long targetId)
     {
+        this.connection = connection;
         this.networkConsumer = networkConsumer;
         this.http2Writer = http2Writer;
         this.targetId = targetId;
@@ -60,10 +63,21 @@ class NukleusWriteScheduler
         if (accumulatedLength > 0)
         {
             toNetwork(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
+            int adjustment = nukleusWindowBudgetAdjustment();
+            assert connection.outWindowBudget >= adjustment;
+            connection.outWindowBudget -= adjustment;
             accumulatedLength = 0;
         }
 
         assert accumulatedLength == 0;
+    }
+
+    int nukleusWindowBudgetAdjustment()
+    {
+        int nukleusFrameCount = (int) Math.ceil((double)accumulatedLength/65535);
+
+        // Every nukleus DATA frame incurs padding overhead
+        return nukleusFrameCount * connection.outWindowPadding;
     }
 
     private void toNetwork(MutableDirectBuffer buffer, int offset, int length)

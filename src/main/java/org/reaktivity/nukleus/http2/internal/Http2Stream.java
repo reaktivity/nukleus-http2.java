@@ -128,18 +128,19 @@ class Http2Stream
                 if (isClientInitiated())
                 {
                     factory.windowRO.wrap(buffer, index, index + length);
-                    int update = factory.windowRO.update();
+                    int credit = factory.windowRO.credit();
+                    int padding = factory.windowRO.padding();
 
-                    httpWriteScheduler.onWindow(update);
+                    httpWriteScheduler.onWindow(credit, padding);
 
                     // HTTP2 connection-level flow-control
-                    connection.writeScheduler.windowUpdate(0, update);
+                    connection.writeScheduler.windowUpdate(0, credit);
 
                     // HTTP2 stream-level flow-control
-                    connection.writeScheduler.windowUpdate(http2StreamId, update);
+                    connection.writeScheduler.windowUpdate(http2StreamId, credit);
 
-                    http2InWindow += update;
-                    connection.http2InWindow += update;
+                    http2InWindow += credit;
+                    connection.http2InWindow += credit;
                 }
                 break;
             case ResetFW.TYPE_ID:
@@ -198,7 +199,7 @@ class Http2Stream
         if (windowDelta > 0)
         {
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) windowDelta, (int) windowDelta);
+                    (int) windowDelta, 0);
             httpOutWindow += windowDelta;
         }
     }
