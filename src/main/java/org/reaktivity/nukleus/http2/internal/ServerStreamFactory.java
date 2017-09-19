@@ -384,7 +384,7 @@ public final class ServerStreamFactory implements StreamFactory
         {
             int credit = windowRO.credit();
             int padding = windowRO.padding();
-            System.out.printf("--> WINDOW (credit = %d, padding=%d)\n", credit, windowRO.padding());
+            //System.out.printf("--> WINDOW (credit = %d, padding=%d)\n", credit, windowRO.padding());
             if (http2Connection.outWindowThreshold == -1)
             {
                 http2Connection.outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * credit);

@@ -160,6 +160,7 @@ class Http2Stream
     {
         if (replySlot == NO_SLOT)
         {
+            System.out.println("ACQUIRE");
             replySlot = factory.http2ReplyPool.acquire(connection.sourceOutputEstId);
             if (replySlot != NO_SLOT)
             {
@@ -174,6 +175,7 @@ class Http2Stream
     {
         if (replySlot != NO_SLOT)
         {
+            System.out.println("RELEASE");
             factory.http2ReplyPool.release(replySlot);
             replySlot = NO_SLOT;
             replyBuffer = null;
@@ -199,7 +201,8 @@ class Http2Stream
         if (windowDelta > 0)
         {
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) windowDelta, 0);
+                    (int) windowDelta, connection.outWindowPadding);
+            //System.out.printf("\t\t\t--> WINDOW (c=%d, p=%d)\n", windowDelta, connection.outWindowPadding);
             httpOutWindow += windowDelta;
         }
     }

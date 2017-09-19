@@ -63,18 +63,37 @@ class NukleusWriteScheduler
         if (accumulatedLength > 0)
         {
             toNetwork(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
-            int adjustment = nukleusWindowBudgetAdjustment();
-            assert connection.outWindowBudget >= adjustment;
-            connection.outWindowBudget -= adjustment;
+            int adjustment = nukleusWindowBudgetAdjustment(accumulatedLength);
+
+            connection.outWindowBudget -= accumulatedLength + adjustment;
+            assert connection.outWindowBudget >= 0;
+
             accumulatedLength = 0;
         }
+        System.out.printf("\t\t\t       HTTP2 c.outWindowBudget = %d\n", connection.outWindowBudget);
 
         assert accumulatedLength == 0;
     }
 
-    int nukleusWindowBudgetAdjustment()
+    boolean fits(int sizeof)
     {
-        int nukleusFrameCount = (int) Math.ceil((double)accumulatedLength/65535);
+        int candidateSizeof = accumulatedLength + sizeof;
+        int adjustment = nukleusWindowBudgetAdjustment(candidateSizeof);
+
+        return candidateSizeof + adjustment <= connection.outWindowBudget;
+    }
+
+    int remaining()
+    {
+        int adjustment = nukleusWindowBudgetAdjustment(accumulatedLength);
+        int sizeof = connection.outWindowBudget - (accumulatedLength + adjustment);
+        int remaining = fits(sizeof) ? sizeof : sizeof - connection.outWindowPadding;
+        return Math.max(remaining, 0);
+    }
+
+    private int nukleusWindowBudgetAdjustment(int sizeof)
+    {
+        int nukleusFrameCount = (int) Math.ceil((double)sizeof/65535);
 
         // Every nukleus DATA frame incurs padding overhead
         return nukleusFrameCount * connection.outWindowPadding;
@@ -86,6 +105,7 @@ class NukleusWriteScheduler
         {
             int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
             http2Writer.doData(networkConsumer, targetId, buffer, offset, chunk);
+//            System.out.printf("<-- HTTP2 NDATA (%d)\n", chunk);
             offset += chunk;
             length -= chunk;
         }

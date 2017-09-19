@@ -800,7 +800,7 @@ final class Http2Connection
             }
         }
 
-        System.out.printf("--> WINDOW_UPDATE (id=%d, update=%d)\n", streamId, factory.http2WindowRO.size());
+        //System.out.printf("--> WINDOW_UPDATE (id=%d, update=%d)\n", streamId, factory.http2WindowRO.size());
         // 6.9.1 A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets.
         if (streamId == 0)
         {
