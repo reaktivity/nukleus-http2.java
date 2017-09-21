@@ -25,10 +25,12 @@ import static org.reaktivity.nukleus.route.RouteKind.CLIENT;
 
 public final class Http2NukleusFactorySpi implements NukleusFactorySpi
 {
+    public static final String NAME = "http2";
+
     @Override
     public String name()
     {
-        return "http2";
+        return NAME;
     }
 
     @Override

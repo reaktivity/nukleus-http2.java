@@ -33,6 +33,9 @@ public class Http2PrefaceFW extends Flyweight
     };
     private static final DirectBuffer PREFACE = new UnsafeBuffer(PRI_REQUEST);
 
+    // a constant PREFACE flyweight used to start a http2 connection
+    public static final Http2PrefaceFW PREFACE_FW = new Http2PrefaceFW().wrap(PREFACE, 0, PRI_REQUEST.length);
+
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
     @Override
