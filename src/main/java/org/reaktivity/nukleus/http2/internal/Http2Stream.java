@@ -185,9 +185,13 @@ class Http2Stream
             int length)
     {
         factory.resetRO.wrap(buffer, index, index + length);
+        connection.closeStream(this);
+    }
+
+    void close()
+    {
         httpWriteScheduler.onReset();
         releaseReplyBuffer();
-        connection.closeStream(this);
     }
 
     void sendHttpWindow()
