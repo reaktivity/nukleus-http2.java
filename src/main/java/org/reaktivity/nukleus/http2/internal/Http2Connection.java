@@ -732,6 +732,7 @@ final class Http2Connection
         }
         else
         {
+            stream.onReset();
             closeStream(stream);
         }
     }
@@ -748,6 +749,7 @@ final class Http2Connection
         }
         factory.correlations.remove(stream.targetId);    // remove from Correlations map
         http2Streams.remove(stream.http2StreamId);
+        stream.close();
     }
 
     private void doWindow()
