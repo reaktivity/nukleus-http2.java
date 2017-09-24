@@ -54,7 +54,7 @@
     <nukleus.version>0.11</nukleus.version>
 
     <nukleus.http2.spec.version>0.25</nukleus.http2.spec.version>
-    <reaktor.version>0.22</reaktor.version>
+    <reaktor.version>0.25</reaktor.version>
   </properties>
 
   <dependencies>
