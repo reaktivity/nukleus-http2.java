@@ -89,7 +89,7 @@ class Http2Stream
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
 
-        close();
+        connection.closeStream(this);
     }
 
     void onData()
