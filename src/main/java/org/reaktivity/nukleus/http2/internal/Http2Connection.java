@@ -1577,7 +1577,12 @@ final class Http2Connection
 
     void handleHttpEnd(EndFW data, Correlation correlation)
     {
-        writeScheduler.dataEos(correlation.http2StreamId);
+        Http2Stream stream = http2Streams.get(correlation.http2StreamId);
+
+        if (stream != null)
+        {
+            stream.onHttpEnd();
+        }
     }
 
     void handleHttpAbort(AbortFW abort, Correlation correlation)
@@ -1586,17 +1591,16 @@ final class Http2Connection
 
         if (stream != null)
         {
-            if (stream.state == State.HALF_CLOSED_REMOTE)
-            {
-                factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
-            }
-            else
-            {
-                stream.onAbort();
-            }
+            stream.onHttpAbort();
 
-            writeScheduler.rst(correlation.http2StreamId, Http2ErrorCode.CONNECT_ERROR);
         }
+    }
+
+    void doRstByUs(Http2Stream stream)
+    {
+        stream.onReset();
+        writeScheduler.rst(stream.http2StreamId, Http2ErrorCode.INTERNAL_ERROR);
+        closeStream(stream);
     }
 
     enum State
