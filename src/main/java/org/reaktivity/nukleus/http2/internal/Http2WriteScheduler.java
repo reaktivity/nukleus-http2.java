@@ -293,6 +293,12 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             // Buffer the data as there is no window
             MutableDirectBuffer replyBuffer = stream.acquireReplyBuffer();
+            if (replyBuffer == null)
+            {
+                connection.doRstByUs(stream);
+                return false;
+            }
+
             CircularDirectBuffer cdb = stream.replyBuffer;
 
             // Store as two contiguous parts (as it is circular buffer)
@@ -646,6 +652,7 @@ public class Http2WriteScheduler implements WriteScheduler
         void write()
         {
             DirectBuffer read = stream.acquireReplyBuffer();
+            assert read != null;
             int offset = stream.replyBuffer.readOffset();
             int readLength = stream.replyBuffer.read(length);
             assert readLength == length;
