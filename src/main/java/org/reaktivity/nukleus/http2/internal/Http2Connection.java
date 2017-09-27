@@ -1122,9 +1122,9 @@ final class Http2Connection
         httpWriter.doHttpBegin(applicationTarget, targetId, targetRef, http2Stream.correlationId,
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
+        router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
         httpWriter.doHttpEnd(applicationTarget, targetId);
 
-        router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
     }
 
     private Http2Stream newStream(int http2StreamId, State state, MessageConsumer applicationTarget, HttpWriter httpWriter)
