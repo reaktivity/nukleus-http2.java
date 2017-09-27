@@ -92,6 +92,19 @@ class Http2Stream
         connection.closeStream(this);
     }
 
+    void onHttpReset()
+    {
+        // reset the response stream
+        if (applicationReplyThrottle != null)
+        {
+            factory.doReset(applicationReplyThrottle, applicationReplyId);
+        }
+
+        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+
+        connection.closeStream(this);
+    }
+
     void onData()
     {
         boolean written = httpWriteScheduler.onData(factory.http2DataRO);
@@ -164,18 +177,21 @@ class Http2Stream
 
                     httpWriteScheduler.onWindow(update);
 
-                    // HTTP2 connection-level flow-control
-                    connection.writeScheduler.windowUpdate(0, update);
+                    if (update > 0)
+                    {
+                        // HTTP2 connection-level flow-control
+                        connection.writeScheduler.windowUpdate(0, update);
 
-                    // HTTP2 stream-level flow-control
-                    connection.writeScheduler.windowUpdate(http2StreamId, update);
+                        // HTTP2 stream-level flow-control
+                        connection.writeScheduler.windowUpdate(http2StreamId, update);
+                    }
 
                     http2InWindow += update;
                     connection.http2InWindow += update;
                 }
                 break;
             case ResetFW.TYPE_ID:
-                doReset(buffer, index, length);
+                onHttpReset();
                 break;
             default:
                 // ignore
