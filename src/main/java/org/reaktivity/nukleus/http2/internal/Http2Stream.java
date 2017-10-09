@@ -44,7 +44,7 @@ class Http2Stream
 
     private int replySlot = NO_SLOT;
     CircularDirectBuffer replyBuffer;
-    Deque replyQueue = new LinkedList();
+    Deque<WriteScheduler.Entry> replyQueue = new LinkedList<>();
     boolean endStream;
 
     long totalOutData;
@@ -225,15 +225,6 @@ class Http2Stream
             replySlot = NO_SLOT;
             replyBuffer = null;
         }
-    }
-
-    private void doReset(
-            DirectBuffer buffer,
-            int index,
-            int length)
-    {
-        factory.resetRO.wrap(buffer, index, index + length);
-        connection.closeStream(this);
     }
 
     void close()
