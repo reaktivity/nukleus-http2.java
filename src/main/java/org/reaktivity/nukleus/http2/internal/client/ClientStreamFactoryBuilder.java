@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal;
+package org.reaktivity.nukleus.http2.internal.client;
 
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -21,6 +21,7 @@ import java.util.function.Supplier;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.http2.internal.Http2Configuration;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
 import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
@@ -28,7 +29,7 @@ import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 public final class ClientStreamFactoryBuilder implements StreamFactoryBuilder
 {
     private final Http2Configuration config;
-    private final Long2ObjectHashMap<Correlation> correlations;
+    private final Long2ObjectHashMap<ClientCorrelation> correlations;
 
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;
@@ -36,7 +37,7 @@ public final class ClientStreamFactoryBuilder implements StreamFactoryBuilder
     private LongSupplier supplyCorrelationId;
     private Supplier<BufferPool> supplyBufferPool;
 
-    ClientStreamFactoryBuilder(
+    public ClientStreamFactoryBuilder(
         Http2Configuration config)
     {
         this.config = config;

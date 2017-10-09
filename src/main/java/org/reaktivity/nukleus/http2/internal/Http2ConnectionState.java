@@ -13,25 +13,15 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-
 package org.reaktivity.nukleus.http2.internal;
 
-import org.agrona.DirectBuffer;
-import org.reaktivity.nukleus.function.MessageConsumer;
-
-class ClientConnectReplyStream
+public enum Http2ConnectionState
 {
-
-    ClientConnectReplyStream(ClientStreamFactory factory, MessageConsumer connectReplyThrottle, long connectReplyId)
-    {
-        // TODO Auto-generated constructor stub
-    }
-
-    void handleStream(
-        int msgTypeId,
-        DirectBuffer buffer,
-        int index,
-        int length)
-    {
-    }
+    IDLE,
+    RESERVED_LOCAL,
+    RESERVED_REMOTE,
+    OPEN,
+    HALF_CLOSED_LOCAL,
+    HALF_CLOSED_REMOTE,
+    CLOSED
 }

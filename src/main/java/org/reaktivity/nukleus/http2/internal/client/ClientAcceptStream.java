@@ -14,15 +14,13 @@
  * under the License.
  */
 
-package org.reaktivity.nukleus.http2.internal;
+package org.reaktivity.nukleus.http2.internal.client;
 
 import org.agrona.DirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
 class ClientAcceptStream
 {
@@ -30,23 +28,25 @@ class ClientAcceptStream
 
     private ClientStreamFactory factory;
     private MessageConsumer acceptThrottle;
-    private long acceptId;
+    private long acceptStreamId;
+    Http2ClientConnectionManager http2ConnectionManager;
 
-    private long acceptCorrelationId;
-    private MessageConsumer acceptReply;
-    private long acceptReplyId;
+    Http2ClientStreamId targetStreamId;
 
-    private final int initialFrameWindow = factory.bufferPool.slotCapacity();
+    private final int initialFrameWindow;
     private int acceptFrameWindow;
-    private int acceptReplyFrameWindow;
 
-    ClientAcceptStream(ClientStreamFactory factory, MessageConsumer acceptThrottle, long streamId)
+    ClientAcceptStream(ClientStreamFactory factory, MessageConsumer acceptThrottle, long streamId,
+            Http2ClientConnectionManager http2ConnectionManager)
     {
         this.factory = factory;
         this.acceptThrottle = acceptThrottle;
-        this.acceptId = streamId;
+        this.acceptStreamId = streamId;
+        this.http2ConnectionManager = http2ConnectionManager;
+
         this.streamState = this::streamBeforeBegin;
-    }
+        initialFrameWindow = factory.bufferPool.slotCapacity();
+        }
 
     void handleStream(
         int msgTypeId,
@@ -71,19 +71,13 @@ class ClientAcceptStream
             // init accept reply stream
             final BeginFW begin = factory.beginRO.wrap(buffer, index, index + length);
 
-            final String acceptReplyName = begin.source().asString();
-            acceptCorrelationId = begin.correlationId();
-
-            acceptReply = factory.router.supplyTarget(acceptReplyName);
-            acceptReplyId = factory.supplyStreamId.getAsLong();
-
-            factory.doWindow(acceptThrottle, acceptId, initialFrameWindow, initialFrameWindow);
+            factory.doWindow(acceptThrottle, acceptStreamId, initialFrameWindow, initialFrameWindow);
             acceptFrameWindow = initialFrameWindow;
 
-            factory.doBegin(acceptReply, acceptReplyId, 0L, acceptCorrelationId);
-            factory.router.setThrottle(acceptReplyName, acceptReplyId, this::handleAcceptReplyThrottle);
-
             this.streamState = this::streamAfterBegin;
+
+            // now create connect stream
+            targetStreamId = http2ConnectionManager.newStream(begin);
         }
         else
         {
@@ -104,7 +98,8 @@ class ClientAcceptStream
             processData(buffer, index, length);
             break;
         case EndFW.TYPE_ID:
-            factory.doEnd(acceptReply, acceptReplyId);
+            Http2ClientConnection connection = http2ConnectionManager.getConnection(targetStreamId.nukleusStreamId);
+            connection.endStream(targetStreamId.http2StreamId);
             break;
         default:
             resetAcceptStream();
@@ -132,36 +127,17 @@ class ClientAcceptStream
     // resets the accept stream
     private void resetAcceptStream()
     {
-        factory.doReset(acceptThrottle, acceptId);
+        factory.doReset(acceptThrottle, acceptStreamId);
         this.streamState = this::streamAfterReset;
-    }
-
-    // handles the throttle frames for accept reply stream
-    private void handleAcceptReplyThrottle(
-        int msgTypeId,
-        DirectBuffer buffer,
-        int index,
-        int length)
-    {
-        switch (msgTypeId)
-        {
-            case WindowFW.TYPE_ID:
-                factory.windowRO.wrap(buffer, index, index + length);
-                int update = factory.windowRO.update();
-
-                acceptReplyFrameWindow += update;
-                break;
-            case ResetFW.TYPE_ID:
-                resetAcceptStream();
-                break;
-            default:
-                // ignore
-                break;
-        }
     }
 
     private void processData(DirectBuffer buffer, int index, int length)
     {
-        // TODO Auto-generated method stub
+        final DataFW data = factory.dataRO.wrap(buffer, index, index + length);
+        Http2ClientConnection connection = http2ConnectionManager.getConnection(targetStreamId.nukleusStreamId);
+        connection.doHttp2Data(targetStreamId.http2StreamId, data.payload());
+
+        factory.doWindow(acceptThrottle, acceptStreamId, length, length);
+        acceptFrameWindow += length;
     }
 }

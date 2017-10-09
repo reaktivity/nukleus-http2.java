@@ -17,7 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.reaktivity.nukleus.Configuration;
 
-class Http2Configuration extends Configuration
+public class Http2Configuration extends Configuration
 {
 
     private static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";

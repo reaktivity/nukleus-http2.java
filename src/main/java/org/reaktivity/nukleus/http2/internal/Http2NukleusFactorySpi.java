@@ -19,6 +19,7 @@ import org.reaktivity.nukleus.Configuration;
 import org.reaktivity.nukleus.Nukleus;
 import org.reaktivity.nukleus.NukleusBuilder;
 import org.reaktivity.nukleus.NukleusFactorySpi;
+import org.reaktivity.nukleus.http2.internal.client.ClientStreamFactoryBuilder;
 
 import static org.reaktivity.nukleus.route.RouteKind.SERVER;
 import static org.reaktivity.nukleus.route.RouteKind.CLIENT;
@@ -40,7 +41,8 @@ public final class Http2NukleusFactorySpi implements NukleusFactorySpi
     {
         Http2Configuration http2Config = new Http2Configuration(config);
         ServerStreamFactoryBuilder streamFactoryBuilder = new ServerStreamFactoryBuilder(http2Config);
-        return builder.streamFactory(SERVER, streamFactoryBuilder).streamFactory(CLIENT, streamFactoryBuilder)
+        ClientStreamFactoryBuilder clientFactoryBuilder = new ClientStreamFactoryBuilder(http2Config);
+        return builder.streamFactory(SERVER, streamFactoryBuilder).streamFactory(CLIENT, clientFactoryBuilder)
                       .build();
     }
 }

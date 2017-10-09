@@ -61,8 +61,8 @@ import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
+import static org.reaktivity.nukleus.http2.internal.Http2ConnectionState.HALF_CLOSED_REMOTE;
+import static org.reaktivity.nukleus.http2.internal.Http2ConnectionState.OPEN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.PROXY_CONNECTION;
@@ -639,7 +639,7 @@ final class Http2Connection
             return;
         }
 
-        State state = factory.http2RO.endStream() ? HALF_CLOSED_REMOTE : OPEN;
+        Http2ConnectionState state = factory.http2RO.endStream() ? HALF_CLOSED_REMOTE : OPEN;
 
         headersContext.reset();
 
@@ -679,7 +679,7 @@ final class Http2Connection
         }
     }
 
-    private void followRoute(int streamId, State state, RouteFW route)
+    private void followRoute(int streamId, Http2ConnectionState state, RouteFW route)
     {
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
@@ -726,7 +726,7 @@ final class Http2Connection
             return;
         }
         Http2Stream stream = http2Streams.get(streamId);
-        if (stream == null || stream.state == State.IDLE)
+        if (stream == null || stream.state == Http2ConnectionState.IDLE)
         {
             error(Http2ErrorCode.PROTOCOL_ERROR);
         }
@@ -768,8 +768,8 @@ final class Http2Connection
         }
         if (streamId != 0)
         {
-            State state = state(streamId);
-            if (state == State.IDLE)
+            Http2ConnectionState state = state(streamId);
+            if (state == Http2ConnectionState.IDLE)
             {
                 error(Http2ErrorCode.PROTOCOL_ERROR);
                 return;
@@ -829,7 +829,7 @@ final class Http2Connection
         int streamId = factory.http2RO.streamId();
         Http2Stream stream = http2Streams.get(streamId);
 
-        if (streamId == 0 || stream == null || stream.state == State.IDLE)
+        if (streamId == 0 || stream == null || stream.state == Http2ConnectionState.IDLE)
         {
             error(Http2ErrorCode.PROTOCOL_ERROR);
             return;
@@ -870,7 +870,7 @@ final class Http2Connection
                 //stream.httpWriteScheduler.doEnd(stream.targetId);
                 return;
             }
-            stream.state = State.HALF_CLOSED_REMOTE;
+            stream.state = Http2ConnectionState.HALF_CLOSED_REMOTE;
         }
 
         stream.onData();
@@ -996,7 +996,7 @@ final class Http2Connection
         }
     }
 
-    private State state(int streamId)
+    private Http2ConnectionState state(int streamId)
     {
         Http2Stream stream = http2Streams.get(streamId);
         if (stream != null)
@@ -1007,17 +1007,17 @@ final class Http2Connection
         {
             if (streamId <= maxClientStreamId)
             {
-                return State.CLOSED;
+                return Http2ConnectionState.CLOSED;
             }
         }
         else
         {
             if (streamId <= maxPushPromiseStreamId)
             {
-                return State.CLOSED;
+                return Http2ConnectionState.CLOSED;
             }
         }
-        return State.IDLE;
+        return Http2ConnectionState.IDLE;
     }
 
     RouteFW resolveTarget(
@@ -1126,7 +1126,8 @@ final class Http2Connection
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
     }
 
-    private Http2Stream newStream(int http2StreamId, State state, MessageConsumer applicationTarget, HttpWriter httpWriter)
+    private Http2Stream newStream(int http2StreamId, Http2ConnectionState state,
+                                MessageConsumer applicationTarget, HttpWriter httpWriter)
     {
         assert http2StreamId != 0;
 
@@ -1584,7 +1585,7 @@ final class Http2Connection
 
         if (stream != null)
         {
-            if (stream.state == State.HALF_CLOSED_REMOTE)
+            if (stream.state == Http2ConnectionState.HALF_CLOSED_REMOTE)
             {
                 factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
             }
@@ -1595,17 +1596,6 @@ final class Http2Connection
 
             writeScheduler.rst(correlation.http2StreamId, Http2ErrorCode.CONNECT_ERROR);
         }
-    }
-
-    enum State
-    {
-        IDLE,
-        RESERVED_LOCAL,
-        RESERVED_REMOTE,
-        OPEN,
-        HALF_CLOSED_LOCAL,
-        HALF_CLOSED_REMOTE,
-        CLOSED
     }
 
     private static final class HeadersContext

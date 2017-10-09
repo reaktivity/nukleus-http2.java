@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
@@ -32,9 +33,6 @@ public class Http2PrefaceFW extends Flyweight
                     'S', 'M', '\r', '\n', '\r', '\n'
     };
     private static final DirectBuffer PREFACE = new UnsafeBuffer(PRI_REQUEST);
-
-    // a constant PREFACE flyweight used to start a http2 connection
-    public static final Http2PrefaceFW PREFACE_FW = new Http2PrefaceFW().wrap(PREFACE, 0, PRI_REQUEST.length);
 
     private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
@@ -61,5 +59,21 @@ public class Http2PrefaceFW extends Flyweight
         return this;
     }
 
-}
+    public static final class Builder extends Flyweight.Builder<Http2PrefaceFW>
+    {
+        public Builder()
+        {
+            super(new Http2PrefaceFW());
+        }
 
+        @Override
+        public Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        {
+            super.wrap(buffer, offset, maxLimit);
+            checkLimit(PRI_REQUEST.length, maxLimit);
+            buffer().putBytes(offset, PRI_REQUEST);
+            limit(offset + PRI_REQUEST.length);
+            return this;
+        }
+    }
+}
