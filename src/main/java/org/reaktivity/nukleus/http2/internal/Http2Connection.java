@@ -168,7 +168,7 @@ final class Http2Connection
     void processUnexpected(
             long streamId)
     {
-        http2Writer.doReset(networkConsumer, streamId);
+        factory.doReset(networkConsumer, streamId);
         cleanConnection();
     }
 
@@ -365,7 +365,7 @@ final class Http2Connection
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                http2Writer.doReset(networkConsumer, sourceId);
+                factory.doReset(networkConsumer, sourceId);
                 handleAbort();
                 http2FrameAvailable = false;
                 return false;
@@ -394,7 +394,7 @@ final class Http2Connection
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                http2Writer.doReset(networkConsumer, sourceId);
+                factory.doReset(networkConsumer, sourceId);
                 handleAbort();
                 return false;
             }
@@ -1124,7 +1124,6 @@ final class Http2Connection
                                                          .value(h.value()))));
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
         httpWriter.doHttpEnd(applicationTarget, targetId);
-
     }
 
     private Http2Stream newStream(int http2StreamId, State state, MessageConsumer applicationTarget, HttpWriter httpWriter)
