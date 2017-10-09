@@ -256,14 +256,4 @@ class Http2Writer
                              .sizeof();
     }
 
-    void doReset(
-            final MessageConsumer throttle,
-            final long throttleId)
-    {
-        final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .streamId(throttleId)
-                                     .build();
-
-        throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
-    }
 }
