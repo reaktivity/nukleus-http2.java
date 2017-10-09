@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
@@ -28,7 +29,7 @@ import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class Http2Stream
 {
-    private final Http2Connection connection;
+    final Http2Connection connection;
     final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
     final long targetId;
@@ -61,6 +62,7 @@ class Http2Stream
         this.targetId = factory.supplyStreamId.getAsLong();
         this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
+
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
         this.httpWriteScheduler = new HttpWriteScheduler(factory.httpWriterPool, applicationTarget, httpWriter, targetId, this);
@@ -69,6 +71,38 @@ class Http2Stream
     boolean isClientInitiated()
     {
         return http2StreamId%2 == 1;
+    }
+
+    void onHttpEnd()
+    {
+        connection.writeScheduler.dataEos(http2StreamId);
+        applicationReplyThrottle = null;
+    }
+
+    void onHttpAbort()
+    {
+        // more request data to be sent, so send ABORT
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            httpWriteScheduler.doAbort();
+        }
+
+        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+
+        connection.closeStream(this);
+    }
+
+    void onHttpReset()
+    {
+        // reset the response stream
+        if (applicationReplyThrottle != null)
+        {
+            factory.doReset(applicationReplyThrottle, applicationReplyId);
+        }
+
+        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+
+        connection.closeStream(this);
     }
 
     void onData()
@@ -90,6 +124,8 @@ class Http2Stream
         {
             factory.doReset(applicationReplyThrottle, applicationReplyId);
         }
+
+        close();
     }
 
     void onReset()
@@ -105,6 +141,8 @@ class Http2Stream
         {
             factory.doReset(applicationReplyThrottle, applicationReplyId);
         }
+
+        close();
     }
 
     void onEnd()
@@ -114,6 +152,13 @@ class Http2Stream
         {
             httpWriteScheduler.doAbort();
         }
+
+        if (applicationReplyThrottle != null)
+        {
+            factory.doReset(applicationReplyThrottle, applicationReplyId);
+        }
+
+        close();
     }
 
     void onThrottle(
@@ -133,18 +178,21 @@ class Http2Stream
 
                     httpWriteScheduler.onWindow(credit, padding);
 
-                    // HTTP2 connection-level flow-control
-                    connection.writeScheduler.windowUpdate(0, credit);
+                    if (credit > 0)
+                    {
+                        // HTTP2 connection-level flow-control
+                        connection.writeScheduler.windowUpdate(0, credit);
 
-                    // HTTP2 stream-level flow-control
-                    connection.writeScheduler.windowUpdate(http2StreamId, credit);
+                        // HTTP2 stream-level flow-control
+                        connection.writeScheduler.windowUpdate(http2StreamId, credit);
+                    }
 
                     http2InWindow += credit;
                     connection.http2InWindow += credit;
                 }
                 break;
             case ResetFW.TYPE_ID:
-                doReset(buffer, index, length);
+                onHttpReset();
                 break;
             default:
                 // ignore
@@ -188,9 +236,13 @@ class Http2Stream
             int length)
     {
         factory.resetRO.wrap(buffer, index, index + length);
+        connection.closeStream(this);
+    }
+
+    void close()
+    {
         httpWriteScheduler.onReset();
         releaseReplyBuffer();
-        connection.closeStream(this);
     }
 
     void sendHttpWindow()
