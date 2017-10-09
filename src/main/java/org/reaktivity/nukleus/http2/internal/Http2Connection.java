@@ -205,7 +205,7 @@ final class Http2Connection
         }
     }
 
-    void handleAbort(AbortFW abort)
+    void handleAbort()
     {
         http2Streams.forEach((i, s) -> s.onAbort());
         cleanConnection();
@@ -268,12 +268,7 @@ final class Http2Connection
             int remainingLength = PRI_REQUEST.length - frameSlotPosition;
             prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
             factory.prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
-            if (frameSlotIndex != NO_SLOT)
-            {
-                factory.framePool.release(frameSlotIndex);
-                frameSlotIndex = NO_SLOT;
-                frameSlotPosition = 0;
-            }
+            releaseSlot();
             prefaceAvailable = true;
             return remainingLength;
         }
@@ -285,15 +280,12 @@ final class Http2Connection
         }
 
         assert frameSlotIndex == NO_SLOT;
-        frameSlotIndex = factory.framePool.acquire(sourceId);
-        if (frameSlotIndex == NO_SLOT)
+        if (!acquireSlot())
         {
-            // all slots are in use, just reset the connection
-            http2Writer.doReset(networkConsumer, sourceId);
             prefaceAvailable = false;
             return available;               // assume everything is consumed
         }
-        frameSlotPosition = 0;
+
         MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
         prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
         frameSlotPosition += available;
@@ -365,14 +357,16 @@ final class Http2Connection
 
     private boolean acquireSlot()
     {
-        if (frameSlotPosition == 0)
+        if (frameSlotIndex == NO_SLOT)
         {
-            assert frameSlotIndex == NO_SLOT;
+            assert frameSlotPosition == 0;
+
             frameSlotIndex = factory.framePool.acquire(sourceId);
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
                 http2Writer.doReset(networkConsumer, sourceId);
+                handleAbort();
                 http2FrameAvailable = false;
                 return false;
             }
@@ -388,6 +382,24 @@ final class Http2Connection
             frameSlotIndex = NO_SLOT;
             frameSlotPosition = 0;
         }
+    }
+
+    private boolean acquireHeadersSlot()
+    {
+        if (headersSlotIndex == NO_SLOT)
+        {
+            assert headersSlotPosition == 0;
+
+            headersSlotIndex = factory.headersPool.acquire(sourceId);
+            if (headersSlotIndex == NO_SLOT)
+            {
+                // all slots are in use, just reset the connection
+                http2Writer.doReset(networkConsumer, sourceId);
+                handleAbort();
+                return false;
+            }
+        }
+        return true;
     }
 
     private void releaseHeadersSlot()
@@ -481,28 +493,15 @@ final class Http2Connection
             }
             int maxLimit = offset + length;
             expectContinuation = false;
-            if (headersSlotIndex != NO_SLOT)
-            {
-                factory.headersPool.release(headersSlotIndex);      // early release, but fine
-                headersSlotIndex = NO_SLOT;
-                headersSlotPosition = 0;
-            }
-
+            releaseHeadersSlot();           // early release, but fine
             factory.blockRO.wrap(buffer, offset, maxLimit);
             return true;
         }
         else
         {
-            if (headersSlotIndex == NO_SLOT)
+            if (!acquireHeadersSlot())
             {
-                headersSlotIndex = factory.headersPool.acquire(sourceId);
-                if (headersSlotIndex == NO_SLOT)
-                {
-                    // all slots are in use, just reset the connection
-                    http2Writer.doReset(networkConsumer, sourceId);
-                    return false;
-                }
-                headersSlotPosition = 0;
+                return false;
             }
             MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
             headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
@@ -732,6 +731,7 @@ final class Http2Connection
         }
         else
         {
+            stream.onReset();
             closeStream(stream);
         }
     }
@@ -748,6 +748,7 @@ final class Http2Connection
         }
         factory.correlations.remove(stream.targetId);    // remove from Correlations map
         http2Streams.remove(stream.http2StreamId);
+        stream.close();
     }
 
     private void doWindow()
@@ -1576,7 +1577,12 @@ final class Http2Connection
 
     void handleHttpEnd(EndFW data, Correlation correlation)
     {
-        writeScheduler.dataEos(correlation.http2StreamId);
+        Http2Stream stream = http2Streams.get(correlation.http2StreamId);
+
+        if (stream != null)
+        {
+            stream.onHttpEnd();
+        }
     }
 
     void handleHttpAbort(AbortFW abort, Correlation correlation)
@@ -1585,17 +1591,16 @@ final class Http2Connection
 
         if (stream != null)
         {
-            if (stream.state == Http2ConnectionState.HALF_CLOSED_REMOTE)
-            {
-                factory.doReset(stream.applicationReplyThrottle, stream.applicationReplyId);
-            }
-            else
-            {
-                stream.onAbort();
-            }
+            stream.onHttpAbort();
 
-            writeScheduler.rst(correlation.http2StreamId, Http2ErrorCode.CONNECT_ERROR);
         }
+    }
+
+    void doRstByUs(Http2Stream stream)
+    {
+        stream.onReset();
+        writeScheduler.rst(stream.http2StreamId, Http2ErrorCode.INTERNAL_ERROR);
+        closeStream(stream);
     }
 
     private static final class HeadersContext
