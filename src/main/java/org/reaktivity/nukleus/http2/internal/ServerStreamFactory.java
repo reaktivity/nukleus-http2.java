@@ -498,6 +498,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleData(
                 DataFW data)
         {
+            System.out.printf("\t\t\t <-- DATA (%d)\n", data.length());
             http2Connection.handleHttpData(data, correlation);
         }
 

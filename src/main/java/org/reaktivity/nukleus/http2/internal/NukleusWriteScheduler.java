@@ -70,7 +70,6 @@ class NukleusWriteScheduler
 
             accumulatedLength = 0;
         }
-        System.out.printf("\t\t\t       HTTP2 c.outWindowBudget = %d\n", connection.outWindowBudget);
 
         assert accumulatedLength == 0;
     }
@@ -91,7 +90,7 @@ class NukleusWriteScheduler
         return Math.max(remaining, 0);
     }
 
-    private int nukleusWindowBudgetAdjustment(int sizeof)
+    int nukleusWindowBudgetAdjustment(int sizeof)
     {
         int nukleusFrameCount = (int) Math.ceil((double)sizeof/65535);
 
@@ -105,7 +104,7 @@ class NukleusWriteScheduler
         {
             int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
             http2Writer.doData(networkConsumer, targetId, buffer, offset, chunk);
-//            System.out.printf("<-- HTTP2 NDATA (%d)\n", chunk);
+            System.out.printf("<-- HTTP2 NDATA (%d)\n", chunk);
             offset += chunk;
             length -= chunk;
         }

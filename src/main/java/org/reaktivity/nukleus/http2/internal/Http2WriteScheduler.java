@@ -549,13 +549,8 @@ public class Http2WriteScheduler implements WriteScheduler
         assert sizeof >= 9;
 
         int length = sizeof - 9;
-        assert hasNukleusWindowBudget(length);
-
-        //System.out.printf("<-- %s = %d\n", type, length);
-
         if (type == DATA)
         {
-
             stream.http2OutWindow -= length;
             connection.http2OutWindow -= length;
             stream.totalOutData += length;
@@ -598,7 +593,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         boolean fits()
         {
-            return hasNukleusWindowBudget(sizeof);
+            return hasNukleusWindowBudget(sizeof-9);
         }
 
         void write()
