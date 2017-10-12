@@ -15,14 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.junit.Test;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
-
-import javax.xml.bind.DatatypeConverter;
-
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertEquals;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.LITERAL;
@@ -32,6 +24,13 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.INDEXED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.NameType.NEW;
 
+import org.agrona.BitUtil;
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.junit.Test;
+import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
+
 public class HpackHeaderFieldFWTest
 {
 
@@ -39,7 +38,7 @@ public class HpackHeaderFieldFWTest
     @Test
     public void decodeC21()
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header field  begin
                         "400a637573746f6d2d6b65790d637573746f6d2d686561646572" +
@@ -99,7 +98,7 @@ public class HpackHeaderFieldFWTest
     @Test
     public void decodeC22()
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header field  begin
                         "040c2f73616d706c652f70617468" +
@@ -156,7 +155,7 @@ public class HpackHeaderFieldFWTest
     @Test
     public void decodeC23()
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header field  begin
                         "100870617373776f726406736563726574" +
@@ -220,7 +219,7 @@ public class HpackHeaderFieldFWTest
     @Test
     public void decodeC24()
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header field  begin
                         "82" +

@@ -15,16 +15,15 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+
+import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-
-import javax.xml.bind.DatatypeConverter;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotEquals;
 
 public class HpackHuffmanTest
 {
@@ -50,7 +49,7 @@ public class HpackHuffmanTest
 
     private void decode(String encoded, String expected)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary("00" + encoded);    // +00 to test offset
+        byte[] bytes = BitUtil.fromHex("00" + encoded);    // +00 to test offset
         DirectBuffer buf = new UnsafeBuffer(bytes, 1, bytes.length - 1);
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]);
         int length = HpackHuffman.decode(buf, dst);
@@ -80,7 +79,7 @@ public class HpackHuffmanTest
 
     private void encode(String str, String expected)
     {
-        byte[] expectedBytes = DatatypeConverter.parseHexBinary(expected);
+        byte[] expectedBytes = BitUtil.fromHex(expected);
         DirectBuffer expectedBuf = new UnsafeBuffer(expectedBytes);
 
         byte[] bytes = str.getBytes(UTF_8);
