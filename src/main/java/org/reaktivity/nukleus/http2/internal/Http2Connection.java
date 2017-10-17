@@ -95,7 +95,8 @@ final class Http2Connection
     long sourceId;
     int lastStreamId;
     long sourceRef;
-    int outWindow;
+    int outWindowBudget;
+    int outWindowPadding;
     int outWindowThreshold = -1;
 
     final WriteScheduler writeScheduler;

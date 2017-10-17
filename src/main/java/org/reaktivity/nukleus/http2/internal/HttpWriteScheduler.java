@@ -36,6 +36,7 @@ class HttpWriteScheduler
     private boolean end;
     private boolean endSent;
     private int targetWindow;
+    private int targetPadding;
 
     HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
@@ -58,7 +59,7 @@ class HttpWriteScheduler
         if (targetBuffer == null)
         {
             int data = http2DataRO.dataLength();
-            int toHttp = Math.min(data, targetWindow);
+            int toHttp = Math.min(data, targetWindow - targetPadding);
             int toSlab = data - toHttp;
 
             // Send to http if there is available window
@@ -101,13 +102,14 @@ class HttpWriteScheduler
         }
     }
 
-    void onWindow(int update)
+    void onWindow(int credit, int padding)
     {
-        targetWindow += update;
+        targetWindow += credit;
+        targetPadding = padding;
 
         if (targetBuffer != null)
         {
-            int toHttp = Math.min(targetBuffer.size(), targetWindow);
+            int toHttp = Math.min(targetBuffer.size(), targetWindow - targetPadding);
 
             // Send to http if there is available window
             if (toHttp > 0)
