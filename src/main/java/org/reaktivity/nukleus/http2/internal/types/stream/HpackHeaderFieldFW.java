@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.omg.CORBA.UNKNOWN;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import java.util.function.Consumer;
