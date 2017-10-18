@@ -15,20 +15,20 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.function.Consumer;
+
+import org.agrona.BitUtil;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType;
-
-import javax.xml.bind.DatatypeConverter;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.function.Consumer;
-
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 
 public class HpackHeaderBlockFWTest
 {
@@ -52,7 +52,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.3.1.  First Request"
     private void decodeC31(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "828684410f7777772e6578616d706c652e636f6d" +
@@ -75,7 +75,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.3.2.  Second Request"
     private void decodeC32(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "828684be58086e6f2d6361636865" +
@@ -99,7 +99,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.3.3.  Third Request"
     private void decodeC33(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "828785bf400a637573746f6d2d6b65790c637573746f6d2d76616c7565" +
@@ -235,7 +235,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.4.1.  First Request"
     private void decodeC41(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "828684418cf1e3c2e5f23a6ba0ab90f4ff" +
@@ -258,7 +258,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.4.2.  Second Request"
     private void decodeC42(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "828684be5886a8eb10649cbf" +
@@ -282,7 +282,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.4.3.  Third Request"
     private void decodeC43(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "828785bf408825a849e95ba97d7f8925a849e95bb8e8b4bf" +
@@ -325,7 +325,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.5.1.  First Response"
     private void decodeC51(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "4803333032580770726976617465611d" +
@@ -363,7 +363,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.5.2.  Second Response"
     private void decodeC52(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "4803333037c1c0bf" +
@@ -397,7 +397,7 @@ public class HpackHeaderBlockFWTest
     // Decoding "C.5.3.  Third Response"
     private void decodeC53(HpackContext context)
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                 "00" +  // +00 to test offset
                         // Header list begin
                         "88c1611d4d6f6e2c203231204f637420" +
@@ -437,7 +437,7 @@ public class HpackHeaderBlockFWTest
     @Test
     public void error()
     {
-        byte[] bytes = DatatypeConverter.parseHexBinary(
+        byte[] bytes = BitUtil.fromHex(
                         // Header list begin
                         "828684418aa0e41d139d09b8f01e07" +
                         "0085f2b24a87fffffffd25427f"
@@ -492,6 +492,9 @@ public class HpackHeaderBlockFWTest
 
                 case UPDATE:
                     break;
+
+                case UNKNOWN:
+                    throw new IllegalStateException();
             }
         };
     }
