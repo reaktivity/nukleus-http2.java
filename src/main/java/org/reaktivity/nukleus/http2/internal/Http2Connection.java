@@ -93,6 +93,7 @@ final class Http2Connection
     private int headersSlotPosition;
 
     long sourceId;
+    long authorization;
     int lastStreamId;
     long sourceRef;
     int outWindowBudget;
@@ -187,6 +188,7 @@ final class Http2Connection
     void handleBegin(BeginFW beginRO)
     {
         this.sourceId = beginRO.streamId();
+        this.authorization = beginRO.authorization();
         this.sourceRef = beginRO.sourceRef();
         this.sourceName = beginRO.source().asString();
         this.decoderState = this::decodePreface;
@@ -1050,7 +1052,7 @@ final class Http2Connection
             return false;
         };
 
-        return router.resolve(filter, wrapRoute);
+        return router.resolve(authorization, filter, wrapRoute);
     }
 
     void handleWindow(WindowFW windowRO)
