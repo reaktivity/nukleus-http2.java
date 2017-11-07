@@ -61,6 +61,7 @@ import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
@@ -637,7 +638,7 @@ final class Http2Connection
 
         if (noClientStreams + 1 > localSettings.maxConcurrentStreams)
         {
-            streamError(streamId, Http2ErrorCode.REFUSED_STREAM);
+            streamError(streamId, stream, Http2ErrorCode.REFUSED_STREAM);
             return;
         }
 
@@ -660,7 +661,7 @@ final class Http2Connection
         {
             if (headersContext.streamError != null)
             {
-                streamError(streamId, headersContext.streamError);
+                streamError(streamId, stream, headersContext.streamError);
                 return;
             }
             if (headersContext.connectionError != null)
@@ -741,6 +742,8 @@ final class Http2Connection
 
     void closeStream(Http2Stream stream)
     {
+        stream.state = CLOSED;
+
         if (stream.isClientInitiated())
         {
             noClientStreams--;
@@ -856,7 +859,7 @@ final class Http2Connection
         //
         if (stream.http2InWindow < factory.http2RO.payloadLength() || http2InWindow < factory.http2RO.payloadLength())
         {
-            streamError(streamId, Http2ErrorCode.FLOW_CONTROL_ERROR);
+            streamError(streamId, stream, Http2ErrorCode.FLOW_CONTROL_ERROR);
             return;
         }
         http2InWindow -= factory.http2RO.payloadLength();
@@ -870,7 +873,7 @@ final class Http2Connection
             // not equal the sum of the DATA frame payload lengths
             if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
             {
-                streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                streamError(streamId, stream, Http2ErrorCode.PROTOCOL_ERROR);
                 //stream.httpWriteScheduler.doEnd(stream.targetId);
                 return;
             }
@@ -1069,7 +1072,20 @@ final class Http2Connection
 
     void streamError(int streamId, Http2ErrorCode errorCode)
     {
-        writeScheduler.rst(streamId, errorCode);
+        Http2Stream stream = http2Streams.get(streamId);
+        streamError(streamId, stream, errorCode);
+    }
+
+    void streamError(int streamId, Http2Stream stream, Http2ErrorCode errorCode)
+    {
+        if (stream != null)
+        {
+            doRstByUs(stream, errorCode);
+        }
+        else
+        {
+            writeScheduler.rst(streamId, errorCode);
+        }
     }
 
     private int nextPromisedId()
@@ -1597,10 +1613,10 @@ final class Http2Connection
         }
     }
 
-    void doRstByUs(Http2Stream stream)
+    void doRstByUs(Http2Stream stream, Http2ErrorCode errorCode)
     {
         stream.onReset();
-        writeScheduler.rst(stream.http2StreamId, Http2ErrorCode.INTERNAL_ERROR);
+        writeScheduler.rst(stream.http2StreamId, errorCode);
         closeStream(stream);
     }
 

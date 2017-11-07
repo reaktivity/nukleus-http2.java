@@ -301,7 +301,7 @@ public class Http2WriteScheduler implements WriteScheduler
             MutableDirectBuffer replyBuffer = stream.acquireReplyBuffer();
             if (replyBuffer == null)
             {
-                connection.doRstByUs(stream);
+                connection.doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
                 return false;
             }
 
@@ -541,6 +541,11 @@ public class Http2WriteScheduler implements WriteScheduler
     private void http2(Http2Stream stream, Http2FrameType type,
                        int sizeofGuess, Flyweight.Builder.Visitor visitor, boolean flush)
     {
+        // After RST_STREAM is written, don't write any frame in the stream
+        if (stream != null && type != RST_STREAM && stream.state == Http2Connection.State.CLOSED)
+        {
+            return;
+        }
         int sizeof = writer.http2Frame(sizeofGuess, visitor);
         assert sizeof >= 9;
 
