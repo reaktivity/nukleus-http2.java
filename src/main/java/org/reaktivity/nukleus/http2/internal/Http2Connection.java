@@ -742,19 +742,22 @@ final class Http2Connection
 
     void closeStream(Http2Stream stream)
     {
-        stream.state = CLOSED;
+        if (stream.state != CLOSED)
+        {
+            stream.state = CLOSED;
 
-        if (stream.isClientInitiated())
-        {
-            noClientStreams--;
+            if (stream.isClientInitiated())
+            {
+                noClientStreams--;
+            }
+            else
+            {
+                noPromisedStreams--;
+            }
+            factory.correlations.remove(stream.targetId);    // remove from Correlations map
+            http2Streams.remove(stream.http2StreamId);
+            stream.close();
         }
-        else
-        {
-            noPromisedStreams--;
-        }
-        factory.correlations.remove(stream.targetId);    // remove from Correlations map
-        http2Streams.remove(stream.http2StreamId);
-        stream.close();
     }
 
     private void doWindow()
