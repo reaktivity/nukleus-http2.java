@@ -111,8 +111,8 @@ final class Http2Connection
 
     final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
-    private int noClientStreams;
-    private int noPromisedStreams;
+    private int clientStreamCount;
+    private int promisedStreamCount;
     private int maxClientStreamId;
     private int maxPushPromiseStreamId;
 
@@ -636,7 +636,7 @@ final class Http2Connection
         }
         maxClientStreamId = streamId;
 
-        if (noClientStreams + 1 > localSettings.maxConcurrentStreams)
+        if (clientStreamCount + 1 > localSettings.maxConcurrentStreams)
         {
             streamError(streamId, stream, Http2ErrorCode.REFUSED_STREAM);
             return;
@@ -748,13 +748,13 @@ final class Http2Connection
 
             if (stream.isClientInitiated())
             {
-                noClientStreams--;
+                clientStreamCount--;
             }
             else
             {
-                noPromisedStreams--;
+                promisedStreamCount--;
             }
-            factory.correlations.remove(stream.targetId);    // remove from Correlations map
+            factory.correlations.remove(stream.targetId);
             http2Streams.remove(stream.http2StreamId);
             stream.close();
         }
@@ -1105,7 +1105,7 @@ final class Http2Connection
      */
     private int findPushId(int streamId)
     {
-        if (remoteSettings.enablePush && noPromisedStreams+1 < remoteSettings.maxConcurrentStreams)
+        if (remoteSettings.enablePush && promisedStreamCount +1 < remoteSettings.maxConcurrentStreams)
         {
             // PUSH_PROMISE frames MUST only be sent on a peer-initiated stream
             if (streamId%2 == 0)
@@ -1161,11 +1161,11 @@ final class Http2Connection
         factory.correlations.put(http2Stream.correlationId, correlation);
         if (http2Stream.isClientInitiated())
         {
-            noClientStreams++;
+            clientStreamCount++;
         }
         else
         {
-            noPromisedStreams++;
+            promisedStreamCount++;
         }
         return http2Stream;
     }

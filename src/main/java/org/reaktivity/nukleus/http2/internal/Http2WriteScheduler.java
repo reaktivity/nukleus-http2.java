@@ -541,27 +541,31 @@ public class Http2WriteScheduler implements WriteScheduler
     private void http2(Http2Stream stream, Http2FrameType type,
                        int sizeofGuess, Flyweight.Builder.Visitor visitor, boolean flush)
     {
+        if (canStreamWrite(stream, type))
+        {
+            int sizeof = writer.http2Frame(sizeofGuess, visitor);
+            assert sizeof >= 9;
+
+            int length = sizeof - 9;
+            if (type == DATA)
+            {
+                stream.http2OutWindow -= length;
+                connection.http2OutWindow -= length;
+                stream.totalOutData += length;
+
+                stream.httpOutWindow -= length;
+            }
+            if (flush)
+            {
+                writer.flush();
+            }
+        }
+    }
+
+    private static boolean canStreamWrite(Http2Stream stream, Http2FrameType type)
+    {
         // After RST_STREAM is written, don't write any frame in the stream
-        if (stream != null && type != RST_STREAM && stream.state == Http2Connection.State.CLOSED)
-        {
-            return;
-        }
-        int sizeof = writer.http2Frame(sizeofGuess, visitor);
-        assert sizeof >= 9;
-
-        int length = sizeof - 9;
-        if (type == DATA)
-        {
-            stream.http2OutWindow -= length;
-            connection.http2OutWindow -= length;
-            stream.totalOutData += length;
-
-            stream.httpOutWindow -= length;
-        }
-        if (flush)
-        {
-            writer.flush();
-        }
+        return stream == null || type == RST_STREAM || stream.state != Http2Connection.State.CLOSED;
     }
 
     private void http2(Http2Stream stream, Http2FrameType type,
