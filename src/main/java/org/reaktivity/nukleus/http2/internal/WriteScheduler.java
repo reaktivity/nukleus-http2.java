@@ -62,4 +62,8 @@ public interface WriteScheduler
 
     void onHttp2Window(int streamId);
 
+    interface Entry
+    {
+    }
+
 }
