@@ -61,6 +61,7 @@ import java.util.function.Consumer;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
@@ -110,8 +111,8 @@ final class Http2Connection
 
     final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
-    private int noClientStreams;
-    private int noPromisedStreams;
+    private int clientStreamCount;
+    private int promisedStreamCount;
     private int maxClientStreamId;
     private int maxPushPromiseStreamId;
 
@@ -635,9 +636,9 @@ final class Http2Connection
         }
         maxClientStreamId = streamId;
 
-        if (noClientStreams + 1 > localSettings.maxConcurrentStreams)
+        if (clientStreamCount + 1 > localSettings.maxConcurrentStreams)
         {
-            streamError(streamId, Http2ErrorCode.REFUSED_STREAM);
+            streamError(streamId, stream, Http2ErrorCode.REFUSED_STREAM);
             return;
         }
 
@@ -660,7 +661,7 @@ final class Http2Connection
         {
             if (headersContext.streamError != null)
             {
-                streamError(streamId, headersContext.streamError);
+                streamError(streamId, stream, headersContext.streamError);
                 return;
             }
             if (headersContext.connectionError != null)
@@ -741,17 +742,22 @@ final class Http2Connection
 
     void closeStream(Http2Stream stream)
     {
-        if (stream.isClientInitiated())
+        if (stream.state != CLOSED)
         {
-            noClientStreams--;
+            stream.state = CLOSED;
+
+            if (stream.isClientInitiated())
+            {
+                clientStreamCount--;
+            }
+            else
+            {
+                promisedStreamCount--;
+            }
+            factory.correlations.remove(stream.targetId);
+            http2Streams.remove(stream.http2StreamId);
+            stream.close();
         }
-        else
-        {
-            noPromisedStreams--;
-        }
-        factory.correlations.remove(stream.targetId);    // remove from Correlations map
-        http2Streams.remove(stream.http2StreamId);
-        stream.close();
     }
 
     private void doWindow()
@@ -856,7 +862,7 @@ final class Http2Connection
         //
         if (stream.http2InWindow < factory.http2RO.payloadLength() || http2InWindow < factory.http2RO.payloadLength())
         {
-            streamError(streamId, Http2ErrorCode.FLOW_CONTROL_ERROR);
+            streamError(streamId, stream, Http2ErrorCode.FLOW_CONTROL_ERROR);
             return;
         }
         http2InWindow -= factory.http2RO.payloadLength();
@@ -870,7 +876,7 @@ final class Http2Connection
             // not equal the sum of the DATA frame payload lengths
             if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
             {
-                streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+                streamError(streamId, stream, Http2ErrorCode.PROTOCOL_ERROR);
                 //stream.httpWriteScheduler.doEnd(stream.targetId);
                 return;
             }
@@ -1069,7 +1075,20 @@ final class Http2Connection
 
     void streamError(int streamId, Http2ErrorCode errorCode)
     {
-        writeScheduler.rst(streamId, errorCode);
+        Http2Stream stream = http2Streams.get(streamId);
+        streamError(streamId, stream, errorCode);
+    }
+
+    void streamError(int streamId, Http2Stream stream, Http2ErrorCode errorCode)
+    {
+        if (stream != null)
+        {
+            doRstByUs(stream, errorCode);
+        }
+        else
+        {
+            writeScheduler.rst(streamId, errorCode);
+        }
     }
 
     private int nextPromisedId()
@@ -1086,7 +1105,7 @@ final class Http2Connection
      */
     private int findPushId(int streamId)
     {
-        if (remoteSettings.enablePush && noPromisedStreams+1 < remoteSettings.maxConcurrentStreams)
+        if (remoteSettings.enablePush && promisedStreamCount +1 < remoteSettings.maxConcurrentStreams)
         {
             // PUSH_PROMISE frames MUST only be sent on a peer-initiated stream
             if (streamId%2 == 0)
@@ -1142,11 +1161,11 @@ final class Http2Connection
         factory.correlations.put(http2Stream.correlationId, correlation);
         if (http2Stream.isClientInitiated())
         {
-            noClientStreams++;
+            clientStreamCount++;
         }
         else
         {
-            noPromisedStreams++;
+            promisedStreamCount++;
         }
         return http2Stream;
     }
@@ -1597,10 +1616,10 @@ final class Http2Connection
         }
     }
 
-    void doRstByUs(Http2Stream stream)
+    void doRstByUs(Http2Stream stream, Http2ErrorCode errorCode)
     {
         stream.onReset();
-        writeScheduler.rst(stream.http2StreamId, Http2ErrorCode.INTERNAL_ERROR);
+        writeScheduler.rst(stream.http2StreamId, errorCode);
         closeStream(stream);
     }
 
