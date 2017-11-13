@@ -36,7 +36,9 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -74,14 +76,16 @@ public final class ClientStreamFactory implements StreamFactory
     final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
     final Http2SettingsFW settingsRO = new Http2SettingsFW();
     final Http2DataFW http2DataRO = new Http2DataFW();
+    final Http2PingFW http2PingRO = new Http2PingFW();
+    final Http2WindowUpdateFW http2WindowUpdateRO = new Http2WindowUpdateFW();
 
     final RouteManager router;
     final MutableDirectBuffer writeBuffer;
     final BufferPool bufferPool;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
-    final Long2ObjectHashMap<ClientCorrelation> correlations;
-    private final Http2ClientConnectionManager http2ConnectionManager;
+    final Long2ObjectHashMap<Http2ClientConnection> correlations;
+    final Http2ClientConnectionManager http2ConnectionManager;
 
     // builders
     final BeginFW.Builder beginRW = new BeginFW.Builder();
@@ -98,7 +102,7 @@ public final class ClientStreamFactory implements StreamFactory
 
     public ClientStreamFactory(Http2Configuration config, RouteManager router, MutableDirectBuffer writeBuffer,
             BufferPool bufferPool, LongSupplier supplyStreamId, LongSupplier supplyCorrelationId,
-            Long2ObjectHashMap<ClientCorrelation> correlations)
+            Long2ObjectHashMap<Http2ClientConnection> correlations)
     {
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
@@ -144,14 +148,14 @@ public final class ClientStreamFactory implements StreamFactory
                     acceptName.equals(route.source().asString());
         };
 
-        final RouteFW route = router.resolve(filter, (t, b, o, l) -> routeRO.wrap(b, o, o + l));
+        final RouteFW route = router.resolve(0L, filter, (t, b, o, l) -> routeRO.wrap(b, o, o + l));
 
         MessageConsumer newStream = null;
 
         if (route != null)
         {
             final long streamId = begin.streamId();
-            newStream = new ClientAcceptStream(this, acceptThrottle, streamId, http2ConnectionManager)::handleStream;
+            newStream = new ClientAcceptStream(this, acceptThrottle, streamId)::handleStream;
         }
 
         return newStream;
@@ -160,9 +164,7 @@ public final class ClientStreamFactory implements StreamFactory
     private MessageConsumer newConnectReplyStream(BeginFW begin, MessageConsumer connectReplyThrottle)
     {
         final long connectReplyId = begin.streamId();
-//        final String connectReplyName = begin.source().asString();
-        return new ClientConnectReplyStream(this, connectReplyThrottle, connectReplyId, //, connectReplyName
-                http2ConnectionManager)::handleStream;
+        return new ClientConnectReplyStream(this, connectReplyThrottle, connectReplyId)::handleStream;
     }
 
     // methods for sending frames on a stream
@@ -199,12 +201,12 @@ public final class ClientStreamFactory implements StreamFactory
         final MessageConsumer throttle,
         final long throttleId,
         final int writableBytes,
-        final int writableFrames)
+        final int padding)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(throttleId)
-                .update(writableBytes)
-                .frames(writableFrames)
+                .credit(writableBytes)
+                .padding(padding)
                 .build();
 
         throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
@@ -222,11 +224,26 @@ public final class ClientStreamFactory implements StreamFactory
     }
 
     void doEnd(
-            final MessageConsumer target,
-            final long targetId)
+        final MessageConsumer target,
+        final long targetId)
     {
         final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .streamId(targetId)
+                .build();
+
+        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+    }
+
+    void doData(
+        final MessageConsumer target,
+        final long targetId,
+        DirectBuffer buffer,
+        int offset,
+        int length)
+    {
+        final DataFW end = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .streamId(targetId)
+                .payload(buffer, offset, length)
                 .build();
 
         target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
@@ -250,7 +267,7 @@ public final class ClientStreamFactory implements StreamFactory
             return route.sourceRef() == sourceRef;
         };
 
-        return router.resolve(filter,
+        return router.resolve(0L, filter,
                     (msgTypeId, buffer, index, length) -> routeRO.wrap(buffer, index, index + length));
     }
 }

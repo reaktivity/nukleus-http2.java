@@ -1050,7 +1050,7 @@ final class Http2Connection
             return false;
         };
 
-        return router.resolve(filter, wrapRoute);
+        return router.resolve(0L, filter, wrapRoute);
     }
 
     void handleWindow(WindowFW windowRO)

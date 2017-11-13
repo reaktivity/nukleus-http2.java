@@ -29,7 +29,7 @@ import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
 public final class ClientStreamFactoryBuilder implements StreamFactoryBuilder
 {
     private final Http2Configuration config;
-    private final Long2ObjectHashMap<ClientCorrelation> correlations;
+    private final Long2ObjectHashMap<Http2ClientConnection> correlations;
 
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;

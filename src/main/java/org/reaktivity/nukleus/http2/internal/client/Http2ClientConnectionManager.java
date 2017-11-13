@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.http2.internal.client;
 
 import org.agrona.collections.Long2ObjectHashMap;
+import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 
 class Http2ClientConnectionManager
@@ -29,15 +30,23 @@ class Http2ClientConnectionManager
         this.factory = factory;
     }
 
-    // returns an available http2 stream
-    // if there is no connection available, one is created and initiated (pre and settings sent to server)
-    public Http2ClientStreamId newStream(BeginFW httpBegin)
+    /**
+     *  Allocates a new stream for this http request. If there is no connection available, one is created
+     *  and initiated (preface and settings sent to server). Headers are sent on the new stream.
+     * @param httpBegin The received http begin frame
+     * @param acceptThrottle The accept throttle message consumer, used for sending window frames
+     * @return an available http2 stream
+     */
+    public Http2ClientStreamId newStream(BeginFW httpBegin, MessageConsumer acceptThrottle)
     {
         for (Http2ClientConnection connection:http2Connections.values())
         {
             int streamId = connection.newStreamId();
             if (streamId != -1)
             {
+                //init http2 stream
+                connection.sendHttp2Headers(streamId, httpBegin, acceptThrottle);
+
                 return new Http2ClientStreamId(connection.nukleusStreamId, streamId);
             }
         }
@@ -50,7 +59,7 @@ class Http2ClientConnectionManager
         int streamId =  connection.newStreamId();
 
         //init http2 stream
-        connection.sendHttp2Headers(streamId, httpBegin);
+        connection.sendHttp2Headers(streamId, httpBegin, acceptThrottle);
 
         return new Http2ClientStreamId(connection.nukleusStreamId, streamId);
     }
@@ -58,5 +67,10 @@ class Http2ClientConnectionManager
     public Http2ClientConnection getConnection(long nukleusStreamId)
     {
         return http2Connections.get(nukleusStreamId);
+    }
+
+    public Http2ClientConnection removeConnection(long nukleusStreamId)
+    {
+        return http2Connections.remove(nukleusStreamId);
     }
 }

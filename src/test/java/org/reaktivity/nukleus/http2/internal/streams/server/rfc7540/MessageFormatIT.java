@@ -31,8 +31,8 @@ public class MessageFormatIT
 {
     private final K3poRule k3po = new K3poRule()
             .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/message.format")
-            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format");
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/message.format.server")
+            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format.server");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 

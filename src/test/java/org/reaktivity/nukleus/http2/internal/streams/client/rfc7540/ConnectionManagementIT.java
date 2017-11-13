@@ -49,7 +49,7 @@ public class ConnectionManagementIT
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
-    @Ignore("TODO: transport stream->nukleus->http stream")
+    @Ignore("Not valid in client mode. Nukleus will not initiate a connection without a request")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -89,6 +89,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Push promise not implemented in current user story")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -99,6 +100,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("We do not support push promises yet")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -129,6 +131,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not valid in client mode. If a http connection is aborted, the http2 connection is not aborted")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -150,6 +153,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not valid in client mode. If a http connection is aborted, the http2 connection is not aborted")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -160,6 +164,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not valid in client mode. If a http connection is aborted, the http2 connection is not aborted")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -170,6 +175,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not valid in client mode. If a http connection is aborted, the http2 connection is not aborted")
     @Test
     @Specification({
             "${route}/client/controller",
@@ -211,6 +217,8 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("According to https://tools.ietf.org/html/rfc7540#section-8.1.2.6," +
+            "data length not equal to content-length must be considered a PROTOCOL_ERROR, so we send an abort, not an end frame")
     @Test
     @Specification({
             "${route}/client/controller",

@@ -145,7 +145,7 @@ class Http2FrameDecoder
     {
         if (headersSlotIndex != NO_SLOT)
         {
-            factory.bufferPool.release(headersSlotIndex);      // early release, but fine
+            factory.bufferPool.release(headersSlotIndex);
             headersSlotIndex = NO_SLOT;
             headersSlotPosition = 0;
         }

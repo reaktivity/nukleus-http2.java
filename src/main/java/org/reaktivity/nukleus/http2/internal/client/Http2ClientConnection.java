@@ -17,12 +17,15 @@ package org.reaktivity.nukleus.http2.internal.client;
 
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.agrona.DirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
+import org.agrona.collections.Long2ObjectHashMap;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.Http2ConnectionState;
@@ -42,33 +45,47 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
 class Http2ClientConnection
 {
     long nukleusStreamId;
 
-    Http2Settings localSettings = new Http2Settings(100, Http2Settings.DEFAULT_INITIAL_WINDOW_SIZE);
+    Http2Settings localSettings = new Http2Settings(100, 0);
     Http2Settings remoteSettings = new Http2Settings(100, Http2Settings.DEFAULT_INITIAL_WINDOW_SIZE);
+
+    String acceptReplyName;
+    MessageConsumer acceptReply;
+
 
     int maxClientStreamId = -1;
     int maxServerStreamId = -1;
     int noClientStreams;
     int noServerStreams;
 
+    int inHttp2ConnectionWindow; // connection window for reading from http2
+                                 // (connection window for writer is kept in Http2Writer)
+
     private ClientStreamFactory factory;
     private Http2Writer http2Writer;
     boolean prefaceSent = false;
     boolean initConnectionFinished = false; // true when settings ack is sent
+    boolean connectionError = false; // will become true when the connection will be closed by an error
 
     // headers stuff
-    static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
+    private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
     private final HpackContext encodeHpackContext;
-    final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
-    final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
-    final Http2HeadersDecoder http2HeaderDecoder;
+    private final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
+    private final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
+    private final Http2HeadersDecoder http2HeaderDecoder;
+    private final List<String> connectionHeaders = new ArrayList<>();
+
 
     final Int2ObjectHashMap<Http2ClientStream> http2Streams = new Int2ObjectHashMap<>();      // HTTP2 stream-id --> Http2Stream
 
+    // accept reply stream-id --> Http2Stream
+    final Long2ObjectHashMap<Http2ClientStream> http2StreamsByAcceptReplyIds = new Long2ObjectHashMap<>();
 
     Http2ClientConnection(ClientStreamFactory factory)
     {
@@ -81,7 +98,7 @@ class Http2ClientConnection
     // returns a new stream id, if max number of streams is not reached
     int newStreamId()
     {
-        if (noClientStreams + 1 > remoteSettings.maxConcurrentStreams)
+        if (connectionError || (noClientStreams + 1 > remoteSettings.maxConcurrentStreams))
         {
             return -1;
         }
@@ -109,21 +126,20 @@ class Http2ClientConnection
         nukleusStreamId = factory.supplyStreamId.getAsLong();
 
         // TODO not sure if using factory buffer for all connections is safe
-        http2Writer = new Http2Writer(factory.writeBuffer, target, nukleusStreamId);
+        http2Writer = new Http2Writer(factory.writeBuffer, target, this, factory.bufferPool);
 
-        ClientCorrelation correlation = new ClientCorrelation(correlationId, this);
-        correlation.acceptCorrelationId = httpBegin.correlationId();
-        correlation.acceptReplyName = httpBegin.source().asString();
+        acceptReplyName = httpBegin.source().asString();
 
-        factory.correlations.put(correlationId, correlation);
+        factory.correlations.put(correlationId, this);
 
         //initiate connect stream
         factory.doBegin(target, nukleusStreamId, connectRef, correlationId);
-//        factory.router.setThrottle(connectName, streamId, handleThrottleDefault);
+        factory.router.setThrottle(connectName, nukleusStreamId, this::handleConnectThrottle);
 
         // send settings
-        http2Writer.http2Frame(http2Writer.visitPreface());
-        http2Writer.http2Frame(http2Writer.visitSettings(localSettings.maxConcurrentStreams, localSettings.initialWindowSize));
+        http2Writer.doPreface();
+        http2Writer.doSettings(localSettings.maxConcurrentStreams, localSettings.initialWindowSize);
+        inHttp2ConnectionWindow = Http2Settings.DEFAULT_INITIAL_WINDOW_SIZE;
         http2Writer.flush();
         prefaceSent = true;
     }
@@ -145,26 +161,83 @@ class Http2ClientConnection
 
     public void doHttp2StreamError(int http2StreamId, Http2ErrorCode errorCode)
     {
-        http2Writer.http2Frame(http2Writer.visitRst(http2StreamId, errorCode));
+        http2Writer.doReset(http2StreamId, errorCode);
         http2Writer.flush();
 
-        // TODO mark stream as closed
-        Http2ClientStream stream = http2Streams.get(http2StreamId);
-        stream.state = Http2ConnectionState.CLOSED;
+        closeStream(http2StreamId, true);
+    }
+
+    public void closeStream(int http2StreamId, boolean withError)
+    {
+        Http2ClientStream stream = http2Streams.remove(http2StreamId);
+        if (stream == null)
+        {
+            return;
+        }
+
+        if (acceptReply == null)
+        { // probably we did not open the accept reply stream, do a reset on the accept
+            factory.doReset(stream.acceptThrottle, stream.acceptStreamId);
+        }
+        else
+        {
+            if (withError)
+            {
+                // close accept reply stream
+                factory.doAbort(acceptReply, stream.acceptReplyStreamId);
+            }
+            else
+            {
+                factory.doEnd(acceptReply, stream.acceptReplyStreamId);
+            }
+            http2StreamsByAcceptReplyIds.remove(stream.acceptReplyStreamId);
+        }
 
         noClientStreams--;
     }
 
     public void doHttp2ConnectionError(Http2ErrorCode errorCode)
     {
-        http2Writer.http2Frame(http2Writer.visitGoaway(maxClientStreamId, errorCode));
+        http2Writer.doGoaway(maxClientStreamId, errorCode);
+        http2Writer.flush();
+        connectionError = true;
+
+        cleanupRequests();
+        http2Writer.doCleanup();
+    }
+
+    // in case the http2 connection is closed, all accept streams must be closed
+    //      and the connection removed from the connection manager
+    public void cleanupRequests()
+    {
+        // close all requests
+        for (Http2ClientStream stream : http2Streams.values())
+        {
+            closeStream(stream.http2StreamId, true);
+        }
+
+        factory.http2ConnectionManager.removeConnection(nukleusStreamId);
+    }
+
+    public void doHttp2Data(int http2StreamId, OctetsFW payload, boolean endStream)
+    {
+        Http2ClientStream stream = http2Streams.get(http2StreamId);
+        if (stream == null)
+        {
+            return;
+        }
+
+        http2Writer.doData(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof(), endStream);
+        if (endStream)
+        {
+            stream.endSent = true;
+        }
         http2Writer.flush();
     }
 
-    public void doHttp2Data(int http2StreamId, OctetsFW payload)
+    public void doPingAck(DirectBuffer payloadBuffer, int payloadOffset, int payloadLength)
     {
-        http2Writer.http2Frame(http2Writer.visitData(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof()));
-        http2Writer.flush();
+        http2Writer.doPingAck(payloadBuffer, payloadOffset, payloadLength);
     }
 
     void handleSettings(Http2FrameFW http2Frame)
@@ -190,9 +263,11 @@ class Http2ClientConnection
         if (!factory.settingsRO.ack())
         {
             factory.settingsRO.accept(this::decodeRemoteSetting);
-            http2Writer.http2Frame(http2Writer.visitSettingsAck());
-
-            http2Writer.flush();
+            if (!connectionError)
+            {
+                http2Writer.doSettingsAck();
+                http2Writer.flush();
+            }
         }
     }
 
@@ -222,15 +297,18 @@ class Http2ClientConnection
                 }
                 int old = remoteSettings.initialWindowSize;
                 remoteSettings.initialWindowSize = value.intValue();
-                int update = value.intValue() - old;
+                int update = remoteSettings.initialWindowSize - old;
+                if (update == 0)
+                {
+                    return;
+                }
 
                 // 6.9.2. Initial Flow-Control Window Size
                 // SETTINGS frame can alter the initial flow-control
                 // window size for streams with active flow-control windows
                 for(Http2ClientStream http2Stream: http2Streams.values())
                 {
-                    http2Stream.http2OutWindow += update;           // http2OutWindow can become negative
-                    if (http2Stream.http2OutWindow > Integer.MAX_VALUE)
+                    if (http2Stream.http2Window + update > Integer.MAX_VALUE)
                     {
                         // 6.9.2. Initial Flow-Control Window Size
                         // An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
@@ -238,6 +316,12 @@ class Http2ClientConnection
                         // connection error of type FLOW_CONTROL_ERROR.
                         doHttp2ConnectionError(Http2ErrorCode.FLOW_CONTROL_ERROR);
                         return;
+                    }
+                    http2Stream.http2Window += update;
+                    if (!http2Stream.initialAcceptWindowSent)
+                    {
+                        updateAcceptStreamWindow(http2Stream.http2StreamId, http2Stream.http2Window);
+                        http2Stream.initialAcceptWindowSent = true;
                     }
                 }
                 break;
@@ -259,10 +343,10 @@ class Http2ClientConnection
     }
 
     // opens a new stream by sending headers
-    public void sendHttp2Headers(int http2StreamId, BeginFW httpBegin)
+    public void sendHttp2Headers(int http2StreamId, BeginFW httpBegin, MessageConsumer acceptThrottle)
     {
         HttpBeginExFW beginEx = httpBegin.extension().get(factory.httpBeginExRO::wrap);
-        byte[] flags = new byte[2];
+        byte[] flags = new byte[1];
         flags[0] = Http2Flags.NONE;
         beginEx.headers().forEach(h ->
         {
@@ -275,19 +359,29 @@ class Http2ClientConnection
             { // in case of a GET, we send also END_STREAM
                 flags[0] = Http2Flags.END_STREAM;
             }
-            if (factory.valueRO.equals(encodeHpackContext.nameBuffer(28)) &&
+            if (factory.nameRO.equals(encodeHpackContext.nameBuffer(28)) &&
                     "0".equals(h.value().asString()))
             { // in case of content length zero, we can also add END_STREAM
-                flags[1] = Http2Flags.END_STREAM;
+                flags[0] = Http2Flags.END_STREAM;
             }
         });
-        http2Writer.http2Frame(http2Writer.visitHeaders(
-                http2StreamId, (byte)(flags[0] | flags[1]), beginEx.headers(), this::mapHttpHeadersToHttp2));
+
+        http2Writer.doHeaders(http2StreamId, flags[0], beginEx.headers(), this::mapHttpHeadersToHttp2);
         http2Writer.flush();
 
         // also create http2 stream to keep stream specific data
-        Http2ClientStream stream = new Http2ClientStream(maxClientStreamId, localSettings.initialWindowSize,
-                remoteSettings.initialWindowSize, Http2ConnectionState.OPEN);
+        Http2ClientStream stream = new Http2ClientStream(http2StreamId,
+                                localSettings.initialWindowSize,
+                                remoteSettings.initialWindowSize,
+                                Http2ConnectionState.OPEN,
+                                httpBegin.correlationId(),
+                                acceptThrottle,
+                                httpBegin.streamId(),
+                                factory.bufferPool);
+        if (flags[0] > 0)
+        { // in case the headers have the END_STREAM flag
+            stream.endSent = true;
+        }
         http2Streams.put(http2StreamId, stream);
 
         noClientStreams++;
@@ -295,27 +389,60 @@ class Http2ClientConnection
 
     void mapHttpHeadersToHttp2(ListFW<HttpHeaderFW> httpHeaders, HpackHeaderBlockFW.Builder builder)
     {
-//        httpHeadersContext.reset();
-
-//        httpHeaders.forEach(this::checkStatusHeader)               // notes if there is :status
-//                   .forEach(this::connectionHeaders);   // collects all connection headers
-//        if (!httpHeadersContext.isStatusHeaderPresent)
-//        {
-//            builder.header(b -> b.indexed(8));          // no mandatory :status header, add :status: 200
-//        }
-//
+        connectionHeaders.clear();
+        httpHeaders.forEach(this::checkConnectionHeader);
         httpHeaders.forEach(h ->
         {
-            if (validHttpHeader(h))
+            if (validHeader(h))
             {
                 builder.header(b -> mapOneHttpHeaderToHttp2(h, b));
             }
         });
     }
 
-    private boolean validHttpHeader(HttpHeaderFW h)
+    private void checkConnectionHeader(HttpHeaderFW httpHeader)
     {
-        // TODO add if required
+        StringFW name = httpHeader.name();
+        String16FW value = httpHeader.value();
+        factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+
+        if (factory.nameRO.equals(HpackContext.CONNECTION))
+        {
+            String[] headers = value.asString().split(",");
+            for (String header : headers)
+            {
+                connectionHeaders.add(header.trim());
+            }
+        }
+    }
+
+    private boolean validHeader(HttpHeaderFW httpHeader)
+    {
+        StringFW name = httpHeader.name();
+        String16FW value = httpHeader.value();
+        factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+        factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
+
+        // Removing 8.1.2.2 connection-specific header fields from response
+        if (factory.nameRO.equals(encodeHpackContext.nameBuffer(57)) || // transfer-encoding
+                factory.nameRO.equals(HpackContext.CONNECTION) ||
+                factory.nameRO.equals(HpackContext.KEEP_ALIVE) ||
+                factory.nameRO.equals(HpackContext.PROXY_CONNECTION) ||
+                factory.nameRO.equals(HpackContext.UPGRADE))
+        {
+            return false;
+        }
+
+        // Removing any header that is nominated by Connection header field
+        String nameStr = name.asString();
+        for(String connectionHeader: connectionHeaders)
+        {
+            if (connectionHeader.equals(nameStr))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
@@ -358,19 +485,28 @@ class Http2ClientConnection
         builder.value(valueRO, 0, valueRO.capacity());
     }
 
-    // closes a stream (usually because the client ended its connection)
-    public void endStream(int http2StreamId)
+    // resets a stream (usually because the client aborted its connection)
+    public void resetStream(int http2StreamId)
     {
-        http2Writer.http2Frame(http2Writer.visitDataEos(http2StreamId));
+        http2Writer.doReset(http2StreamId, Http2ErrorCode.PROTOCOL_ERROR);
         http2Writer.flush();
+
+        closeStream(http2StreamId, true);
     }
 
-    @Override
-    public String toString()
+    // closes a stream (usually because the client ended its connection)
+    public void endHttp2ConnectStream(int http2StreamId)
     {
-        return String.format("Http2ClientConnection[streamId=%s activeStreams=%s]",
-                nukleusStreamId, noClientStreams);
-    }
+        Http2ClientStream clientStream = http2Streams.get(http2StreamId);
+        if (clientStream.endSent)
+        {
+            return;
+        }
+
+        http2Writer.doDataEos(http2StreamId);
+        http2Writer.flush();
+        clientStream.endSent = true;
+}
 
     /**
      * Decodes a full http2 header and transforms it in a list of http headers.
@@ -396,7 +532,73 @@ class Http2ClientConnection
             return null;
         }
 
-        http2Streams.get(streamId).contentLength = http2HeaderDecoder.contentLength;
+        Http2ClientStream stream = http2Streams.get(streamId);
+        if (stream == null)
+        {
+            return null;
+        }
+        stream.contentLength = http2HeaderDecoder.contentLength;
         return httpBeginEx;
+    }
+
+    private void handleConnectThrottle(
+        int msgTypeId,
+        DirectBuffer buffer,
+        int index,
+        int length)
+    {
+        switch (msgTypeId)
+        {
+            case WindowFW.TYPE_ID:
+                factory.windowRO.wrap(buffer, index, index + length);
+                int update = factory.windowRO.credit();
+                int padding = factory.windowRO.padding();
+
+                http2Writer.updateNukleusWindow(update, padding);
+                break;
+            case ResetFW.TYPE_ID:
+                factory.resetRO.wrap(buffer, index, index + length);
+                cleanupRequests();
+                http2Writer.doCleanup();
+                break;
+            default:
+                // ignore
+                break;
+        }
+    }
+
+    // handles http2 window update on the connect reply stream by sending a window frame on accept stream
+    public void updateAcceptStreamWindow(int http2StreamId, int windowUpdateSize)
+    {
+        if (windowUpdateSize <= 0)
+        {
+            return;
+        }
+
+        Http2ClientStream clientStream = http2Streams.get(http2StreamId);
+        if (clientStream == null)
+        {
+            return;
+        }
+
+        clientStream.http2Window += windowUpdateSize;
+
+        factory.doWindow(clientStream.acceptThrottle, clientStream.acceptStreamId, windowUpdateSize, 0);
+    }
+
+    public void handleAcceptReplyThrottle(Http2ClientStream clientStream, int update, int padding)
+    {
+        clientStream.httpWindow += update;
+
+        http2Writer.doWindowUpdate(0, update);
+        http2Writer.doWindowUpdate(clientStream.http2StreamId, update);
+        http2Writer.flush();
+    }
+
+    @Override
+    public String toString()
+    {
+        return String.format("Http2ClientConnection[streamId=%s activeStreams=%s]",
+                nukleusStreamId, noClientStreams);
     }
 }

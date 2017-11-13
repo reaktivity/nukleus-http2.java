@@ -27,9 +27,6 @@ import org.reaktivity.reaktor.test.ReaktorRule;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 
-import org.junit.Ignore;
-
-@Ignore("client is WIP")
 public class FlowControlIT
 {
     private final K3poRule k3po = new K3poRule()
@@ -53,8 +50,8 @@ public class FlowControlIT
     @Test
     @Specification({
             "${route}/client/controller",
-            "${nukleus}/stream.flow/client",
-            "${spec}/stream.flow/server" })
+            "${nukleus}/stream.flow.client/client",
+            "${spec}/stream.flow.client/server" })
     public void streamFlow() throws Exception
     {
         k3po.finish();

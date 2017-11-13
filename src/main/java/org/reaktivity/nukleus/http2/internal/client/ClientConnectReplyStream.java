@@ -22,12 +22,14 @@ import org.agrona.DirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.Http2ConnectionState;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -39,26 +41,22 @@ class ClientConnectReplyStream
     private final ClientStreamFactory factory;
     private final MessageConsumer connectReplyThrottle;
     private final long connectReplyId;
-    Http2ClientConnectionManager http2ConnectionManager;
 
-    private ClientCorrelation correlation;
     private Http2ClientConnection http2ClientConnection;
 
     private final int initialFrameWindow;
     private int connectReplyFrameWindow;
-    private int connectFrameWindow;
-    private int acceptReplyFrameWindow;
+    private static final double INWINDOW_THRESHOLD = 0.5;
 
     private final Http2FrameExtractor frameExtractor;
     private final Http2FrameDecoder frameDecoder;
 
     ClientConnectReplyStream(ClientStreamFactory factory, MessageConsumer connectReplyThrottle,
-            long connectReplyId, Http2ClientConnectionManager http2ConnectionManager)
+            long connectReplyId)
     {
         this.factory = factory;
         this.connectReplyId = connectReplyId;
         this.connectReplyThrottle = connectReplyThrottle;
-        this.http2ConnectionManager = http2ConnectionManager;
 
         this.streamState = this::streamBeforeBegin;
         initialFrameWindow = factory.bufferPool.slotCapacity();
@@ -86,16 +84,16 @@ class ClientConnectReplyStream
     {
         if (msgTypeId == BeginFW.TYPE_ID)
         {
-            factory.doWindow(connectReplyThrottle, connectReplyId, initialFrameWindow, initialFrameWindow);
+            factory.doWindow(connectReplyThrottle, connectReplyId, initialFrameWindow, 0);
+            connectReplyFrameWindow = initialFrameWindow;
             streamState = this::streamAfterBegin;
             BeginFW begin = this.factory.beginRO.wrap(buffer, index, index + length);
             final long correlationId = begin.correlationId();
-            correlation = begin.sourceRef() == 0L ? factory.correlations.remove(correlationId) : null;
-            http2ClientConnection = correlation.http2ClientConnection;
+            http2ClientConnection = begin.sourceRef() == 0L ? factory.correlations.remove(correlationId) : null;
         }
         else
         {
-            resetStream();
+            resetConnectReplyStream();
         }
     }
 
@@ -114,9 +112,21 @@ class ClientConnectReplyStream
         case EndFW.TYPE_ID:
             // TODO what needs to be done ?
             break;
-        default:
-            resetStream();
+        case AbortFW.TYPE_ID:
+            endConnection();
             break;
+        default:
+            resetConnectReplyStream();
+            break;
+        }
+    }
+
+    private void endConnection()
+    {
+        // send abort on all http connections
+        for (Http2ClientStream stream : http2ClientConnection.http2Streams.values())
+        {
+            factory.doAbort(http2ClientConnection.acceptReply, stream.acceptReplyStreamId);
         }
     }
 
@@ -131,25 +141,41 @@ class ClientConnectReplyStream
         {
             DataFW data = this.factory.dataRO.wrap(buffer, index, index + length);
             final long streamId = data.streamId();
-            factory.doWindow(connectReplyThrottle, streamId, data.length(), data.length());
+            factory.doWindow(connectReplyThrottle, streamId, data.length(), 0);
             connectReplyFrameWindow += data.length();
         }
     }
     // end stream handlers
 
     // resets the stream
-    private void resetStream()
+    private void resetConnectReplyStream()
     {
         factory.doReset(connectReplyThrottle, connectReplyId);
         this.streamState = this::streamAfterReset;
 
-        // TODO reset also the accept and accept reply streams
+        // TODO should we reset also the accept and accept reply streams ?
 
     }
 
     private void processData(DirectBuffer buffer, int index, int length)
     {
         DataFW data = factory.dataRO.wrap(buffer, index, index + length);
+
+        // handle nukleus window
+        connectReplyFrameWindow -= data.length();
+        if (connectReplyFrameWindow < 0)
+        {
+            factory.doReset(connectReplyThrottle, data.streamId());
+            return;
+        }
+
+        if (connectReplyFrameWindow < initialFrameWindow * INWINDOW_THRESHOLD)
+        {
+            factory.doWindow(connectReplyThrottle, data.streamId(), initialFrameWindow - connectReplyFrameWindow, 0);
+            connectReplyFrameWindow = initialFrameWindow;
+        }
+        // end handle nukleus window
+
         OctetsFW payload = data.payload();
 
         int limit = payload.limit();
@@ -168,12 +194,11 @@ class ClientConnectReplyStream
                 }
             }
             else
-            { // we have a decoding error close entire connection
-                resetStream();
+            { // we have a decoding error, close entire connection
+                resetConnectReplyStream();
+                return;
             }
         }
-
-        factory.doWindow(connectReplyThrottle, data.streamId(), data.length(), data.length());
     }
 
     private void decodeHttp2Frame()
@@ -194,6 +219,11 @@ class ClientConnectReplyStream
             return;
         }
 
+        if (factory.http2RO.streamId() > 0 && factory.http2RO.streamId() % 2 == 0)
+        { // push promise streams - ignore for now
+            return;
+        }
+
         switch (factory.http2RO.type())
         {
             case HEADERS:
@@ -210,22 +240,27 @@ class ClientConnectReplyStream
 //                doPriority();
                 break;
             case RST_STREAM:
-//                doRst();
+                handleResetStream();
                 break;
             case SETTINGS:
                 http2ClientConnection.handleSettings(factory.http2RO);
                 break;
             case PUSH_PROMISE:
-//                doPushPromise();
+                handlePushPromise();
                 break;
             case PING:
-//                doPing();
+                handlePing();
                 break;
             case GO_AWAY:
-//                doGoAway();
+                http2ClientConnection.cleanupRequests();
                 break;
             case WINDOW_UPDATE:
-//                doWindow();
+                Http2WindowUpdateFW windowUpdate = factory.http2WindowUpdateRO.wrap(
+                        factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
+                if (factory.http2RO.streamId() > 0)
+                {
+                    http2ClientConnection.updateAcceptStreamWindow(windowUpdate.streamId(), windowUpdate.size());
+                }
                 break;
             default:
                 // Ignore and discard unknown frame
@@ -258,25 +293,35 @@ class ClientConnectReplyStream
         }
 
         HttpBeginExFW beginEx = http2ClientConnection.decodeHttp2Headers(factory.blockRO, factory.http2RO.streamId());
+
+        //we read the headers block, we can release it
+        frameDecoder.headerStateReset();
         if (beginEx == null)
         { // we have a decoding error
             return;
         }
 
-        // open the accept reply stream
-        correlation.acceptReply = factory.router.supplyTarget(correlation.acceptReplyName);
-        correlation.acceptReplyStreamId = factory.supplyStreamId.getAsLong();
+        Http2ClientStream http2Stream = http2ClientConnection.http2Streams.get(factory.http2RO.streamId());
 
+        // open the accept reply stream
+        http2ClientConnection.acceptReply = factory.router.supplyTarget(http2ClientConnection.acceptReplyName);
+        long acceptReplyStreamId = factory.supplyStreamId.getAsLong();
+
+        System.out.println("AR BEGIN id:" + acceptReplyStreamId + " corel:" + http2Stream.acceptCorrelationId);
         BeginFW begin = factory.beginRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
-                .streamId(correlation.acceptReplyStreamId)
+                .streamId(acceptReplyStreamId)
                 .source(ClientStreamFactory.SOURCE_NAME_BUFFER, 0, ClientStreamFactory.SOURCE_NAME_BUFFER.capacity())
                 .sourceRef(0L)
-                .correlationId(correlation.acceptCorrelationId)
+                .correlationId(http2Stream.acceptCorrelationId)
                 .extension(beginEx.buffer(), beginEx.offset(), beginEx.sizeof())
                 .build();
 
-        correlation.acceptReply.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
-        factory.router.setThrottle(correlation.acceptReplyName, correlation.acceptReplyStreamId, this::handleAcceptReplyThrottle);
+        http2ClientConnection.acceptReply.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
+        factory.router.setThrottle(http2ClientConnection.acceptReplyName, acceptReplyStreamId, this::handleAcceptReplyThrottle);
+
+        // save acceptReplyStreamId into the stream;
+        http2Stream.acceptReplyStreamId = acceptReplyStreamId;
+        http2ClientConnection.http2StreamsByAcceptReplyIds.put(acceptReplyStreamId, http2Stream);
     }
 
     // handles a http2 data frame
@@ -307,7 +352,7 @@ class ClientConnectReplyStream
                 factory.http2RO.limit());
         int dataLength = http2Data.dataLength();
 
-        if (dataLength < 0)        // because of invalid padding length
+        if (dataLength < 0) // because of invalid padding length
         {
             http2ClientConnection.doHttp2StreamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
             return;
@@ -323,33 +368,81 @@ class ClientConnectReplyStream
             int chunk = Math.min(dataLength, 65535);     // limit by nukleus DATA frame length (2 bytes)
 
             DataFW data = factory.dataRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
-                    .streamId(correlation.acceptReplyStreamId)
+                    .streamId(stream.acceptReplyStreamId)
                     .payload(http2Data.buffer(), offset, dataLength)
                     .build();
 
-            correlation.acceptReply.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+            http2ClientConnection.acceptReply.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
             offset += chunk;
             dataLength -= chunk;
         }
 
         if (http2Data.endStream())
         {
-            processEndStream(stream, correlation);
+            processEndStream(stream);
         }
     }
 
-    private void processEndStream(Http2ClientStream stream, ClientCorrelation correlation)
+    private void handlePushPromise()
+    {
+        // not implemented so far
+    }
+
+    private void handleResetStream()
+    {
+        int streamId = factory.http2RO.streamId();
+        Http2ClientStream stream = http2ClientConnection.http2Streams.get(streamId);
+
+        http2ClientConnection.closeStream(streamId, true);
+
+        if (http2ClientConnection.acceptReply != null)
+        {
+            factory.doAbort(http2ClientConnection.acceptReply, stream.acceptReplyStreamId);
+        }
+    }
+
+    private void handlePing()
+    {
+        if (factory.http2RO.streamId() != 0)
+        {
+            http2ClientConnection.doHttp2ConnectionError(Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+        if (factory.http2RO.payloadLength() != 8)
+        {
+            http2ClientConnection.doHttp2ConnectionError(Http2ErrorCode.FRAME_SIZE_ERROR);
+            return;
+        }
+        factory.http2PingRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
+
+        if (!factory.http2PingRO.ack())
+        {
+            http2ClientConnection.doPingAck(factory.http2PingRO.payload(), 0, factory.http2PingRO.payload().capacity());
+        }
+    }
+
+    private void processEndStream(Http2ClientStream stream)
     {
         // 8.1.2.6 A request is malformed if the value of a content-length header field does
         // not equal the sum of the DATA frame payload lengths
         if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
         {
             http2ClientConnection.doHttp2StreamError(stream.http2StreamId, Http2ErrorCode.PROTOCOL_ERROR);
-            return;
+            stream.state = Http2ConnectionState.CLOSED;
         }
-        stream.state = Http2ConnectionState.HALF_CLOSED_REMOTE;
+        else
+        {
+            if (stream.endSent)
+            {
+                http2ClientConnection.closeStream(stream.http2StreamId, false);
+            }
+            else
+            {
+                stream.state = Http2ConnectionState.HALF_CLOSED_REMOTE;
+            }
+        }
 
-        factory.doEnd(correlation.acceptReply, correlation.acceptReplyStreamId);
+        factory.doEnd(http2ClientConnection.acceptReply, stream.acceptReplyStreamId);
     }
 
     // handles the throttle frames for accept reply stream
@@ -363,12 +456,25 @@ class ClientConnectReplyStream
         {
             case WindowFW.TYPE_ID:
                 factory.windowRO.wrap(buffer, index, index + length);
-                int update = factory.windowRO.update();
+                int update = factory.windowRO.credit();
+                int padding = factory.windowRO.padding();
 
-                acceptReplyFrameWindow += update;
+                Http2ClientStream stream = http2ClientConnection.http2StreamsByAcceptReplyIds.get(factory.windowRO.streamId());
+                if (stream == null)
+                { // if http2 stream not found, abort stream
+                    factory.doAbort(http2ClientConnection.acceptReply, factory.windowRO.streamId());
+                    return;
+                }
+
+                // we send http2 window update
+                http2ClientConnection.handleAcceptReplyThrottle(stream, update, padding);
+
+                // and then we update the nukleus window
+                connectReplyFrameWindow += update;
+                factory.doWindow(connectReplyThrottle, connectReplyId, update, padding);
                 break;
             case ResetFW.TYPE_ID:
-                // TODO not sure what needs to be done
+                factory.resetRO.wrap(buffer, index, index + length);
                 break;
             default:
                 // ignore

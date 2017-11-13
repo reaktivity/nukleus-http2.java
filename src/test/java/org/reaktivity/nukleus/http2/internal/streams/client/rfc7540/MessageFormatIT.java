@@ -27,17 +27,14 @@ import org.reaktivity.reaktor.test.ReaktorRule;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 
-import org.junit.Ignore;
-
-@Ignore("client is WIP")
 public class MessageFormatIT
 {
     private final K3poRule k3po = new K3poRule()
             .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/message.format")
-            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format");
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/message.format.client")
+            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/message.format.client");
 
-    private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
+    private final TestRule timeout = new DisableOnDebug(new Timeout(3, SECONDS));
 
     private final ReaktorRule reaktor = new ReaktorRule()
             .directory("target/nukleus-itests")
@@ -53,8 +50,8 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/client/controller",
-            "${spec}/continuation.frames/server",
-            "${nukleus}/continuation.frames/client" })
+            "${nukleus}/continuation.frames/client",
+            "${spec}/continuation.frames/server" })
     public void continuationFrames() throws Exception
     {
         k3po.finish();
@@ -63,8 +60,8 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/client/controller",
-            "${spec}/dynamic.table.requests/server",
-            "${nukleus}/dynamic.table.requests/client" })
+            "${nukleus}/dynamic.table.requests/client",
+            "${spec}/dynamic.table.requests/server" })
     public void dynamicTableRequests() throws Exception
     {
         k3po.finish();
@@ -73,8 +70,8 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/client/controller",
-            "${spec}/max.frame.size/server",
-            "${nukleus}/max.frame.size/client" })
+            "${nukleus}/max.frame.size/client",
+            "${spec}/max.frame.size/server" })
     public void maxFrameSize() throws Exception
     {
         k3po.finish();
@@ -84,8 +81,8 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/client/controller",
-            "${spec}/max.nukleus.data.frame.size/server",
-            "${nukleus}/max.nukleus.data.frame.size/client" })
+            "${nukleus}/max.nukleus.data.frame.size/client",
+            "${spec}/max.nukleus.data.frame.size/server" })
     public void maxNukleusDataFrameSize() throws Exception
     {
         k3po.finish();
@@ -94,18 +91,8 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/client/controller",
-            "${spec}/connection.headers/server",
-            "${nukleus}/connection.headers/client" })
-    public void connectionHeaders() throws Exception
-    {
-        k3po.finish();
-    }
-
-    @Test
-    @Specification({
-            "${route}/client/controller",
-            "${spec}/stream.id.order/server",
-            "${nukleus}/stream.id.order/client" })
+            "${nukleus}/stream.id.order/client",
+            "${spec}/stream.id.order/server" })
     public void streamIdOrder() throws Exception
     {
         k3po.finish();

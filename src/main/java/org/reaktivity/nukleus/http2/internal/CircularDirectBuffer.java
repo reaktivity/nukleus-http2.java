@@ -19,7 +19,7 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-class CircularDirectBuffer
+public class CircularDirectBuffer
 {
     private final int capacity;
     /*
@@ -42,12 +42,12 @@ class CircularDirectBuffer
     private int end;
     private int count;
 
-    CircularDirectBuffer(int capacity)
+    public CircularDirectBuffer(int capacity)
     {
         this.capacity = capacity;
     }
 
-    boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
+    public boolean write(MutableDirectBuffer dstBuffer, DirectBuffer srcBuffer, int srcIndex, int length)
     {
         if (count + length > capacity)
         {
@@ -80,7 +80,7 @@ class CircularDirectBuffer
         return part;
     }
 
-    int read(int length)
+    public int read(int length)
     {
         if (length > count)
         {
@@ -95,12 +95,12 @@ class CircularDirectBuffer
         return read;
     }
 
-    int readOffset()
+    public int readOffset()
     {
         return start;
     }
 
-    int size()
+    public int size()
     {
         return count;
     }

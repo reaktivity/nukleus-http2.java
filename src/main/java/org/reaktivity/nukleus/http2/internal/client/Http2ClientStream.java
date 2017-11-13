@@ -15,25 +15,72 @@
  */
 package org.reaktivity.nukleus.http2.internal.client;
 
+import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.CircularDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.Http2ConnectionState;
+
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+
+import org.agrona.MutableDirectBuffer;
 
 class Http2ClientStream
 {
     final int http2StreamId;
-
+    final long acceptCorrelationId;
+    final MessageConsumer acceptThrottle;
+    final long acceptStreamId;
+    long acceptReplyStreamId;
     Http2ConnectionState state;
-    long http2OutWindow;
-    long http2InWindow;
+
+    int http2Window; // keeps track of window for sending to http2
+    int httpWindow; // keeps track of the window for sending to http (and receiving from http2)
+    boolean initialAcceptWindowSent = false;
 
     long contentLength;
     long totalData;
 
-    Http2ClientStream(int http2StreamId, long localInitialWindowSize, long remoteInitialWindowSize, Http2ConnectionState state)
+    // buffer to be used for DATA frames for this stream, in case there is no window (nukleus, connection and stream)
+    private int bufferSlot = NO_SLOT;
+    CircularDirectBuffer circularBuffer;
+    private final BufferPool bufferPool;
+
+    boolean endSent = false; // will become true when an END_STREAM will be sent to the server
+
+    Http2ClientStream(int http2StreamId, int localInitialWindowSize, int remoteInitialWindowSize,
+            Http2ConnectionState state, long acceptCorrelationId, MessageConsumer acceptThrottle,
+            long acceptStreamId, BufferPool bufferPool)
     {
         this.http2StreamId = http2StreamId;
-        this.http2InWindow = localInitialWindowSize;
-        this.http2OutWindow = remoteInitialWindowSize;
+        this.acceptCorrelationId = acceptCorrelationId;
+        this.httpWindow = localInitialWindowSize;
+        this.http2Window = remoteInitialWindowSize;
         this.state = state;
+        this.acceptThrottle = acceptThrottle;
+        this.acceptStreamId = acceptStreamId;
+        this.bufferPool = bufferPool;
     }
 
+    MutableDirectBuffer acquireBuffer()
+    {
+        if (bufferSlot == NO_SLOT)
+        {
+            bufferSlot = bufferPool.acquire(acceptStreamId);
+            if (bufferSlot != NO_SLOT)
+            {
+                circularBuffer = new CircularDirectBuffer(bufferPool.slotCapacity());
+            }
+        }
+        return bufferSlot != NO_SLOT ? bufferPool.buffer(bufferSlot) : null;
+    }
+
+    void releaseBuffer()
+    {
+        if (bufferSlot != NO_SLOT)
+        {
+            bufferPool.release(bufferSlot);
+            bufferSlot = NO_SLOT;
+            circularBuffer = null;
+        }
+    }
 }

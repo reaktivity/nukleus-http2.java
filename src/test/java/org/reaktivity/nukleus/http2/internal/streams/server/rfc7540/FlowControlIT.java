@@ -50,8 +50,8 @@ public class FlowControlIT
     @Test
     @Specification({
             "${route}/server/controller",
-            "${spec}/stream.flow/client",
-            "${nukleus}/stream.flow/server" })
+            "${spec}/stream.flow.server/client",
+            "${nukleus}/stream.flow.server/server" })
     public void streamFlow() throws Exception
     {
         k3po.finish();
