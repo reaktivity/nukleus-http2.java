@@ -105,6 +105,7 @@ public class CircularDirectBuffer
         return count;
     }
 
+    @Override
     public String toString()
     {
         return "[capacity = " + capacity + " (start = " + start + " end = " + end + ")]";

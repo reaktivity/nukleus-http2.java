@@ -117,7 +117,7 @@ class Http2ClientConnection
         }
 
         Map<String, String> headers = extractHttpHeaders(httpBegin);
-        RouteFW route = factory.resolveTarget(httpBegin.sourceRef(), httpBegin.source().asString(), headers);
+        RouteFW route = factory.resolveTarget(httpBegin.sourceRef(), headers);
         String connectName = route.target().asString();
         long connectRef = route.targetRef();
         MessageConsumer target = factory.router.supplyTarget(connectName);
@@ -228,10 +228,6 @@ class Http2ClientConnection
         }
 
         http2Writer.doData(http2StreamId, payload.buffer(), payload.offset(), payload.sizeof(), endStream);
-        if (endStream)
-        {
-            stream.endSent = true;
-        }
         http2Writer.flush();
     }
 

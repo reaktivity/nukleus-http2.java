@@ -159,10 +159,19 @@ class Http2Writer
 
         if (stream.circularBuffer != null || payloadLength != calculateAvailableHttp2DataWindow(stream, payloadLength))
         { // put data in the buffer
-            stream.circularBuffer.write(stream.acquireBuffer(), payloadBuffer, payloadOffset, payloadLength);
+            MutableDirectBuffer buffer = stream.acquireBuffer();
+            stream.circularBuffer.write(buffer, payloadBuffer, payloadOffset, payloadLength);
+            if (endStream)
+            {
+                stream.endStreamShouldBeSent = true;
+            }
         }
         else
         { // write directly as it is only one frame and there is enough window
+            if (endStream)
+            {
+                stream.endSent = true;
+            }
             return http2Frame(
                 visitData(http2StreamId, payloadBuffer, payloadOffset, payloadLength, endStream))
                 - HTTP2_FRAME_HEADER_SIZE;
@@ -222,25 +231,41 @@ class Http2Writer
                 {
                     int toSend = calculateAvailableHttp2DataWindow(stream, stream.circularBuffer.size());
 
-                    int offset = stream.circularBuffer.readOffset();
-                    toSend = stream.circularBuffer.read(toSend); // limit the size by the contiguous block available
-                    int[] length = new int[1];
-                    length[0] = toSend + HTTP2_FRAME_HEADER_SIZE;
+                    if (toSend > 0)
+                    {
+                        int offset = stream.circularBuffer.readOffset();
+                        toSend = stream.circularBuffer.read(toSend); // limit the size by the contiguous block available
+                        int[] length = new int[1];
+                        length[0] = toSend + HTTP2_FRAME_HEADER_SIZE;
 
-                    MutableDirectBuffer buffer = stream.acquireBuffer();
-                    DataFW data = dataRW.wrap(writeBuffer, 0, length[0])
-                            .streamId(clientConnection.nukleusStreamId)
-                            .payload(p -> p.set((b, o, l) -> (length[0])))
-                            .build();
-                    http2DataRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, length[0])
-                            .streamId(stream.http2StreamId)
-                            .payload(buffer, offset, DataFW.FIELD_OFFSET_PAYLOAD + length[0])
-                            .build();
-                    target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-                    connectionWindow -= toSend;
-                    stream.http2Window -= toSend;
-                    nukleusWindow -= toSend + HTTP2_FRAME_HEADER_SIZE + nukleusPadding;
-                    nothingWritten = false;
+                        MutableDirectBuffer buffer = stream.acquireBuffer();
+                        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                .streamId(clientConnection.nukleusStreamId)
+                                .payload(p -> p.set((b, o, l) -> length[0]))
+                                .build();
+
+                        Builder http2DataBuilder = http2DataRW.wrap(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, length[0])
+                                .streamId(stream.http2StreamId)
+                                .payload(buffer, offset, toSend);
+                        // in case we should send the END_STREAM flag and this is the last data frame
+                        if (stream.endStreamShouldBeSent && stream.circularBuffer.size() == 0)
+                        {
+                            http2DataBuilder.endStream();
+                            stream.endSent = true;
+                        }
+                        http2DataBuilder.build();
+
+                        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+                        connectionWindow -= toSend;
+                        stream.http2Window -= toSend;
+                        nukleusWindow -= toSend + HTTP2_FRAME_HEADER_SIZE + nukleusPadding;
+                        nothingWritten = false;
+                    }
+
+                    if (stream.circularBuffer.size() == 0)
+                    {
+                        stream.releaseBuffer();
+                    }
                 }
 
                 if (nukleusWindow <= nukleusPadding || connectionWindow == 0)

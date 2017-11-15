@@ -145,12 +145,14 @@ class HttpWriteScheduler
 
     private void toHttp(DirectBuffer buffer, int offset, int length)
     {
-        while (length > 0)
+        int tmpOffset = offset;
+        int tmpLength = length;
+        while (tmpLength > 0)
         {
-            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            factory.doData(applicationTarget, targetId, buffer, offset, chunk);
-            offset += chunk;
-            length -= chunk;
+            int chunk = Math.min(tmpLength, 65535);     // limit by nukleus DATA frame length (2 bytes)
+            factory.doData(applicationTarget, targetId, buffer, tmpOffset, chunk);
+            tmpOffset += chunk;
+            tmpLength -= chunk;
         }
     }
 

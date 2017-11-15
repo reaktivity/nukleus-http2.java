@@ -319,7 +319,7 @@ class ClientConnectReplyStream
         http2ClientConnection.acceptReply.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
         factory.router.setThrottle(http2ClientConnection.acceptReplyName, acceptReplyStreamId, this::handleAcceptReplyThrottle);
 
-        // save acceptReplyStreamId into the stream;
+        // save acceptReplyStreamId into the stream
         http2Stream.acceptReplyStreamId = acceptReplyStreamId;
         http2ClientConnection.http2StreamsByAcceptReplyIds.put(acceptReplyStreamId, http2Stream);
     }

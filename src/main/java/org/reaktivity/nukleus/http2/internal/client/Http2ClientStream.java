@@ -35,7 +35,12 @@ class Http2ClientStream
 
     int http2Window; // keeps track of window for sending to http2
     int httpWindow; // keeps track of the window for sending to http (and receiving from http2)
+
+    // set to true when the first window is sent to the accept throttle
     boolean initialAcceptWindowSent = false;
+
+    // this will be set when the END_STREAM flag should be sent on this stream, but the data is buffered
+    boolean endStreamShouldBeSent = false;
 
     long contentLength;
     long totalData;

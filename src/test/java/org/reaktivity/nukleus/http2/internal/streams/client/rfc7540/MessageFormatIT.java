@@ -27,6 +27,8 @@ import org.reaktivity.reaktor.test.ReaktorRule;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 
+import org.junit.Ignore;
+
 public class MessageFormatIT
 {
     private final K3poRule k3po = new K3poRule()
@@ -88,6 +90,7 @@ public class MessageFormatIT
         k3po.finish();
     }
 
+    @Ignore("Push promise not yet implemented")
     @Test
     @Specification({
             "${route}/client/controller",

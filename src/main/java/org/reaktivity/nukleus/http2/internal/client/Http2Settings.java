@@ -35,8 +35,4 @@ public class Http2Settings
         this.maxConcurrentStreams = maxConcurrentStreams;
         this.initialWindowSize = initialWindowSize;
     }
-
-    public Http2Settings()
-    {
-    }
 }

@@ -251,7 +251,6 @@ public final class ClientStreamFactory implements StreamFactory
 
     RouteFW resolveTarget(
         long sourceRef,
-        String sourceName,
         Map<String, String> headers)
     {
         MessagePredicate filter = (t, b, o, l) ->

@@ -274,14 +274,13 @@ class Http2HeadersDecoder
             }
             // request pseudo-header fields MUST be one of :status (others ?)
             int index = decodeHpackContext.index(name);
-            switch (index)
+            if (index == 8)   // :status
             {
-                case 8:             // :method
-                    statusFound = true;
-                    break;
-                default:
-                    streamError = Http2ErrorCode.PROTOCOL_ERROR;
-                    return;
+                statusFound = true;
+            }
+            else
+            {
+                streamError = Http2ErrorCode.PROTOCOL_ERROR;
             }
         }
         else
