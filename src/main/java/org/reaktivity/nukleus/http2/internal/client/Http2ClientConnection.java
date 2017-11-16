@@ -117,7 +117,7 @@ class Http2ClientConnection
         }
 
         Map<String, String> headers = extractHttpHeaders(httpBegin);
-        RouteFW route = factory.resolveTarget(httpBegin.sourceRef(), headers);
+        RouteFW route = factory.resolveTarget(httpBegin.authorization(), httpBegin.sourceRef(), headers);
         String connectName = route.target().asString();
         long connectRef = route.targetRef();
         MessageConsumer target = factory.router.supplyTarget(connectName);

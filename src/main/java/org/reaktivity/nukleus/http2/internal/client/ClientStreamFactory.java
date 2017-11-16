@@ -148,7 +148,7 @@ public final class ClientStreamFactory implements StreamFactory
                     acceptName.equals(route.source().asString());
         };
 
-        final RouteFW route = router.resolve(0L, filter, (t, b, o, l) -> routeRO.wrap(b, o, o + l));
+        final RouteFW route = router.resolve(begin.authorization(), filter, (t, b, o, l) -> routeRO.wrap(b, o, o + l));
 
         MessageConsumer newStream = null;
 
@@ -250,6 +250,7 @@ public final class ClientStreamFactory implements StreamFactory
     }
 
     RouteFW resolveTarget(
+        long authorization,
         long sourceRef,
         Map<String, String> headers)
     {
@@ -266,7 +267,7 @@ public final class ClientStreamFactory implements StreamFactory
             return route.sourceRef() == sourceRef;
         };
 
-        return router.resolve(0L, filter,
+        return router.resolve(authorization, filter,
                     (msgTypeId, buffer, index, length) -> routeRO.wrap(buffer, index, index + length));
     }
 }
