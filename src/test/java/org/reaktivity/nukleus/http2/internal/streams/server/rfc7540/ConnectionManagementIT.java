@@ -207,6 +207,17 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/server/controller",
+            "${spec}/rst.stream.last.frame/client",
+            "${nukleus}/rst.stream.last.frame/server"
+    })
+    public void rstStreamLastFrame() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
             "${spec}/server.sent.write.abort.on.open.request/client",
             "${nukleus}/server.sent.write.abort.on.open.request/server"
     })

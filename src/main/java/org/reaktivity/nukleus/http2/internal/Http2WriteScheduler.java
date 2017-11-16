@@ -43,7 +43,7 @@ public class Http2WriteScheduler implements WriteScheduler
     private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final NukleusWriteScheduler writer;
-    private final Deque<Entry> replyQueue;
+    private final Deque<WriteScheduler.Entry> replyQueue;
 
     private boolean end;
     private boolean endSent;
@@ -301,7 +301,7 @@ public class Http2WriteScheduler implements WriteScheduler
             MutableDirectBuffer replyBuffer = stream.acquireReplyBuffer();
             if (replyBuffer == null)
             {
-                connection.doRstByUs(stream);
+                connection.doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
                 return false;
             }
 
@@ -370,7 +370,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         if (entry.type == DATA)
         {
-            Deque queue = queue(entry.stream);
+            Deque<WriteScheduler.Entry> queue = queue(entry.stream);
             if (queue != null)
             {
                 queue.add(entry);
@@ -496,7 +496,7 @@ public class Http2WriteScheduler implements WriteScheduler
         return null;
     }
 
-    private Deque queue(Http2Stream stream)
+    private Deque<WriteScheduler.Entry> queue(Http2Stream stream)
     {
         return (stream == null) ? replyQueue : stream.replyQueue;
     }
@@ -541,22 +541,31 @@ public class Http2WriteScheduler implements WriteScheduler
     private void http2(Http2Stream stream, Http2FrameType type,
                        int sizeofGuess, Flyweight.Builder.Visitor visitor, boolean flush)
     {
-        int sizeof = writer.http2Frame(sizeofGuess, visitor);
-        assert sizeof >= 9;
-
-        int length = sizeof - 9;
-        if (type == DATA)
+        if (canStreamWrite(stream, type))
         {
-            stream.http2OutWindow -= length;
-            connection.http2OutWindow -= length;
-            stream.totalOutData += length;
+            int sizeof = writer.http2Frame(sizeofGuess, visitor);
+            assert sizeof >= 9;
 
-            stream.httpOutWindow -= length;
+            int length = sizeof - 9;
+            if (type == DATA)
+            {
+                stream.http2OutWindow -= length;
+                connection.http2OutWindow -= length;
+                stream.totalOutData += length;
+
+                stream.httpOutWindow -= length;
+            }
+            if (flush)
+            {
+                writer.flush();
+            }
         }
-        if (flush)
-        {
-            writer.flush();
-        }
+    }
+
+    private static boolean canStreamWrite(Http2Stream stream, Http2FrameType type)
+    {
+        // After RST_STREAM is written, don't write any frame in the stream
+        return stream == null || type == RST_STREAM || stream.state != Http2ConnectionState.CLOSED;
     }
 
     private void http2(Http2Stream stream, Http2FrameType type,
@@ -565,7 +574,7 @@ public class Http2WriteScheduler implements WriteScheduler
         http2(stream, type, sizeofGuess, visitor, true);
     }
 
-    private class Entry
+    private class Entry implements WriteScheduler.Entry
     {
         final int streamId;
         final int length;
