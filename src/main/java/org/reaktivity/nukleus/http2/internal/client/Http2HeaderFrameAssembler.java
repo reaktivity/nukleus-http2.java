@@ -24,7 +24,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 
-class Http2FrameDecoder
+class Http2HeaderFrameAssembler
 {
     private final ClientStreamFactory factory;
 
@@ -36,7 +36,7 @@ class Http2FrameDecoder
     private int headersSlotPosition = 0;
     private int headersSlotIndex = NO_SLOT;
 
-    Http2FrameDecoder(ClientStreamFactory factory)
+    Http2HeaderFrameAssembler(ClientStreamFactory factory)
     {
         this.factory = factory;
     }
@@ -49,7 +49,7 @@ class Http2FrameDecoder
      *          In case of error connectionError and streamError are set accordingly.
      *          Result frame will be found in factory.blockRO
      */
-    boolean decodeHttp2Headers()
+    boolean assembleHttp2Headers()
     {
         if (Http2FrameType.HEADERS == factory.http2RO.type())
         {

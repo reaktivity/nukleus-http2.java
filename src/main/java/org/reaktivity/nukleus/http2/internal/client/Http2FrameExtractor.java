@@ -35,7 +35,7 @@ class Http2FrameExtractor
     }
 
     /**
-     * Assembles a complete HTTP2 frame and the flyweight. The result will be found in factory.http2RO
+     * Assembles a complete HTTP2 frame. The result will be found in factory.http2RO
      *
      * @return consumed bytes
      *         -1 if there is an error and the connection must be reset

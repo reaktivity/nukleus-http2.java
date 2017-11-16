@@ -70,7 +70,7 @@ class Http2HeadersDecoder
         factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity());
         blockRO.forEach(this::toHttpHeader);
 
-        if (error())
+        if (hasError())
         {
             return null;
         }
@@ -96,7 +96,7 @@ class Http2HeadersDecoder
         }
 
         dynamicTableSizeUpdate(hf);
-        if (error())
+        if (hasError())
         {
             return;
         }
@@ -234,7 +234,7 @@ class Http2HeadersDecoder
         }
 
         validatePseudoHeaders(name, value);
-        if (error())
+        if (hasError())
         {
             return;
         }
@@ -305,7 +305,7 @@ class Http2HeadersDecoder
         return value;
     }
 
-    void reset()
+    private void reset()
     {
         connectionError = null;
         streamError = null;
@@ -315,7 +315,7 @@ class Http2HeadersDecoder
         contentLength = -1;
     }
 
-    boolean error()
+    boolean hasError()
     {
         return streamError != null || connectionError != null;
     }

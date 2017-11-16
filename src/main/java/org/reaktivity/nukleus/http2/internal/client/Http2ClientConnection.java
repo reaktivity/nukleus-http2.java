@@ -514,7 +514,7 @@ class Http2ClientConnection
     public HttpBeginExFW decodeHttp2Headers(HpackHeaderBlockFW blockRO, int streamId)
     {
         HttpBeginExFW httpBeginEx = http2HeaderDecoder.decodeHeaders(blockRO);
-        if (http2HeaderDecoder.error())
+        if (http2HeaderDecoder.hasError())
         {
             if (http2HeaderDecoder.connectionError != null)
             {

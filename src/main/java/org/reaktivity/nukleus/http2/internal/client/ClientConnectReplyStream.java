@@ -49,7 +49,7 @@ class ClientConnectReplyStream
     private static final double INWINDOW_THRESHOLD = 0.5;
 
     private final Http2FrameExtractor frameExtractor;
-    private final Http2FrameDecoder frameDecoder;
+    private final Http2HeaderFrameAssembler frameDecoder;
 
     ClientConnectReplyStream(ClientStreamFactory factory, MessageConsumer connectReplyThrottle,
             long connectReplyId)
@@ -61,7 +61,7 @@ class ClientConnectReplyStream
         this.streamState = this::streamBeforeBegin;
         initialFrameWindow = factory.bufferPool.slotCapacity();
         frameExtractor = new Http2FrameExtractor(factory);
-        frameDecoder = new Http2FrameDecoder(factory);
+        frameDecoder = new Http2HeaderFrameAssembler(factory);
     }
 
     void handleStream(
@@ -282,7 +282,7 @@ class ClientConnectReplyStream
 
     private void handleHttp2Headers()
     {
-        if (! frameDecoder.decodeHttp2Headers())
+        if (! frameDecoder.assembleHttp2Headers())
         {
             // headers are not available
             if (frameDecoder.hasErrors())
