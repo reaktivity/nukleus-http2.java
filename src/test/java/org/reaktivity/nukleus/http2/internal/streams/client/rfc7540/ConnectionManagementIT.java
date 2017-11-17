@@ -227,4 +227,13 @@ public class ConnectionManagementIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+            "${route}/client/controller",
+            "${nukleus}/http.unknown.authority/client" })
+    public void httpUnknownAuthority() throws Exception
+    {
+        k3po.finish();
+    }
 }

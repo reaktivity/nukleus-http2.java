@@ -78,7 +78,7 @@ class ClientAcceptStream
         }
         else
         {
-            resetAcceptStream();
+            factory.doReset(acceptThrottle, acceptStreamId);
         }
     }
 
@@ -103,17 +103,11 @@ class ClientAcceptStream
             connection.resetStream(targetStreamId.http2StreamId);
             break;
         default:
-            resetAcceptStream();
+            factory.doReset(acceptThrottle, acceptStreamId);
             break;
         }
     }
     // end stream handlers
-
-    // resets the accept stream
-    void resetAcceptStream()
-    {
-        factory.doReset(acceptThrottle, acceptStreamId);
-    }
 
     private void processData(DirectBuffer buffer, int index, int length)
     {

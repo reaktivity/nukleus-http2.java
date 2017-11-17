@@ -109,15 +109,21 @@ class Http2ClientConnection
         }
     }
 
-    public void initConnection(BeginFW httpBegin)
+    // will return false if the connection could not be initialized
+    public boolean initConnection(BeginFW httpBegin)
     {
         if (prefaceSent)
         {
-            return;
+            return true;
         }
 
         Map<String, String> headers = extractHttpHeaders(httpBegin);
         RouteFW route = factory.resolveTarget(httpBegin.authorization(), httpBegin.sourceRef(), headers);
+        if (route == null)
+        {
+            return false;
+        }
+
         String connectName = route.target().asString();
         long connectRef = route.targetRef();
         MessageConsumer target = factory.router.supplyTarget(connectName);
@@ -142,6 +148,7 @@ class Http2ClientConnection
         inHttp2ConnectionWindow = Http2Settings.DEFAULT_INITIAL_WINDOW_SIZE;
         http2Writer.flush();
         prefaceSent = true;
+        return true;
     }
 
     Map<String, String> extractHttpHeaders(BeginFW begin)

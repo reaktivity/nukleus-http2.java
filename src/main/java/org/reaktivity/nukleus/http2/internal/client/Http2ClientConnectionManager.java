@@ -35,7 +35,7 @@ class Http2ClientConnectionManager
      *  and initiated (preface and settings sent to server). Headers are sent on the new stream.
      * @param httpBegin The received http begin frame
      * @param acceptThrottle The accept throttle message consumer, used for sending window frames
-     * @return an available http2 stream
+     * @return an available http2 stream or null if a new connection could not be initialized
      */
     public Http2ClientStreamId newStream(BeginFW httpBegin, MessageConsumer acceptThrottle)
     {
@@ -53,7 +53,11 @@ class Http2ClientConnectionManager
 
         // there is no stream available in existing connections, create a new connection
         Http2ClientConnection connection = new Http2ClientConnection(factory);
-        connection.initConnection(httpBegin);
+        if (! connection.initConnection(httpBegin))
+        { // if connection could not be created, reset
+            factory.doReset(acceptThrottle, httpBegin.streamId());
+            return null;
+        }
 
         http2Connections.put(connection.nukleusStreamId, connection);
         int streamId =  connection.newStreamId();
