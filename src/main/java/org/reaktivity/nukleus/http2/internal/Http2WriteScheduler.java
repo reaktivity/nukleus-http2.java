@@ -43,7 +43,7 @@ public class Http2WriteScheduler implements WriteScheduler
     private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final NukleusWriteScheduler writer;
-    private final Deque<Entry> replyQueue;
+    private final Deque<WriteScheduler.Entry> replyQueue;
 
     private boolean end;
     private boolean endSent;
@@ -370,7 +370,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         if (entry.type == DATA)
         {
-            Deque queue = queue(entry.stream);
+            Deque<WriteScheduler.Entry> queue = queue(entry.stream);
             if (queue != null)
             {
                 queue.add(entry);
@@ -496,7 +496,7 @@ public class Http2WriteScheduler implements WriteScheduler
         return null;
     }
 
-    private Deque queue(Http2Stream stream)
+    private Deque<WriteScheduler.Entry> queue(Http2Stream stream)
     {
         return (stream == null) ? replyQueue : stream.replyQueue;
     }
@@ -574,7 +574,7 @@ public class Http2WriteScheduler implements WriteScheduler
         http2(stream, type, sizeofGuess, visitor, true);
     }
 
-    private class Entry
+    private class Entry implements WriteScheduler.Entry
     {
         final int streamId;
         final int length;
