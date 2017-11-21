@@ -317,10 +317,10 @@ public class Http2WriteScheduler implements WriteScheduler
             int part2 = length - part1;
             if (part2 > 0)
             {
-                part2 = cdb.writeContiguous(replyBuffer, buffer, offset, part2);
+                part2 = cdb.writeContiguous(replyBuffer, buffer, offset + part1, part2);
                 assert part2 > 0;
                 assert part1 + part2 == length;
-                Flyweight.Builder.Visitor data2 = http2Writer.visitData(streamId, buffer, offset, part2);
+                Flyweight.Builder.Visitor data2 = http2Writer.visitData(streamId, buffer, offset + part1, part2);
                 DataEntry entry2 = new DataEntry(stream, streamId, type, part2, data2);
                 addEntry(entry2);
             }
