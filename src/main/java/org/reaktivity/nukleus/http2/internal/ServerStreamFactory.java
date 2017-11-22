@@ -388,8 +388,8 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 http2Connection.outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * credit);
             }
-            http2Connection.outWindowBudget += credit;
-            http2Connection.outWindowPadding = padding;
+            http2Connection.networkReplyWindowBudget += credit;
+            http2Connection.networkReplyWindowPadding = padding;
             http2Connection.handleWindow(window);
         }
 
