@@ -97,8 +97,8 @@ final class Http2Connection
     long authorization;
     int lastStreamId;
     long sourceRef;
-    int outWindowBudget;
-    int outWindowPadding;
+    int networkReplyWindowBudget;
+    int networkReplyWindowPadding;
     int outWindowThreshold = -1;
 
     final WriteScheduler writeScheduler;
@@ -1573,6 +1573,17 @@ final class Http2Connection
 
     void handleHttpData(DataFW dataRO, Correlation correlation)
     {
+        Http2Stream stream = http2Streams.get(correlation.http2StreamId);
+        if (stream != null)
+        {
+            stream.applicationReplyWindowBudget -= dataRO.length() + stream.applicationReplyWindowPadding;
+            if (stream.applicationReplyWindowBudget < 0)
+            {
+                doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
+                return;
+            }
+        }
+
         OctetsFW extension = dataRO.extension();
         OctetsFW payload = dataRO.payload();
 

@@ -405,7 +405,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private void flush()
     {
-        if (connection.outWindowBudget < connection.outWindowThreshold)
+        if (connection.networkReplyWindowBudget < connection.outWindowThreshold)
         {
             // Instead of sending small updates, wait until a bigger window accumulates
             return;
@@ -552,8 +552,6 @@ public class Http2WriteScheduler implements WriteScheduler
                 stream.http2OutWindow -= length;
                 connection.http2OutWindow -= length;
                 stream.totalOutData += length;
-
-                stream.httpOutWindow -= length;
             }
             if (flush)
             {
