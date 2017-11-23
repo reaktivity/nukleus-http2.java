@@ -55,7 +55,7 @@
     <nukleus.plugin.version>0.19</nukleus.plugin.version>
     <nukleus.version>0.12</nukleus.version>
 
-    <nukleus.http2.spec.version>0.31</nukleus.http2.spec.version>
+    <nukleus.http2.spec.version>0.32</nukleus.http2.spec.version>
     <reaktor.version>0.32</reaktor.version>
   </properties>
 
@@ -69,7 +69,7 @@
     <dependency>
       <groupId>org.reaktivity</groupId>
       <artifactId>nukleus-http2.spec</artifactId>
-      <version>develop-SNAPSHOT</version>
+      <version>${nukleus.http2.spec.version}</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
