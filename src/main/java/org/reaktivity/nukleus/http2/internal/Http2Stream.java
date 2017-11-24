@@ -255,8 +255,6 @@ class Http2Stream
             applicationReplyWindowPadding = Math.max(
                     applicationReplyWindowPadding,
                     connection.networkReplyWindowPadding + maxHeaderSize);
-System.out.printf("\t-> id=%d WINDOW (%d, %d) budget=%d\n",
-        applicationReplyId, applicationReplyWindowCredit, applicationReplyWindowPadding, applicationReplyWindowBudget);
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
                     (int) applicationReplyWindowCredit, applicationReplyWindowPadding);
         }

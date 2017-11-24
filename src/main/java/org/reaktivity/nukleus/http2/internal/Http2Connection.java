@@ -1594,8 +1594,6 @@ final class Http2Connection
             if (stream != null)
             {
                 stream.applicationReplyWindowBudget -= dataRO.length() + stream.applicationReplyWindowPadding;
-                System.out.printf("\t-> id=%d DATA (%d) budget=%d\n",
-                        stream.applicationReplyId, dataRO.length(), stream.applicationReplyWindowBudget);
                 if (stream.applicationReplyWindowBudget < 0)
                 {
                     doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
