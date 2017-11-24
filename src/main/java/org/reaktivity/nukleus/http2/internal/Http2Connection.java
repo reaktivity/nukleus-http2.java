@@ -1573,17 +1573,6 @@ final class Http2Connection
 
     void handleHttpData(DataFW dataRO, Correlation correlation)
     {
-        Http2Stream stream = http2Streams.get(correlation.http2StreamId);
-        if (stream != null)
-        {
-            stream.applicationReplyWindowBudget -= dataRO.length() + stream.applicationReplyWindowPadding;
-            if (stream.applicationReplyWindowBudget < 0)
-            {
-                doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
-                return;
-            }
-        }
-
         OctetsFW extension = dataRO.extension();
         OctetsFW payload = dataRO.payload();
 
@@ -1601,6 +1590,17 @@ final class Http2Connection
         }
         if (payload.sizeof() > 0)
         {
+            Http2Stream stream = http2Streams.get(correlation.http2StreamId);
+            if (stream != null)
+            {
+                stream.applicationReplyWindowBudget -= dataRO.length() + stream.applicationReplyWindowPadding;
+                if (stream.applicationReplyWindowBudget < 0)
+                {
+                    doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
+                    return;
+                }
+            }
+
             writeScheduler.data(correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
         }
 
