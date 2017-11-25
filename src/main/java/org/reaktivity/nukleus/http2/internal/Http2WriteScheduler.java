@@ -319,7 +319,12 @@ public class Http2WriteScheduler implements WriteScheduler
             {
                 part2 = cdb.writeContiguous(replyBuffer, buffer, offset + part1, part2);
                 assert part2 > 0;
-                assert part1 + part2 == length;
+                if (part1 + part2 != length)
+                {
+                    String msg = String.format("Internal Error: not enough space: length=%d part1=%d part2=%d buffered=%d",
+                            length, part1, part2, cdb.size());
+                    throw new RuntimeException(msg);
+                }
                 Flyweight.Builder.Visitor data2 = http2Writer.visitData(streamId, buffer, offset + part1, part2);
                 DataEntry entry2 = new DataEntry(stream, streamId, type, part2, data2);
                 addEntry(entry2);
