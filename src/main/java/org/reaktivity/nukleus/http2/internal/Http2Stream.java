@@ -247,7 +247,9 @@ class Http2Stream
 
     void sendHttpWindow()
     {
-        long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity());
+        // buffer may already have some data, so can only send window for remaining
+        int occupied = replyBuffer == null ? 0 : replyBuffer.size();
+        long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity() - occupied);
         long applicationReplyWindowCredit = maxWindow - applicationReplyWindowBudget;
         if (applicationReplyWindowCredit > 0)
         {
