@@ -68,6 +68,18 @@
     </dependency>
     <dependency>
       <groupId>org.reaktivity</groupId>
+      <artifactId>nukleus-tcp</artifactId>
+      <version>0.24</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.reaktivity</groupId>
+      <artifactId>nukleus-tls</artifactId>
+      <version>0.35</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.reaktivity</groupId>
       <artifactId>nukleus-http2.spec</artifactId>
       <version>${nukleus.http2.spec.version}</version>
       <scope>provided</scope>

@@ -35,8 +35,11 @@ class HttpWriteScheduler
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
-    private int targetWindow;
-    private int targetPadding;
+    private int applicationWindowBudget;
+    private int applicationWindowPadding;
+
+    private int totalRead;
+    private int totalWritten;
 
     HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
@@ -54,20 +57,21 @@ class HttpWriteScheduler
      */
     boolean onData(Http2DataFW http2DataRO)
     {
+        totalRead += http2DataRO.dataLength();
         end = http2DataRO.endStream();
 
         if (targetBuffer == null)
         {
-            int data = http2DataRO.dataLength();
-            int toHttp = Math.min(data, targetWindow - targetPadding);
-            int toSlab = data - toHttp;
-
-            // Send to http if there is available window
-            if (toHttp > 0)
+            int toSlab = http2DataRO.dataLength();
+            int toHttp = 0;
+            int part;
+            while((part = getPart(toSlab)) > 0)
             {
-                toHttp(http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
-                updateTargetWindow(toHttp);
+                toHttp(http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, part);
+                toHttp += part;
+                toSlab -= part;
             }
+
 
             // Store the remaining to a buffer
             if (toSlab > 0)
@@ -76,6 +80,12 @@ class HttpWriteScheduler
                 if (dst != null)
                 {
                     boolean written = targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
+
+if (totalRead != totalWritten + targetBuffer.size())
+{
+    System.out.printf("toalRead=%d totalWritten=%d targetBuffer=%d\n", totalRead, totalWritten, targetBuffer.size());
+}
+
                     assert written;
                     return written;
                 }
@@ -93,10 +103,18 @@ class HttpWriteScheduler
         }
         else
         {
+if (totalRead != totalWritten + targetBuffer.size() + http2DataRO.dataLength())
+{
+    System.out.printf("toalRead=%d totalWritten=%d targetBuffer=%d\n length=%d", totalRead, totalWritten, targetBuffer.size(), http2DataRO.dataLength());
+}
             // Store the data in the existing buffer
             MutableDirectBuffer buffer = acquire();
             boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
                     http2DataRO.dataLength());
+if (totalRead != totalWritten + targetBuffer.size())
+{
+    System.out.printf("toalRead=%d totalWritten=%d targetBuffer=%d length=%d\n", totalRead, totalWritten, targetBuffer.size(), http2DataRO.dataLength());
+}
             assert written;
             return written;
         }
@@ -104,34 +122,30 @@ class HttpWriteScheduler
 
     void onWindow(int credit, int padding)
     {
-        targetWindow += credit;
-        targetPadding = padding;
+        applicationWindowBudget += credit;
+        applicationWindowPadding = padding;
+System.out.printf("\t\t\t <- WINDOW(%d %d) applicationWindowBudget=%d\n", credit, padding, applicationWindowBudget);
 
         if (targetBuffer != null)
         {
-            int toHttp = Math.min(targetBuffer.size(), targetWindow - targetPadding);
-
-            // Send to http if there is available window
-            if (toHttp > 0)
+if (totalRead != totalWritten + targetBuffer.size())
+{
+    System.out.printf("toalRead=%d totalWritten=%d targetBuffer=%d\n", totalRead, totalWritten, targetBuffer.size());
+}
+            int toHttp;
+            while ((toHttp = getPart(targetBuffer.size())) > 0)
             {
+
+                // cannot read all toHttp from circular buffer in one go
                 MutableDirectBuffer buffer = acquire();
-                int offset1 = targetBuffer.readOffset();
-                int read1 = targetBuffer.read(toHttp);
-                toHttp(buffer, offset1, read1);
-
-                // toHttp may span across the boundary, one more read may be required
-                if (read1 != toHttp)
-                {
-                    int offset2 = targetBuffer.readOffset();
-                    int read2 = targetBuffer.read(toHttp-read1);
-                    assert read1 + read2 == toHttp;
-
-                    toHttp(buffer, offset2, read2);
-                }
-
-                updateTargetWindow(toHttp);
+                int offset = targetBuffer.readOffset();
+                int part = targetBuffer.read(toHttp);
+                toHttp(buffer, offset, part);
             }
-
+if (totalRead != totalWritten + targetBuffer.size())
+{
+    System.out.printf("toalRead=%d totalWritten=%d targetBuffer=%d\n", totalRead, totalWritten, targetBuffer.size());
+}
             if (targetBuffer.size() == 0)
             {
                 // since there is no data is pending in slab, we can send END frame right away
@@ -144,17 +158,25 @@ class HttpWriteScheduler
                 release();
             }
         }
+
+        sendHttp2Window();
+    }
+
+    private int getPart(int remaining)
+    {
+        int toHttp = Math.min(remaining, applicationWindowBudget - applicationWindowPadding);
+        return Math.min(toHttp, 65535);
     }
 
     private void toHttp(DirectBuffer buffer, int offset, int length)
     {
-        while (length > 0)
-        {
-            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            target.doHttpData(applicationTarget, targetId, buffer, offset, chunk);
-            offset += chunk;
-            length -= chunk;
-        }
+        assert length <= 65535;
+
+        applicationWindowBudget -= length + applicationWindowPadding;
+System.out.printf("\t\t\t -> DATA(%d) applicationWindowBudget=%d\n", length, applicationWindowBudget);
+        target.doHttpData(applicationTarget, targetId, buffer, offset, length);
+        totalWritten += length;
+        //System.out.printf("toalRead=%d totalWritten=%d\n", totalRead, totalWritten);
     }
 
     void onReset()
@@ -196,9 +218,23 @@ class HttpWriteScheduler
         }
     }
 
-    private void updateTargetWindow(int update)
+    void sendHttp2Window()
     {
-        targetWindow -= update;
+        // buffer may already have some data, so can only send window for remaining
+        int occupied = targetBuffer == null ? 0 : targetBuffer.size();
+        long maxWindow = Math.min(stream.http2InWindow, httpWriterPool.slotCapacity() - occupied);
+        long applicationWindowCredit = applicationWindowBudget - maxWindow;
+        if (applicationWindowCredit > 0)
+        {
+            stream.http2InWindow += applicationWindowCredit;
+            stream.connection.http2InWindow += applicationWindowCredit;
+
+            // HTTP2 connection-level flow-control
+            stream.connection.writeScheduler.windowUpdate(0, (int) applicationWindowCredit);
+System.out.printf("WINDOW_UPDATE(%d) http2InWindow=%d\n", applicationWindowCredit, stream.http2InWindow);
+            // HTTP2 stream-level flow-control
+            stream.connection.writeScheduler.windowUpdate(stream.http2StreamId, (int) applicationWindowCredit);
+        }
     }
 
 }
