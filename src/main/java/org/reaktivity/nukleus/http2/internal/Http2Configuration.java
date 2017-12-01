@@ -19,26 +19,17 @@ import org.reaktivity.nukleus.Configuration;
 
 class Http2Configuration extends Configuration
 {
-
-    private static final String HTTP2_WINDOW_BYTES = "nukleus.http2.window.bytes";
-    private static final String HTTP_WINDOW_BYTES = "nukleus.http2.window.bytes";
-
-    private static final int HTTP2_WINDOW_BYTES_DEFAULT = 65535;
-    private static final int HTTP_WINDOW_BYTES_DEFAULT = 65535;
+    private static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
+    private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = 100;
 
     Http2Configuration(Configuration config)
     {
         super(config);
     }
 
-    int http2Window()
+    int serverConcurrentStreams()
     {
-        return getInteger(HTTP2_WINDOW_BYTES, HTTP2_WINDOW_BYTES_DEFAULT);
-    }
-
-    int httpWindow()
-    {
-        return getInteger(HTTP_WINDOW_BYTES, HTTP_WINDOW_BYTES_DEFAULT);
+        return getInteger(HTTP2_SERVER_CONCURRENT_STREAMS, HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT);
     }
 
 }
