@@ -15,7 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
 
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
