@@ -193,7 +193,7 @@ final class Http2Connection
         this.sourceRef = beginRO.sourceRef();
         this.sourceName = beginRO.source().asString();
         this.decoderState = this::decodePreface;
-        initialSettings = new Settings(100, 0);
+        initialSettings = new Settings(factory.config.serverConcurrentStreams(), 0);
         writeScheduler.settings(initialSettings.maxConcurrentStreams, initialSettings.initialWindowSize);
     }
 
