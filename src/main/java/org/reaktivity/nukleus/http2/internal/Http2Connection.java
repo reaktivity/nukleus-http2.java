@@ -65,6 +65,7 @@ import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.DEFAULT_ACCESS_CONTROL_ALLOW_ORIGIN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.PROXY_CONNECTION;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
@@ -1419,8 +1420,9 @@ final class Http2Connection
     {
         encodeHeadersContext.reset();
 
-        httpHeaders.forEach(this::status)               // notes if there is :status
-                   .forEach(this::connectionHeaders);   // collects all connection headers
+        httpHeaders.forEach(this::status)                       // checks if there is :status
+                   .forEach(this::accessControlAllowOrigin)     // checks if there is access-control-allow-origin
+                   .forEach(this::connectionHeaders);           // collects all connection headers
         if (!encodeHeadersContext.status)
         {
             builder.header(b -> b.indexed(8));          // no mandatory :status header, add :status: 200
@@ -1433,9 +1435,14 @@ final class Http2Connection
                 builder.header(b -> mapHeader(h, b));
             }
         });
+
+        if (factory.config.accessControlAllowOrigin() && !encodeHeadersContext.accessControlAllowOrigin)
+        {
+            builder.header(b -> b.literal(l -> l.type(WITHOUT_INDEXING).name(20).value(DEFAULT_ACCESS_CONTROL_ALLOW_ORIGIN)));
+        }
     }
 
-    void status(HttpHeaderFW httpHeader)
+    private void status(HttpHeaderFW httpHeader)
     {
         if (!encodeHeadersContext.status)
         {
@@ -1451,7 +1458,24 @@ final class Http2Connection
         }
     }
 
-    void connectionHeaders(HttpHeaderFW httpHeader)
+    // Checks if response has access-control-allow-origin header
+    private void accessControlAllowOrigin(HttpHeaderFW httpHeader)
+    {
+        if (factory.config.accessControlAllowOrigin() && !encodeHeadersContext.accessControlAllowOrigin)
+        {
+            StringFW name = httpHeader.name();
+            String16FW value = httpHeader.value();
+            factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+            factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
+
+            if (factory.nameRO.equals(encodeContext.nameBuffer(20)))
+            {
+                encodeHeadersContext.accessControlAllowOrigin = true;
+            }
+        }
+    }
+
+    private void connectionHeaders(HttpHeaderFW httpHeader)
     {
         StringFW name = httpHeader.name();
         String16FW value = httpHeader.value();
@@ -1467,7 +1491,7 @@ final class Http2Connection
         }
     }
 
-    boolean validHeader(HttpHeaderFW httpHeader)
+    private boolean validHeader(HttpHeaderFW httpHeader)
     {
         StringFW name = httpHeader.name();
         String16FW value = httpHeader.value();
@@ -1677,11 +1701,13 @@ final class Http2Connection
     private static final class EncodeHeadersContext
     {
         boolean status;
+        boolean accessControlAllowOrigin;
         final List<String> connectionHeaders = new ArrayList<>();
 
         void reset()
         {
             status = false;
+            accessControlAllowOrigin = false;
             connectionHeaders.clear();
         }
 

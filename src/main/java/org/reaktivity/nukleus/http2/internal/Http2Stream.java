@@ -188,18 +188,6 @@ class Http2Stream
                     int padding = factory.windowRO.padding();
 
                     httpWriteScheduler.onWindow(credit, padding);
-
-                    if (credit > 0)
-                    {
-                        // HTTP2 connection-level flow-control
-                        connection.writeScheduler.windowUpdate(0, credit);
-
-                        // HTTP2 stream-level flow-control
-                        connection.writeScheduler.windowUpdate(http2StreamId, credit);
-                    }
-
-                    http2InWindow += credit;
-                    connection.http2InWindow += credit;
                 }
                 break;
             case ResetFW.TYPE_ID:
