@@ -254,6 +254,11 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
             return this;
         }
 
+        public HpackLiteralHeaderFieldFW.Builder value(DirectBuffer valueBuffer)
+        {
+            return value(valueBuffer, 0, valueBuffer.capacity());
+        }
+
         public HpackLiteralHeaderFieldFW.Builder value(DirectBuffer valueBuffer, int offset, int length)
         {
             valueRW.string(valueBuffer, offset, length);
