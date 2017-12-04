@@ -35,8 +35,11 @@ class HttpWriteScheduler
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
-    private int targetWindow;
-    private int targetPadding;
+    private int applicationWindowBudget;
+    private int applicationWindowPadding;
+
+    private int totalRead;
+    private int totalWritten;
 
     HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
@@ -54,19 +57,19 @@ class HttpWriteScheduler
      */
     boolean onData(Http2DataFW http2DataRO)
     {
+        totalRead += http2DataRO.dataLength();
         end = http2DataRO.endStream();
 
         if (targetBuffer == null)
         {
-            int data = http2DataRO.dataLength();
-            int toHttp = Math.min(data, targetWindow - targetPadding);
-            int toSlab = data - toHttp;
-
-            // Send to http if there is available window
-            if (toHttp > 0)
+            int toSlab = http2DataRO.dataLength();
+            int toHttp = 0;
+            int part;
+            while((part = getPart(toSlab)) > 0)
             {
-                toHttp(http2DataRO.buffer(), http2DataRO.dataOffset(), toHttp);
-                updateTargetWindow(toHttp);
+                toHttp(http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, part);
+                toHttp += part;
+                toSlab -= part;
             }
 
             // Store the remaining to a buffer
@@ -77,6 +80,8 @@ class HttpWriteScheduler
                 {
                     boolean written = targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
                     assert written;
+                    assert totalRead == totalWritten + targetBuffer.size();
+
                     return written;
                 }
                 return false;                           // No slots
@@ -98,39 +103,29 @@ class HttpWriteScheduler
             boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
                     http2DataRO.dataLength());
             assert written;
+            assert totalRead == totalWritten + targetBuffer.size();
+
             return written;
         }
     }
 
     void onWindow(int credit, int padding)
     {
-        targetWindow += credit;
-        targetPadding = padding;
+        applicationWindowBudget += credit;
+        applicationWindowPadding = padding;
 
         if (targetBuffer != null)
         {
-            int toHttp = Math.min(targetBuffer.size(), targetWindow - targetPadding);
-
-            // Send to http if there is available window
-            if (toHttp > 0)
+            int toHttp;
+            while ((toHttp = getPart(targetBuffer.size())) > 0)
             {
+                // cannot read all toHttp from circular buffer in one go
                 MutableDirectBuffer buffer = acquire();
-                int offset1 = targetBuffer.readOffset();
-                int read1 = targetBuffer.read(toHttp);
-                toHttp(buffer, offset1, read1);
-
-                // toHttp may span across the boundary, one more read may be required
-                if (read1 != toHttp)
-                {
-                    int offset2 = targetBuffer.readOffset();
-                    int read2 = targetBuffer.read(toHttp-read1);
-                    assert read1 + read2 == toHttp;
-
-                    toHttp(buffer, offset2, read2);
-                }
-
-                updateTargetWindow(toHttp);
+                int offset = targetBuffer.readOffset();
+                int part = targetBuffer.read(toHttp);
+                toHttp(buffer, offset, part);
             }
+            assert totalRead == totalWritten + targetBuffer.size();
 
             if (targetBuffer.size() == 0)
             {
@@ -144,17 +139,23 @@ class HttpWriteScheduler
                 release();
             }
         }
+
+        sendHttp2Window();
+    }
+
+    private int getPart(int remaining)
+    {
+        int toHttp = Math.min(remaining, applicationWindowBudget - applicationWindowPadding);
+        return Math.min(toHttp, 65535);
     }
 
     private void toHttp(DirectBuffer buffer, int offset, int length)
     {
-        while (length > 0)
-        {
-            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            target.doHttpData(applicationTarget, targetId, buffer, offset, chunk);
-            offset += chunk;
-            length -= chunk;
-        }
+        assert length <= 65535;
+
+        applicationWindowBudget -= length + applicationWindowPadding;
+        target.doHttpData(applicationTarget, targetId, buffer, offset, length);
+        totalWritten += length;
     }
 
     void onReset()
@@ -196,9 +197,24 @@ class HttpWriteScheduler
         }
     }
 
-    private void updateTargetWindow(int update)
+    private void sendHttp2Window()
     {
-        targetWindow -= update;
+        // buffer may already have some data, so can only send window for remaining
+        int buffered = targetBuffer == null ? 0 : targetBuffer.size();
+        long applicationWindowCredit = Math.min(
+                applicationWindowBudget - Math.max(stream.http2InWindow, 0),    // http2InWindow can be -ve
+                httpWriterPool.slotCapacity() - buffered);
+        if (applicationWindowCredit > 0)
+        {
+            stream.http2InWindow += applicationWindowCredit;
+            stream.connection.http2InWindow += applicationWindowCredit;
+
+            // HTTP2 connection-level flow-control
+            stream.connection.writeScheduler.windowUpdate(0, (int) applicationWindowCredit);
+
+            // HTTP2 stream-level flow-control
+            stream.connection.writeScheduler.windowUpdate(stream.http2StreamId, (int) applicationWindowCredit);
+        }
     }
 
 }
