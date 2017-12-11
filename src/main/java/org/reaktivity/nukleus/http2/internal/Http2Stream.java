@@ -246,7 +246,7 @@ class Http2Stream
                     applicationReplyWindowPadding,
                     connection.networkReplyWindowPadding + maxHeaderSize);
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) applicationReplyWindowCredit, applicationReplyWindowPadding);
+                    (int) applicationReplyWindowCredit, applicationReplyWindowPadding, 0);
         }
     }
 }

@@ -305,7 +305,7 @@ public final class ServerStreamFactory implements StreamFactory
             networkReplyId = supplyStreamId.getAsLong();
 
             initialWindow = bufferPool.slotCapacity();
-            doWindow(networkThrottle, networkId, initialWindow, 0);
+            doWindow(networkThrottle, networkId, initialWindow, 0, 0);
             window = initialWindow;
 
             doBegin(networkReply, networkReplyId, 0L, networkCorrelationId);
@@ -332,7 +332,7 @@ public final class ServerStreamFactory implements StreamFactory
                 {
                     int windowPending = initialWindow - window;
                     window = initialWindow;
-                    doWindow(networkThrottle, networkId, windowPending, 0);
+                    doWindow(networkThrottle, networkId, windowPending, 0, 0);
                 }
 
                 http2Connection.handleData(data);
@@ -547,12 +547,14 @@ public final class ServerStreamFactory implements StreamFactory
             final MessageConsumer throttle,
             final long throttleId,
             final int credit,
-            final int padding)
+            final int padding,
+            final int groupId)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                         .streamId(throttleId)
                                         .credit(credit)
                                         .padding(padding)
+                                        .groupId(groupId)
                                         .build();
 
         throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
