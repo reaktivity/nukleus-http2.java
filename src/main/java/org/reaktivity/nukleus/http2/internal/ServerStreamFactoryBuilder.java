@@ -33,6 +33,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;
     private LongSupplier supplyStreamId;
+    private LongSupplier supplyGroupId;
     private LongSupplier supplyCorrelationId;
     private Supplier<BufferPool> supplyBufferPool;
 
@@ -64,6 +65,14 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
         LongSupplier supplyStreamId)
     {
         this.supplyStreamId = supplyStreamId;
+        return this;
+    }
+
+    @Override
+    public StreamFactoryBuilder setGroupIdSupplier(
+            LongSupplier supplyGroupId)
+    {
+        this.supplyGroupId = supplyGroupId;
         return this;
     }
 

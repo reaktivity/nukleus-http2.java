@@ -53,7 +53,7 @@
     <k3po.nukleus.ext.version>develop-SNAPSHOT</k3po.nukleus.ext.version>
 
     <nukleus.plugin.version>0.19</nukleus.plugin.version>
-    <nukleus.version>0.12</nukleus.version>
+    <nukleus.version>develop-SNAPSHOT</nukleus.version>
 
     <nukleus.http2.spec.version>develop-SNAPSHOT</nukleus.http2.spec.version>
     <reaktor.version>0.32</reaktor.version>
