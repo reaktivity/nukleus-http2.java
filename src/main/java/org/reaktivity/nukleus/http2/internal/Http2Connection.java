@@ -109,6 +109,7 @@ final class Http2Connection
     private final HpackContext encodeContext;
     private final MessageFunction<RouteFW> wrapRoute;
 
+    final long networkReplyGroupId;
 
     final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
@@ -154,6 +155,7 @@ final class Http2Connection
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
         this.networkConsumer = networkConsumer;
+        this.networkReplyGroupId = factory.supplyGroupId.getAsLong();
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                 ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)

@@ -15,6 +15,8 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import java.util.function.IntUnaryOperator;
+import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
 
@@ -36,6 +38,8 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private LongSupplier supplyGroupId;
     private LongSupplier supplyCorrelationId;
     private Supplier<BufferPool> supplyBufferPool;
+    private LongFunction<IntUnaryOperator> groupBudgetClaimer;
+    private LongFunction<IntUnaryOperator> groupBudgetReleaser;
 
     ServerStreamFactoryBuilder(
         Http2Configuration config)
@@ -77,6 +81,20 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
+    public StreamFactoryBuilder setGroupBudgetClaimer(LongFunction<IntUnaryOperator> groupBudgetClaimer)
+    {
+        this.groupBudgetClaimer = groupBudgetClaimer;
+        return this;
+    }
+
+    @Override
+    public StreamFactoryBuilder setGroupBudgetReleaser(LongFunction<IntUnaryOperator> groupBudgetReleaser)
+    {
+        this.groupBudgetReleaser = groupBudgetReleaser;
+        return this;
+    }
+
+    @Override
     public ServerStreamFactoryBuilder setCorrelationIdSupplier(
         LongSupplier supplyCorrelationId)
     {
@@ -97,7 +115,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     {
         final BufferPool bufferPool = supplyBufferPool.get();
 
-        return new ServerStreamFactory(config, router, writeBuffer, bufferPool, supplyStreamId,
-                supplyCorrelationId, correlations);
+        return new ServerStreamFactory(config, router, writeBuffer, bufferPool, supplyStreamId, supplyCorrelationId,
+                correlations, supplyGroupId, groupBudgetClaimer, groupBudgetReleaser);
     }
 }

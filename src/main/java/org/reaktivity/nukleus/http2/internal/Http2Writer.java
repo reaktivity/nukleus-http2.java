@@ -74,7 +74,7 @@ class Http2Writer
         DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
                             .streamId(targetId)
                             .groupId(0)
-                            .claimed(0)
+                            .padding(0)
                             .payload(p -> p.set((b, o, l) -> length))
                             .build();
 

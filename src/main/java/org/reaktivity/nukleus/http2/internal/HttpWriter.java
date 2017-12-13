@@ -100,7 +100,7 @@ class HttpWriter
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .groupId(0)
-                            .claimed(0)
+                            .padding(0)
                             .payload(p -> p.set(payload, offset, length))
                             .build();
 

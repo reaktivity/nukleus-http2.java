@@ -37,6 +37,7 @@ class HttpWriteScheduler
     private boolean endSent;
     private int applicationWindowBudget;
     private int applicationWindowPadding;
+    private long applicationGroupId;
 
     private int totalRead;
     private int totalWritten;
@@ -109,10 +110,11 @@ class HttpWriteScheduler
         }
     }
 
-    void onWindow(int credit, int padding)
+    void onWindow(int credit, int padding, long groupId)
     {
         applicationWindowBudget += credit;
         applicationWindowPadding = padding;
+        applicationGroupId = groupId;
 
         if (targetBuffer != null)
         {
@@ -147,6 +149,15 @@ class HttpWriteScheduler
     {
         int toHttp = Math.min(remaining, applicationWindowBudget - applicationWindowPadding);
         return Math.min(toHttp, 65535);
+//        int claimed = stream.connection.factory.groupBudgetClaimer.apply(applicationGroupId)
+//                                                                  .applyAsInt(toHttp + applicationWindowPadding);
+//        toHttp = claimed - applicationWindowPadding;
+//        if (toHttp <= 0)
+//        {
+//            stream.connection.factory.groupBudgetReleaser.apply(applicationGroupId)
+//                                                         .applyAsInt(toHttp);
+//        }
+//        return toHttp;
     }
 
     private void toHttp(DirectBuffer buffer, int offset, int length)
