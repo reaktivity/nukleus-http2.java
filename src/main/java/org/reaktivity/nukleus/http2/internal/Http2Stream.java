@@ -186,8 +186,9 @@ class Http2Stream
                     factory.windowRO.wrap(buffer, index, index + length);
                     int credit = factory.windowRO.credit();
                     int padding = factory.windowRO.padding();
+                    long groupId = factory.windowRO.groupId();
 
-                    httpWriteScheduler.onWindow(credit, padding);
+                    httpWriteScheduler.onWindow(credit, padding, groupId);
                 }
                 break;
             case ResetFW.TYPE_ID:
@@ -246,7 +247,7 @@ class Http2Stream
                     applicationReplyWindowPadding,
                     connection.networkReplyWindowPadding + maxHeaderSize);
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) applicationReplyWindowCredit, applicationReplyWindowPadding);
+                    (int) applicationReplyWindowCredit, applicationReplyWindowPadding, connection.networkReplyGroupId);
         }
     }
 }
