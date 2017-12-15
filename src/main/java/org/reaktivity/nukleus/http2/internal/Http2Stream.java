@@ -38,7 +38,6 @@ class Http2Stream
     Http2Connection.State state;
     long http2OutWindow;
     long applicationReplyWindowBudget;
-    int applicationReplyWindowPadding;
     long http2InWindow;
 
     long contentLength;
@@ -243,9 +242,7 @@ class Http2Stream
         if (applicationReplyWindowCredit > 0)
         {
             applicationReplyWindowBudget += applicationReplyWindowCredit;
-            applicationReplyWindowPadding = Math.max(
-                    applicationReplyWindowPadding,
-                    connection.networkReplyWindowPadding + maxHeaderSize);
+            int applicationReplyWindowPadding = connection.networkReplyWindowPadding + maxHeaderSize;
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
                     (int) applicationReplyWindowCredit, applicationReplyWindowPadding, connection.networkReplyGroupId);
         }

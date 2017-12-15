@@ -165,7 +165,7 @@ class HttpWriteScheduler
         assert length <= 65535;
 
         applicationWindowBudget -= length + applicationWindowPadding;
-        target.doHttpData(applicationTarget, targetId, buffer, offset, length);
+        target.doHttpData(applicationTarget, targetId, applicationWindowPadding, buffer, offset, length);
         totalWritten += length;
     }
 

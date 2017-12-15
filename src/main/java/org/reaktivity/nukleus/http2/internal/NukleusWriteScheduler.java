@@ -103,7 +103,7 @@ class NukleusWriteScheduler
         while (length > 0)
         {
             int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            http2Writer.doData(networkConsumer, targetId, buffer, offset, chunk);
+            http2Writer.doData(networkConsumer, targetId, connection.networkReplyWindowPadding, buffer, offset, chunk);
             offset += chunk;
             length -= chunk;
         }

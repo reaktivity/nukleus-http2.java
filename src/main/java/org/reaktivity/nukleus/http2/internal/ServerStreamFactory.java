@@ -331,7 +331,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleData(
                 DataFW data)
         {
-            window -= dataRO.length();
+            window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
                 doReset(networkThrottle, networkId);

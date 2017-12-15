@@ -91,6 +91,7 @@ class HttpWriter
     void doHttpData(
             MessageConsumer target,
             long targetId,
+            int padding,
             DirectBuffer payload,
             int offset,
             int length)
@@ -100,7 +101,7 @@ class HttpWriter
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
                             .groupId(0)
-                            .padding(0)
+                            .padding(padding)
                             .payload(p -> p.set(payload, offset, length))
                             .build();
 

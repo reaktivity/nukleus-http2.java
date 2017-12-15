@@ -1619,7 +1619,7 @@ final class Http2Connection
             Http2Stream stream = http2Streams.get(correlation.http2StreamId);
             if (stream != null)
             {
-                stream.applicationReplyWindowBudget -= dataRO.length() + stream.applicationReplyWindowPadding;
+                stream.applicationReplyWindowBudget -= dataRO.length() + dataRO.padding();
                 if (stream.applicationReplyWindowBudget < 0)
                 {
                     doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
