@@ -13,7 +13,7 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
+package org.reaktivity.nukleus.http2.internal.streams.client.rfc7540;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -49,9 +49,9 @@ public class FlowControlIT
 
     @Test
     @Specification({
-            "${route}/server/controller",
-            "${spec}/stream.flow.server/client",
-            "${nukleus}/stream.flow.server/server" })
+            "${route}/client/controller",
+            "${nukleus}/stream.flow.client/client",
+            "${spec}/stream.flow.client/server" })
     public void streamFlow() throws Exception
     {
         k3po.finish();

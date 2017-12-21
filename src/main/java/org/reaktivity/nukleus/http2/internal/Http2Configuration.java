@@ -17,7 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.reaktivity.nukleus.Configuration;
 
-class Http2Configuration extends Configuration
+public class Http2Configuration extends Configuration
 {
     private static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
     private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = 100;

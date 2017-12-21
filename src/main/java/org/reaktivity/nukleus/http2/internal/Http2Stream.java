@@ -35,7 +35,7 @@ class Http2Stream
     final int maxHeaderSize;
     final long targetId;
     final long correlationId;
-    Http2Connection.State state;
+    Http2ConnectionState state;
     long http2OutWindow;
     long applicationReplyWindowBudget;
     int applicationReplyWindowPadding;
@@ -55,7 +55,7 @@ class Http2Stream
     MessageConsumer applicationReplyThrottle;
     long applicationReplyId;
 
-    Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
+    Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2ConnectionState state,
                 MessageConsumer applicationTarget, HttpWriter httpWriter)
     {
         this.factory = factory;
@@ -93,7 +93,7 @@ class Http2Stream
     void onHttpAbort()
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2ConnectionState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort();
         }
@@ -125,7 +125,7 @@ class Http2Stream
     void onAbort()
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2ConnectionState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort();
         }
@@ -142,7 +142,7 @@ class Http2Stream
     void onReset()
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2ConnectionState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort();
         }
@@ -159,7 +159,7 @@ class Http2Stream
     void onEnd()
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2ConnectionState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort();
         }
