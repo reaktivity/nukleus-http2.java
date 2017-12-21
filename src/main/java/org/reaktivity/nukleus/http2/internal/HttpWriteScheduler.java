@@ -35,8 +35,8 @@ class HttpWriteScheduler
     private CircularDirectBuffer targetBuffer;
     private boolean end;
     private boolean endSent;
-    private int applicationWindowBudget;
-    private int applicationWindowPadding;
+    private int applicationBudget;
+    private int applicationPadding;
     private long applicationGroupId;
 
     private int totalRead;
@@ -112,8 +112,8 @@ class HttpWriteScheduler
 
     void onWindow(int credit, int padding, long groupId)
     {
-        applicationWindowBudget += credit;
-        applicationWindowPadding = padding;
+        applicationBudget += credit;
+        applicationPadding = padding;
         applicationGroupId = groupId;
 
         if (targetBuffer != null)
@@ -147,7 +147,7 @@ class HttpWriteScheduler
 
     private int getPart(int remaining)
     {
-        int toHttp = Math.min(remaining, applicationWindowBudget - applicationWindowPadding);
+        int toHttp = Math.min(remaining, applicationBudget - applicationPadding);
         return Math.min(toHttp, 65535);
 //        int claimed = stream.connection.factory.groupBudgetClaimer.apply(applicationGroupId)
 //                                                                  .applyAsInt(toHttp + applicationWindowPadding);
@@ -164,8 +164,8 @@ class HttpWriteScheduler
     {
         assert length <= 65535;
 
-        applicationWindowBudget -= length + applicationWindowPadding;
-        target.doHttpData(applicationTarget, targetId, applicationWindowPadding, buffer, offset, length);
+        applicationBudget -= length + applicationPadding;
+        target.doHttpData(applicationTarget, targetId, applicationPadding, buffer, offset, length);
         totalWritten += length;
     }
 
@@ -212,19 +212,19 @@ class HttpWriteScheduler
     {
         // buffer may already have some data, so can only send window for remaining
         int buffered = targetBuffer == null ? 0 : targetBuffer.size();
-        long applicationWindowCredit = Math.min(
-                applicationWindowBudget - Math.max(stream.http2InWindow, 0),    // http2InWindow can be -ve
+        long applicationCredit = Math.min(
+                applicationBudget - Math.max(stream.http2InWindow, 0),    // http2InWindow can be -ve
                 httpWriterPool.slotCapacity() - buffered);
-        if (applicationWindowCredit > 0)
+        if (applicationCredit > 0)
         {
-            stream.http2InWindow += applicationWindowCredit;
-            stream.connection.http2InWindow += applicationWindowCredit;
+            stream.http2InWindow += applicationCredit;
+            stream.connection.http2InWindow += applicationCredit;
 
             // HTTP2 connection-level flow-control
-            stream.connection.writeScheduler.windowUpdate(0, (int) applicationWindowCredit);
+            stream.connection.writeScheduler.windowUpdate(0, (int) applicationCredit);
 
             // HTTP2 stream-level flow-control
-            stream.connection.writeScheduler.windowUpdate(stream.http2StreamId, (int) applicationWindowCredit);
+            stream.connection.writeScheduler.windowUpdate(stream.http2StreamId, (int) applicationCredit);
         }
     }
 

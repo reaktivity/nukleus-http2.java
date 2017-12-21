@@ -63,10 +63,10 @@ class NukleusWriteScheduler
         if (accumulatedLength > 0)
         {
             toNetwork(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
-            int adjustment = nukleusWindowBudgetAdjustment(accumulatedLength);
+            int adjustment = nukleusBudgetAdjustment(accumulatedLength);
 
-            connection.networkReplyWindowBudget -= accumulatedLength + adjustment;
-            assert connection.networkReplyWindowBudget >= 0;
+            connection.networkReplyBudget -= accumulatedLength + adjustment;
+            assert connection.networkReplyBudget >= 0;
 
             accumulatedLength = 0;
         }
@@ -77,25 +77,25 @@ class NukleusWriteScheduler
     boolean fits(int sizeof)
     {
         int candidateSizeof = accumulatedLength + sizeof;
-        int adjustment = nukleusWindowBudgetAdjustment(candidateSizeof);
+        int adjustment = nukleusBudgetAdjustment(candidateSizeof);
 
-        return candidateSizeof + adjustment <= connection.networkReplyWindowBudget;
+        return candidateSizeof + adjustment <= connection.networkReplyBudget;
     }
 
     int remaining()
     {
-        int adjustment = nukleusWindowBudgetAdjustment(accumulatedLength);
-        int sizeof = connection.networkReplyWindowBudget - (accumulatedLength + adjustment);
-        int remaining = fits(sizeof) ? sizeof : sizeof - connection.networkReplyWindowPadding;
+        int adjustment = nukleusBudgetAdjustment(accumulatedLength);
+        int sizeof = connection.networkReplyBudget - (accumulatedLength + adjustment);
+        int remaining = fits(sizeof) ? sizeof : sizeof - connection.networkReplyPadding;
         return Math.max(remaining, 0);
     }
 
-    int nukleusWindowBudgetAdjustment(int sizeof)
+    int nukleusBudgetAdjustment(int sizeof)
     {
         int nukleusFrameCount = (int) Math.ceil((double)sizeof/65535);
 
         // Every nukleus DATA frame incurs padding overhead
-        return nukleusFrameCount * connection.networkReplyWindowPadding;
+        return nukleusFrameCount * connection.networkReplyPadding;
     }
 
     private void toNetwork(MutableDirectBuffer buffer, int offset, int length)
@@ -103,7 +103,7 @@ class NukleusWriteScheduler
         while (length > 0)
         {
             int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            http2Writer.doData(networkConsumer, targetId, connection.networkReplyWindowPadding, buffer, offset, chunk);
+            http2Writer.doData(networkConsumer, targetId, connection.networkReplyPadding, buffer, offset, chunk);
             offset += chunk;
             length -= chunk;
         }

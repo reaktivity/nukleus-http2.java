@@ -98,8 +98,8 @@ final class Http2Connection
     long authorization;
     int lastStreamId;
     long sourceRef;
-    int networkReplyWindowBudget;
-    int networkReplyWindowPadding;
+    int networkReplyBudget;
+    int networkReplyPadding;
     int outWindowThreshold = -1;
 
     final WriteScheduler writeScheduler;
@@ -1619,8 +1619,8 @@ final class Http2Connection
             Http2Stream stream = http2Streams.get(correlation.http2StreamId);
             if (stream != null)
             {
-                stream.applicationReplyWindowBudget -= dataRO.length() + dataRO.padding();
-                if (stream.applicationReplyWindowBudget < 0)
+                stream.applicationReplyBudget -= dataRO.length() + dataRO.padding();
+                if (stream.applicationReplyBudget < 0)
                 {
                     doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
                     return;
