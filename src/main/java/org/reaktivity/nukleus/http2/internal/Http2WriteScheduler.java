@@ -70,7 +70,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Http2Stream stream = stream(streamId);
         Flyweight.Builder.Visitor visitor = http2Writer.visitWindowUpdate(streamId, update);
 
-        if (!buffered() && hasNukleusWindowBudget(length))
+        if (!buffered() && hasNukleusBudget(length))
         {
             http2(stream, type, sizeof, visitor);
         }
@@ -91,7 +91,7 @@ public class Http2WriteScheduler implements WriteScheduler
         int sizeof = 9 + length;             // +9 for HTTP2 framing, +8 for a ping
         Http2FrameType type = PING;
 
-        if (!buffered() && hasNukleusWindowBudget(length))
+        if (!buffered() && hasNukleusBudget(length))
         {
             Flyweight.Builder.Visitor visitor = http2Writer.visitPingAck(buffer, offset, length);
             http2(null, type, sizeof, visitor);
@@ -117,7 +117,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Flyweight.Builder.Visitor goaway = http2Writer.visitGoaway(lastStreamId, errorCode);
         Http2FrameType type = GO_AWAY;
 
-        if (!buffered() && hasNukleusWindowBudget(length))
+        if (!buffered() && hasNukleusBudget(length))
         {
             http2(null, type, sizeof, goaway);
         }
@@ -139,7 +139,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Http2Stream stream = stream(streamId);
         Http2FrameType type = RST_STREAM;
 
-        if (!buffered() && hasNukleusWindowBudget(length))
+        if (!buffered() && hasNukleusBudget(length))
         {
             http2(stream, type, sizeof, visitor);
         }
@@ -161,7 +161,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Flyweight.Builder.Visitor settings = http2Writer.visitSettings(maxConcurrentStreams, initialWindowSize);
         Http2FrameType type = SETTINGS;
 
-        if (!buffered() && hasNukleusWindowBudget(length))
+        if (!buffered() && hasNukleusBudget(length))
         {
             http2(null, type, sizeof, settings);
         }
@@ -183,7 +183,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Flyweight.Builder.Visitor visitor = http2Writer.visitSettingsAck();
         Http2FrameType type = SETTINGS;
 
-        if (!buffered() && hasNukleusWindowBudget(length))
+        if (!buffered() && hasNukleusBudget(length))
         {
             http2(null, type, sizeof, visitor);
         }
@@ -205,7 +205,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Http2FrameType type = HEADERS;
         Http2Stream stream = stream(streamId);
 
-        if (buffered() || !hasNukleusWindowBudget(length))
+        if (buffered() || !hasNukleusBudget(length))
         {
             copy = new UnsafeBuffer(new byte[8192]);
             connection.factory.blockRW.wrap(copy, 0, copy.capacity());
@@ -215,7 +215,7 @@ public class Http2WriteScheduler implements WriteScheduler
             sizeof = 9 + length;
         }
 
-        if (buffered() || !hasNukleusWindowBudget(length))
+        if (buffered() || !hasNukleusBudget(length))
         {
             Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, flags, copy, 0, length);
             Entry entry = new Entry(stream, streamId, length, type, visitor);
@@ -239,7 +239,7 @@ public class Http2WriteScheduler implements WriteScheduler
         Http2FrameType type = PUSH_PROMISE;
         Http2Stream stream = stream(streamId);
 
-        if (buffered() || !hasNukleusWindowBudget(length))
+        if (buffered() || !hasNukleusBudget(length))
         {
             copy = new UnsafeBuffer(new byte[8192]);
             connection.factory.blockRW.wrap(copy, 0, copy.capacity());
@@ -249,7 +249,7 @@ public class Http2WriteScheduler implements WriteScheduler
             sizeof = 9 + 4 + length;                    // +9 for HTTP2 framing, +4 for promised stream id
         }
 
-        if (buffered() || !hasNukleusWindowBudget(length))
+        if (buffered() || !hasNukleusBudget(length))
         {
             Flyweight.Builder.Visitor visitor =
                     http2Writer.visitPushPromise(streamId, promisedStreamId, copy, 0, length);
@@ -281,7 +281,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
 
 
-        if (!buffered() && !buffered(streamId) && hasNukleusWindowBudget(length) && length <= connection.http2OutWindow &&
+        if (!buffered() && !buffered(streamId) && hasNukleusBudget(length) && length <= connection.http2OutWindow &&
                 length <= stream.http2OutWindow)
         {
             // Send multiple DATA frames (because of max frame size)
@@ -349,7 +349,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         stream.endStream = true;
 
-        if (!buffered() && !buffered(streamId) && hasNukleusWindowBudget(length) && 0 <= connection.http2OutWindow &&
+        if (!buffered() && !buffered(streamId) && hasNukleusBudget(length) && 0 <= connection.http2OutWindow &&
                 0 <= stream.http2OutWindow)
         {
             http2(stream, type, sizeof, data);
@@ -364,7 +364,7 @@ public class Http2WriteScheduler implements WriteScheduler
         return true;
     }
 
-    private boolean hasNukleusWindowBudget(int length)
+    private boolean hasNukleusBudget(int length)
     {
         int frameCount = length == 0 ? 1 : (int) Math.ceil((double) length/connection.remoteSettings.maxFrameSize);
         int sizeof = length + frameCount * 9;
@@ -410,7 +410,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private void flush()
     {
-        if (connection.networkReplyWindowBudget < connection.outWindowThreshold)
+        if (connection.networkReplyBudget < connection.outWindowThreshold)
         {
             // Instead of sending small updates, wait until a bigger window accumulates
             return;
@@ -601,7 +601,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         boolean fits()
         {
-            return hasNukleusWindowBudget(length);
+            return hasNukleusBudget(length);
         }
 
         void write()
