@@ -37,8 +37,7 @@ class Http2Stream
     final long correlationId;
     Http2Connection.State state;
     long http2OutWindow;
-    long applicationReplyWindowBudget;
-    int applicationReplyWindowPadding;
+    long applicationReplyBudget;
     long http2InWindow;
 
     long contentLength;
@@ -239,15 +238,13 @@ class Http2Stream
         // buffer may already have some data, so can only send window for remaining
         int occupied = replyBuffer == null ? 0 : replyBuffer.size();
         long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity() - occupied);
-        long applicationReplyWindowCredit = maxWindow - applicationReplyWindowBudget;
-        if (applicationReplyWindowCredit > 0)
+        long applicationReplyCredit = maxWindow - applicationReplyBudget;
+        if (applicationReplyCredit > 0)
         {
-            applicationReplyWindowBudget += applicationReplyWindowCredit;
-            applicationReplyWindowPadding = Math.max(
-                    applicationReplyWindowPadding,
-                    connection.networkReplyWindowPadding + maxHeaderSize);
+            applicationReplyBudget += applicationReplyCredit;
+            int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
             connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) applicationReplyWindowCredit, applicationReplyWindowPadding, connection.networkReplyGroupId);
+                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
         }
     }
 }

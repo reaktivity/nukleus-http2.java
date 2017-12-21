@@ -331,7 +331,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleData(
                 DataFW data)
         {
-            window -= dataRO.length();
+            window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
                 doReset(networkThrottle, networkId);
@@ -399,8 +399,8 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 http2Connection.outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * credit);
             }
-            http2Connection.networkReplyWindowBudget += credit;
-            http2Connection.networkReplyWindowPadding = padding;
+            http2Connection.networkReplyBudget += credit;
+            http2Connection.networkReplyPadding = padding;
             http2Connection.handleWindow(window);
         }
 
