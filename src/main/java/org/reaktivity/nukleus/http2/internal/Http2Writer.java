@@ -15,6 +15,8 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import java.util.function.BiConsumer;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
@@ -35,8 +37,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-
-import java.util.function.BiConsumer;
 
 class Http2Writer
 {

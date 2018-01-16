@@ -15,6 +15,12 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import static java.util.Objects.requireNonNull;
+
+import java.util.function.IntUnaryOperator;
+import java.util.function.LongFunction;
+import java.util.function.LongSupplier;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
@@ -47,12 +53,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
-
-import java.util.function.IntUnaryOperator;
-import java.util.function.LongFunction;
-import java.util.function.LongSupplier;
-
-import static java.util.Objects.requireNonNull;
 
 public final class ServerStreamFactory implements StreamFactory
 {

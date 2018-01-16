@@ -19,10 +19,10 @@ import java.util.Objects;
 import java.util.function.IntSupplier;
 import java.util.function.IntUnaryOperator;
 
-import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
+import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
 public class Correlation
 {

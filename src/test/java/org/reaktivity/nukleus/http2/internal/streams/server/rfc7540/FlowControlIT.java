@@ -30,8 +30,8 @@ import static org.junit.rules.RuleChain.outerRule;
 public class FlowControlIT
 {
     private final K3poRule k3po = new K3poRule()
-            .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route")
-            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/flow.control")
+            .addScriptRoot("route", "org/reaktivity/specification/nukleus/http2/control/route/")
+            .addScriptRoot("spec", "org/reaktivity/specification/http2/rfc7540/flow.control/")
             .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/http2/streams/rfc7540/flow.control");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
