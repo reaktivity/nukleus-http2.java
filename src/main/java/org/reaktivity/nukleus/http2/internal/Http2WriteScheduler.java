@@ -200,7 +200,7 @@ public class Http2WriteScheduler implements WriteScheduler
     public boolean headers(int streamId, byte flags, ListFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;
-        int length =  headersLength(headers);        // estimate only
+        int length = headersLength(headers);        // estimate only
         int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
         Http2FrameType type = HEADERS;
         Http2Stream stream = stream(streamId);
