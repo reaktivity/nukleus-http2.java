@@ -18,7 +18,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -208,7 +207,7 @@ public class Http2HeadersFW extends Http2FrameFW
         }
 
         public Builder set(
-                ListFW<HttpHeaderFW> listRO,
+                UnboundedListFW<HttpHeaderFW> listRO,
                 BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
         {
             blockRW.set(listRO, mapper);

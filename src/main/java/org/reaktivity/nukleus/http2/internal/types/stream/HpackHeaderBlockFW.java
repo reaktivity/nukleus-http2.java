@@ -19,7 +19,6 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -39,7 +38,7 @@ import java.util.function.Consumer;
 public class HpackHeaderBlockFW extends Flyweight
 {
 
-    private final ListFW<HpackHeaderFieldFW> listFW = new ListFW<>(new HpackHeaderFieldFW());
+    private final UnboundedListFW<HpackHeaderFieldFW> listFW = new UnboundedListFW<>(new HpackHeaderFieldFW());
 
     @Override
     public int limit()
@@ -68,8 +67,8 @@ public class HpackHeaderBlockFW extends Flyweight
 
     public static final class Builder extends Flyweight.Builder<HpackHeaderBlockFW>
     {
-        private final ListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> headersRW =
-                new ListFW.Builder<>(new HpackHeaderFieldFW.Builder(), new HpackHeaderFieldFW());
+        private final UnboundedListFW.Builder<HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> headersRW =
+                new UnboundedListFW.Builder<>(new HpackHeaderFieldFW.Builder(), new HpackHeaderFieldFW());
 
         public Builder()
         {
@@ -84,7 +83,7 @@ public class HpackHeaderBlockFW extends Flyweight
         }
 
         public Builder set(
-                ListFW<HttpHeaderFW> headers,
+                UnboundedListFW<HttpHeaderFW> headers,
                 BiFunction<HttpHeaderFW, HpackHeaderFieldFW.Builder, HpackHeaderFieldFW> mapper)
         {
             headers.forEach(h -> header(builder -> mapper.apply(h, builder)));
