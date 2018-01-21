@@ -15,6 +15,18 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
+
+import java.util.Deque;
+import java.util.LinkedList;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
@@ -25,18 +37,6 @@ import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
-
-import java.util.Deque;
-import java.util.LinkedList;
-
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
 public class Http2WriteScheduler implements WriteScheduler
 {
