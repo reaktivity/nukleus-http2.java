@@ -15,13 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
-
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.ENABLE_PUSH;
@@ -30,6 +23,12 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.MAX_CONCURRENT_STREAMS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.MAX_FRAME_SIZE;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId.MAX_HEADER_LIST_SIZE;
+
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 
 /*
     Flyweight for HTTP2 SETTINGS frame
@@ -56,7 +55,7 @@ public class Http2SettingsFW extends Http2FrameFW
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
 
-    private final ListFW<Http2SettingFW> listFW = new ListFW<>(new Http2SettingFW());
+    private final UnboundedListFW<Http2SettingFW> listFW = new UnboundedListFW<>(new Http2SettingFW());
 
     @Override
     public Http2FrameType type()
@@ -162,8 +161,8 @@ public class Http2SettingsFW extends Http2FrameFW
 
     public static final class Builder extends Http2FrameFW.Builder<Builder, Http2SettingsFW>
     {
-        private final ListFW.Builder<Http2SettingFW.Builder, Http2SettingFW> settingsRW =
-                new ListFW.Builder<>(new Http2SettingFW.Builder(), new Http2SettingFW());
+        private final UnboundedListFW.Builder<Http2SettingFW.Builder, Http2SettingFW> settingsRW =
+                new UnboundedListFW.Builder<>(new Http2SettingFW.Builder(), new Http2SettingFW());
 
         public Builder()
         {

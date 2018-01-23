@@ -15,6 +15,32 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
+import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
+import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.DEFAULT_ACCESS_CONTROL_ALLOW_ORIGIN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.PROXY_CONNECTION;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.UPGRADE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Int2ObjectHashMap;
@@ -49,32 +75,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteManager;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.function.BiConsumer;
-import java.util.function.Consumer;
-
-import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.DEFAULT_ACCESS_CONTROL_ALLOW_ORIGIN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.PROXY_CONNECTION;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TE;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.TRAILERS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.UPGRADE;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 final class Http2Connection
 {
