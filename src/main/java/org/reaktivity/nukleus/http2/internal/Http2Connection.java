@@ -1614,7 +1614,7 @@ final class Http2Connection
                 correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
             }
         }
-        if (payload.sizeof() > 0)
+        if (payload != null && payload.sizeof() > 0)
         {
             Http2Stream stream = http2Streams.get(correlation.http2StreamId);
             if (stream != null)
