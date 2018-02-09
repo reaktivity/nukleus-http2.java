@@ -15,17 +15,16 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import java.util.function.IntUnaryOperator;
-import java.util.function.LongFunction;
-import java.util.function.LongSupplier;
-import java.util.function.Supplier;
-
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
-import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.buffer.DirectBufferBuilder;
+import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
 import org.reaktivity.nukleus.stream.StreamFactoryBuilder;
+
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 {
@@ -35,11 +34,9 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;
     private LongSupplier supplyStreamId;
-    private LongSupplier supplyGroupId;
     private LongSupplier supplyCorrelationId;
-    private Supplier<BufferPool> supplyBufferPool;
-    private LongFunction<IntUnaryOperator> groupBudgetClaimer;
-    private LongFunction<IntUnaryOperator> groupBudgetReleaser;
+    private MemoryManager memoryManager;
+    private Supplier<DirectBufferBuilder> supplyBufferBuilder;
 
     ServerStreamFactoryBuilder(
         Http2Configuration config)
@@ -65,32 +62,25 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
+    public StreamFactoryBuilder setMemoryManager(MemoryManager memoryManager)
+    {
+        this.memoryManager = memoryManager;
+        return this;
+    }
+
+    @Override
+    public StreamFactoryBuilder setDirectBufferBuilderFactory(
+        Supplier<DirectBufferBuilder> supplyDirectBufferBuilder)
+    {
+        this.supplyBufferBuilder = supplyDirectBufferBuilder;
+        return this;
+    }
+
+    @Override
     public ServerStreamFactoryBuilder setStreamIdSupplier(
         LongSupplier supplyStreamId)
     {
         this.supplyStreamId = supplyStreamId;
-        return this;
-    }
-
-    @Override
-    public StreamFactoryBuilder setGroupIdSupplier(
-            LongSupplier supplyGroupId)
-    {
-        this.supplyGroupId = supplyGroupId;
-        return this;
-    }
-
-    @Override
-    public StreamFactoryBuilder setGroupBudgetClaimer(LongFunction<IntUnaryOperator> groupBudgetClaimer)
-    {
-        this.groupBudgetClaimer = groupBudgetClaimer;
-        return this;
-    }
-
-    @Override
-    public StreamFactoryBuilder setGroupBudgetReleaser(LongFunction<IntUnaryOperator> groupBudgetReleaser)
-    {
-        this.groupBudgetReleaser = groupBudgetReleaser;
         return this;
     }
 
@@ -103,19 +93,9 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
-    public StreamFactoryBuilder setBufferPoolSupplier(
-        Supplier<BufferPool> supplyBufferPool)
-    {
-        this.supplyBufferPool = supplyBufferPool;
-        return this;
-    }
-
-    @Override
     public StreamFactory build()
     {
-        final BufferPool bufferPool = supplyBufferPool.get();
-
-        return new ServerStreamFactory(config, router, writeBuffer, bufferPool, supplyStreamId, supplyCorrelationId,
-                correlations, supplyGroupId, groupBudgetClaimer, groupBudgetReleaser);
+        return new ServerStreamFactory(config, router, writeBuffer, supplyStreamId, supplyCorrelationId,
+                correlations, memoryManager, supplyBufferBuilder);
     }
 }

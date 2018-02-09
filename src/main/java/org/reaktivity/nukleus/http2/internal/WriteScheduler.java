@@ -20,6 +20,8 @@ import org.agrona.DirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 /*
  * Writes HTTP2 frames to a connection. There are multiple streams multiplexed in
@@ -50,7 +52,7 @@ public interface WriteScheduler
 
     boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers);
 
-    boolean data(int streamId, DirectBuffer buffer, int offset, int length);
+    boolean data(int streamId, TransferFW data);
 
     boolean dataEos(int streamId);
 

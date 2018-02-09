@@ -22,11 +22,9 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 import java.util.function.Consumer;
 
@@ -35,11 +33,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 class HttpWriter
 {
     private static final DirectBuffer SOURCE_NAME_BUFFER = new UnsafeBuffer("http2".getBytes(UTF_8));
+    private static final int FIN = 0x01;
+    private static final int RST = 0x02;
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
-    private final DataFW.Builder dataRW = new DataFW.Builder();
-    private final EndFW.Builder endRW = new EndFW.Builder();
-    private final AbortFW.Builder abortRW = new AbortFW.Builder();
+    private final TransferFW.Builder writeRW = new TransferFW.Builder();
     private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
 
     private final MutableDirectBuffer writeBuffer;
@@ -86,50 +84,6 @@ class HttpWriter
                                .build();
 
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
-    }
-
-    void doHttpData(
-            MessageConsumer target,
-            long targetId,
-            int padding,
-            DirectBuffer payload,
-            int offset,
-            int length)
-    {
-        assert length < 65536;          // DATA frame length is 2 bytes
-
-        DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                            .streamId(targetId)
-                            .groupId(0)
-                            .padding(padding)
-                            .payload(p -> p.set(payload, offset, length))
-                            .build();
-
-        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    void doHttpEnd(
-            MessageConsumer target,
-            long targetId)
-    {
-        EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                         .streamId(targetId)
-                         .extension(e -> e.reset())
-                         .build();
-
-        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
-    }
-
-    void doHttpAbort(
-            final MessageConsumer target,
-            final long targetId)
-    {
-        final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .streamId(targetId)
-                                     .extension(e -> e.reset())
-                                     .build();
-
-        target.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
     }
 
     private Flyweight.Builder.Visitor visitHttpBeginEx(

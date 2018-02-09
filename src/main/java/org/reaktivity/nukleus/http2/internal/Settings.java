@@ -21,7 +21,7 @@ class Settings
     static final boolean DEFAULT_ENABLE_PUSH = true;
     static final int DEFAULT_MAX_CONCURRENT_STREAMS = Integer.MAX_VALUE;
     static final int DEFAULT_INITIAL_WINDOW_SIZE = 65_535;
-    private static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
+    static final int DEFAULT_MAX_FRAME_SIZE = 16_384;
 
     int headerTableSize = DEFAULT_HEADER_TABLE_SIZE;
     boolean enablePush = DEFAULT_ENABLE_PUSH;

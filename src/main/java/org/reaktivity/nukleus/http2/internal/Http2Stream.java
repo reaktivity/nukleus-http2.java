@@ -19,13 +19,9 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 
 import java.util.Deque;
 import java.util.LinkedList;
-
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class Http2Stream
 {
@@ -43,8 +39,6 @@ class Http2Stream
     long contentLength;
     long totalData;
 
-    private int replySlot = NO_SLOT;
-    CircularDirectBuffer replyBuffer;
     Deque<WriteScheduler.Entry> replyQueue = new LinkedList<>();
     boolean endStream;
 
@@ -66,16 +60,9 @@ class Http2Stream
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.httpWriterPool, applicationTarget, httpWriter, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(applicationTarget, httpWriter, targetId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
-        this.maxHeaderSize = 0;     // maxHeaderSize();
-    }
-
-    // Estimate only - no of DATA frames + WINDOW frames
-    private int maxHeaderSize()
-    {
-        int frameCount = (int) Math.ceil(factory.bufferPool.slotCapacity()/connection.remoteSettings.maxFrameSize) + 10;
-        return frameCount * 9;
+        this.maxHeaderSize = 0;
     }
 
     boolean isClientInitiated()
@@ -117,8 +104,8 @@ class Http2Stream
 
     void onData()
     {
-        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
-        assert written;
+//        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
+//        assert written;
     }
 
     void onAbort()
@@ -177,74 +164,45 @@ class Http2Stream
             int index,
             int length)
     {
-        switch (msgTypeId)
-        {
-            case WindowFW.TYPE_ID:
-                if (isClientInitiated())
-                {
-                    factory.windowRO.wrap(buffer, index, index + length);
-                    int credit = factory.windowRO.credit();
-                    int padding = factory.windowRO.padding();
-                    long groupId = factory.windowRO.groupId();
-
-                    httpWriteScheduler.onWindow(credit, padding, groupId);
-                }
-                break;
-            case ResetFW.TYPE_ID:
-                onHttpReset();
-                break;
-            default:
-                // ignore
-                break;
-        }
-    }
-
-    /*
-     * @return true if there is a buffer
-     *         false if all slots are taken
-     */
-    MutableDirectBuffer acquireReplyBuffer()
-    {
-        if (replySlot == NO_SLOT)
-        {
-            replySlot = factory.http2ReplyPool.acquire(connection.sourceOutputEstId);
-            if (replySlot != NO_SLOT)
-            {
-                int capacity = factory.http2ReplyPool.buffer(replySlot).capacity();
-                replyBuffer = new CircularDirectBuffer(capacity);
-            }
-        }
-        return replySlot != NO_SLOT ? factory.http2ReplyPool.buffer(replySlot) : null;
-    }
-
-    void releaseReplyBuffer()
-    {
-        if (replySlot != NO_SLOT)
-        {
-            factory.http2ReplyPool.release(replySlot);
-            replySlot = NO_SLOT;
-            replyBuffer = null;
-        }
+//        switch (msgTypeId)
+//        {
+//            case WindowFW.TYPE_ID:
+//                if (isClientInitiated())
+//                {
+//                    factory.windowRO.wrap(buffer, index, index + length);
+//                    int credit = factory.windowRO.credit();
+//                    int padding = factory.windowRO.padding();
+//                    long groupId = factory.windowRO.groupId();
+//
+//                    httpWriteScheduler.onWindow(credit, padding, groupId);
+//                }
+//                break;
+//            case ResetFW.TYPE_ID:
+//                onHttpReset();
+//                break;
+//            default:
+//                // ignore
+//                break;
+//        }
     }
 
     void close()
     {
         httpWriteScheduler.onReset();
-        releaseReplyBuffer();
     }
 
     void sendHttpWindow()
     {
-        // buffer may already have some data, so can only send window for remaining
-        int occupied = replyBuffer == null ? 0 : replyBuffer.size();
-        long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity() - occupied);
-        long applicationReplyCredit = maxWindow - applicationReplyBudget;
-        if (applicationReplyCredit > 0)
-        {
-            applicationReplyBudget += applicationReplyCredit;
-            int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
-            connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
-        }
+//        // buffer may already have some data, so can only send window for remaining
+//        int occupied = replyBuffer == null ? 0 : replyBuffer.size();
+//        long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity() - occupied);
+//        long applicationReplyCredit = maxWindow - applicationReplyBudget;
+//        if (applicationReplyCredit > 0)
+//        {
+//            applicationReplyBudget += applicationReplyCredit;
+//            int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
+//            connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
+//                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
+//        }
     }
 }

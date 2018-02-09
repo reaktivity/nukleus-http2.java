@@ -16,97 +16,112 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
-class NukleusWriteScheduler
+import java.io.Closeable;
+
+class NukleusWriteScheduler implements Closeable
 {
+    private static final int REGION_SIZE = 65536;
+
     private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final long targetId;
     private final MessageConsumer networkConsumer;
     private final MutableDirectBuffer writeBuffer;
+    private final TransferFW.Builder transfer;
+    private final MemoryManager memoryManager;
 
     private int accumulatedLength;
+    private final MutableDirectBuffer regionBuffer;
+    private final long regionAddress;
+    private int regionWriteOffset;
+    private int regionAckOffset;
 
     NukleusWriteScheduler(
-            Http2Connection connection,
-            MessageConsumer networkConsumer,
-            Http2Writer http2Writer,
-            long targetId)
+        MemoryManager memoryManager,
+        Http2Connection connection,
+        MessageConsumer networkConsumer,
+        Http2Writer http2Writer,
+        long targetId)
     {
         this.connection = connection;
         this.networkConsumer = networkConsumer;
         this.http2Writer = http2Writer;
         this.targetId = targetId;
         this.writeBuffer = http2Writer.writeBuffer;
+        this.transfer = new TransferFW.Builder();
+        this.memoryManager = memoryManager;
+        regionAddress = memoryManager.acquire(REGION_SIZE);
+        regionBuffer = new UnsafeBuffer(new byte[0]);
+        regionBuffer.wrap(memoryManager.resolve(regionAddress), REGION_SIZE);
+        transfer.wrap(writeBuffer, 0, writeBuffer.capacity());
     }
 
     int http2Frame(
-            int lengthGuess,
-            Flyweight.Builder.Visitor visitor)
+        int lengthGuess,
+        Flyweight.Builder.Visitor visitor)
     {
-        int length = visitor.visit(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD + accumulatedLength, lengthGuess);
+        int length = visitor.visit(regionBuffer, regionWriteOffset, lengthGuess);
+        transfer.regionsItem(b -> b.address(regionAddress + regionWriteOffset).length(length));
+        regionWriteOffset += length;
         accumulatedLength += length;
 
         return length;
     }
 
+    void http2Data(
+        long address,
+        int length)
+    {
+        transfer.regionsItem(b -> b.address(address).length(length));
+    }
+
     void doEnd()
     {
-        http2Writer.doEnd(networkConsumer, targetId);
+        connection.factory.doEnd(networkConsumer, targetId);
+    }
+
+    void ack(
+        long address,
+        int length)
+    {
+        regionAckOffset += length;
+        if (regionAckOffset == regionWriteOffset)
+        {
+            regionWriteOffset = regionAckOffset = 0;
+        }
     }
 
     void flush()
     {
         if (accumulatedLength > 0)
         {
-            toNetwork(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
-            int adjustment = nukleusBudgetAdjustment(accumulatedLength);
-
-            connection.networkReplyBudget -= accumulatedLength + adjustment;
-            assert connection.networkReplyBudget >= 0;
-
+            http2Writer.doTransfer(networkConsumer, transfer.build());
+            transfer.wrap(writeBuffer, 0, writeBuffer.capacity());
             accumulatedLength = 0;
         }
-
-        assert accumulatedLength == 0;
     }
 
-    boolean fits(int sizeof)
+    boolean fits(
+        int sizeof)
     {
-        int candidateSizeof = accumulatedLength + sizeof;
-        int adjustment = nukleusBudgetAdjustment(candidateSizeof);
-
-        return candidateSizeof + adjustment <= connection.networkReplyBudget;
+        return sizeof <= remaining();
     }
 
     int remaining()
     {
-        int adjustment = nukleusBudgetAdjustment(accumulatedLength);
-        int sizeof = connection.networkReplyBudget - (accumulatedLength + adjustment);
-        int remaining = fits(sizeof) ? sizeof : sizeof - connection.networkReplyPadding;
-        return Math.max(remaining, 0);
+        return regionBuffer.capacity() - regionWriteOffset;
     }
 
-    int nukleusBudgetAdjustment(int sizeof)
+    @Override
+    public void close()
     {
-        int nukleusFrameCount = (int) Math.ceil((double)sizeof/65535);
-
-        // Every nukleus DATA frame incurs padding overhead
-        return nukleusFrameCount * connection.networkReplyPadding;
-    }
-
-    private void toNetwork(MutableDirectBuffer buffer, int offset, int length)
-    {
-        while (length > 0)
-        {
-            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            http2Writer.doData(networkConsumer, targetId, connection.networkReplyPadding, buffer, offset, chunk);
-            offset += chunk;
-            length -= chunk;
-        }
+        memoryManager.release(regionAddress, REGION_SIZE);
     }
 
 }

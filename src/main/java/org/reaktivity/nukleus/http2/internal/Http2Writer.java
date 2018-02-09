@@ -23,12 +23,11 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2GoawayFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
@@ -36,23 +35,22 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
+
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 
 class Http2Writer
 {
-    private final DataFW.Builder dataRW = new DataFW.Builder();
-    private final EndFW.Builder endRW = new EndFW.Builder();
-
-    private final ResetFW.Builder resetRW = new ResetFW.Builder();
-
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
     private final Http2RstStreamFW.Builder http2ResetRW = new Http2RstStreamFW.Builder();
     private final Http2GoawayFW.Builder goawayRW = new Http2GoawayFW.Builder();
     private final Http2PingFW.Builder pingRW = new Http2PingFW.Builder();
     private final Http2WindowUpdateFW.Builder http2WindowRW = new Http2WindowUpdateFW.Builder();
     private final Http2DataFW.Builder http2DataRW = new Http2DataFW.Builder();
+    private final Http2FrameHeaderFW.Builder http2FrameHeaderRW = new Http2FrameHeaderFW.Builder();
     private final Http2HeadersFW.Builder http2HeadersRW = new Http2HeadersFW.Builder();
     private final Http2PushPromiseFW.Builder pushPromiseRW = new Http2PushPromiseFW.Builder();
+    private final TransferFW.Builder transferRW = new TransferFW.Builder();
 
     final MutableDirectBuffer writeBuffer;
 
@@ -61,37 +59,11 @@ class Http2Writer
         this.writeBuffer = writeBuffer;
     }
 
-    void doData(
-            MessageConsumer target,
-            long targetId,
-            int padding,
-            MutableDirectBuffer payload,
-            int offset,
-            int length)
+    void doTransfer(
+        MessageConsumer target,
+        TransferFW transfer)
     {
-        assert offset >= DataFW.FIELD_OFFSET_PAYLOAD;
-        assert length < 65536;      // DATA frame length is 2 bytes
-
-        DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
-                            .streamId(targetId)
-                            .groupId(0)
-                            .padding(padding)
-                            .payload(p -> p.set((b, o, l) -> length))
-                            .build();
-
-        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
-    }
-
-    void doEnd(
-            MessageConsumer target,
-            long targetId)
-    {
-        EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                         .streamId(targetId)
-                         .extension(e -> e.reset())
-                         .build();
-
-        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+        target.accept(transfer.typeId(), transfer.buffer(), transfer.offset(), transfer.sizeof());
     }
 
     Flyweight.Builder.Visitor visitSettings(
@@ -160,6 +132,19 @@ class Http2Writer
                         .size(update)
                         .build()
                         .sizeof();
+    }
+
+    Flyweight.Builder.Visitor visitDataHeader(
+            int streamId,
+            int length)
+    {
+        return (buffer, offset, limit) ->
+                http2FrameHeaderRW.wrap(buffer, offset, limit)
+                                  .streamId(streamId)
+                                  .type(DATA)
+                                  .payloadLength(length)
+                                  .build()
+                                  .sizeof();
     }
 
     Flyweight.Builder.Visitor visitData(

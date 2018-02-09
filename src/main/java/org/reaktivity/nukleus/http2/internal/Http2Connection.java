@@ -16,7 +16,6 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
@@ -55,10 +54,8 @@ import org.reaktivity.nukleus.http2.internal.types.String16FW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
@@ -72,8 +69,8 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 import org.reaktivity.nukleus.route.RouteManager;
 
 final class Http2Connection
@@ -82,17 +79,6 @@ final class Http2Connection
 
     ServerStreamFactory factory;
     private DecoderState decoderState;
-
-    // slab to assemble a complete HTTP2 frame
-    // no need for separate slab per HTTP2 stream as the frames are not fragmented
-    private int frameSlotIndex = NO_SLOT;
-    private int frameSlotPosition;
-
-    // slab to assemble a complete HTTP2 headers frame(including its continuation frames)
-    // no need for separate slab per HTTP2 stream as no interleaved frames of any other type
-    // or from any other stream
-    private int headersSlotIndex = NO_SLOT;
-    private int headersSlotPosition;
 
     long sourceId;
     long authorization;
@@ -108,8 +94,6 @@ final class Http2Connection
     private final HpackContext decodeContext;
     private final HpackContext encodeContext;
     private final MessageFunction<RouteFW> wrapRoute;
-
-    final long networkReplyGroupId;
 
     final Int2ObjectHashMap<Http2Stream> http2Streams;      // HTTP2 stream-id --> Http2Stream
 
@@ -151,11 +135,10 @@ final class Http2Connection
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         http2Writer = factory.http2Writer;
-        writeScheduler = new Http2WriteScheduler(this, networkConsumer, http2Writer, sourceOutputEstId);
+        writeScheduler = new Http2WriteScheduler(null, this, networkConsumer, http2Writer, sourceOutputEstId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
         this.networkConsumer = networkConsumer;
-        this.networkReplyGroupId = factory.supplyGroupId.getAsLong();
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                 ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
@@ -180,8 +163,8 @@ final class Http2Connection
 
     void cleanConnection()
     {
-        releaseSlot();
-        releaseHeadersSlot();
+        //releaseSlot();
+        //releaseHeadersSlot();
         for(Http2Stream http2Stream : http2Streams.values())
         {
             closeStream(http2Stream);
@@ -200,16 +183,16 @@ final class Http2Connection
         writeScheduler.settings(initialSettings.maxConcurrentStreams, initialSettings.initialWindowSize);
     }
 
-    void handleData(DataFW dataRO)
+    void handleData(TransferFW dataRO)
     {
-        OctetsFW payload = dataRO.payload();
-        int limit = payload.limit();
-
-        int offset = payload.offset();
-        while (offset < limit)
-        {
-            offset += decoderState.decode(dataRO.buffer(), offset, limit);
-        }
+//        OctetsFW payload = dataRO.payload();
+//        int limit = payload.limit();
+//
+//        int offset = payload.offset();
+//        while (offset < limit)
+//        {
+//            offset += decoderState.decode(dataRO.buffer(), offset, limit);
+//        }
     }
 
     void handleAbort()
@@ -218,13 +201,13 @@ final class Http2Connection
         cleanConnection();
     }
 
-    void handleReset(ResetFW reset)
+    void handleReset(AckFW reset)
     {
         http2Streams.forEach((i, s) -> s.onReset());
         cleanConnection();
     }
 
-    void handleEnd(EndFW end)
+    void handleEnd(TransferFW end)
     {
         decoderState = (b, o, l) -> o;
 
@@ -268,35 +251,35 @@ final class Http2Connection
     private int prefaceAvailable(DirectBuffer buffer, int offset, int limit)
     {
         int available = limit - offset;
-
-        if (frameSlotPosition > 0 && frameSlotPosition + available >= PRI_REQUEST.length)
-        {
-            MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
-            int remainingLength = PRI_REQUEST.length - frameSlotPosition;
-            prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
-            factory.prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
-            releaseSlot();
-            prefaceAvailable = true;
-            return remainingLength;
-        }
-        else if (available >= PRI_REQUEST.length)
-        {
-            factory.prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
-            prefaceAvailable = true;
-            return PRI_REQUEST.length;
-        }
-
-        assert frameSlotIndex == NO_SLOT;
-        if (!acquireSlot())
-        {
-            prefaceAvailable = false;
-            return available;               // assume everything is consumed
-        }
-
-        MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
-        prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
-        frameSlotPosition += available;
-        prefaceAvailable = false;
+//
+//        if (frameSlotPosition > 0 && frameSlotPosition + available >= PRI_REQUEST.length)
+//        {
+//            MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
+//            int remainingLength = PRI_REQUEST.length - frameSlotPosition;
+//            prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
+//            factory.prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
+//            releaseSlot();
+//            prefaceAvailable = true;
+//            return remainingLength;
+//        }
+//        else if (available >= PRI_REQUEST.length)
+//        {
+//            factory.prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
+//            prefaceAvailable = true;
+//            return PRI_REQUEST.length;
+//        }
+//
+//        assert frameSlotIndex == NO_SLOT;
+//        if (!acquireSlot())
+//        {
+//            prefaceAvailable = false;
+//            return available;               // assume everything is consumed
+//        }
+//
+//        MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
+//        prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
+//        frameSlotPosition += available;
+//        prefaceAvailable = false;
         return available;
     }
 
@@ -312,112 +295,112 @@ final class Http2Connection
     {
         int available = limit - offset;
 
-        if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
-        {
-            MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
-            if (frameSlotPosition < 3)
-            {
-                frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
-            }
-            int frameLength = http2FrameLength(frameBuffer, 0, 3);
-            if (frameLength > localSettings.maxFrameSize + 9)
-            {
-                return -1;
-            }
-            if (frameSlotPosition + available >= frameLength)
-            {
-                int remainingFrameLength = frameLength - frameSlotPosition;
-                frameBuffer.putBytes(frameSlotPosition, buffer, offset, remainingFrameLength);
-                factory.http2RO.wrap(frameBuffer, 0, frameLength);
-                releaseSlot();
-                http2FrameAvailable = true;
-                return remainingFrameLength;
-            }
-        }
-        else if (available >= 3)
-        {
-            int frameLength = http2FrameLength(buffer, offset, limit);
-            if (frameLength > localSettings.maxFrameSize + 9)
-            {
-                return -1;
-            }
-            if (available >= frameLength)
-            {
-                factory.http2RO.wrap(buffer, offset, offset + frameLength);
-                http2FrameAvailable = true;
-                return frameLength;
-            }
-        }
-
-        if (!acquireSlot())
-        {
-            http2FrameAvailable = false;
-            return available;
-        }
-
-        MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
-        frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
-        frameSlotPosition += available;
-        http2FrameAvailable = false;
+//        if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
+//        {
+//            MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
+//            if (frameSlotPosition < 3)
+//            {
+//                frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
+//            }
+//            int frameLength = http2FrameLength(frameBuffer, 0, 3);
+//            if (frameLength > localSettings.maxFrameSize + 9)
+//            {
+//                return -1;
+//            }
+//            if (frameSlotPosition + available >= frameLength)
+//            {
+//                int remainingFrameLength = frameLength - frameSlotPosition;
+//                frameBuffer.putBytes(frameSlotPosition, buffer, offset, remainingFrameLength);
+//                factory.http2RO.wrap(frameBuffer, 0, frameLength);
+//                releaseSlot();
+//                http2FrameAvailable = true;
+//                return remainingFrameLength;
+//            }
+//        }
+//        else if (available >= 3)
+//        {
+//            int frameLength = http2FrameLength(buffer, offset, limit);
+//            if (frameLength > localSettings.maxFrameSize + 9)
+//            {
+//                return -1;
+//            }
+//            if (available >= frameLength)
+//            {
+//                factory.http2RO.wrap(buffer, offset, offset + frameLength);
+//                http2FrameAvailable = true;
+//                return frameLength;
+//            }
+//        }
+//
+//        if (!acquireSlot())
+//        {
+//            http2FrameAvailable = false;
+//            return available;
+//        }
+//
+//        MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
+//        frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
+//        frameSlotPosition += available;
+//        http2FrameAvailable = false;
         return available;
     }
 
-    private boolean acquireSlot()
-    {
-        if (frameSlotIndex == NO_SLOT)
-        {
-            assert frameSlotPosition == 0;
+//    private boolean acquireSlot()
+//    {
+//        if (frameSlotIndex == NO_SLOT)
+//        {
+//            assert frameSlotPosition == 0;
+//
+//            frameSlotIndex = factory.framePool.acquire(sourceId);
+//            if (frameSlotIndex == NO_SLOT)
+//            {
+//                // all slots are in use, just reset the connection
+//                factory.doReset(networkConsumer, sourceId);
+//                handleAbort();
+//                http2FrameAvailable = false;
+//                return false;
+//            }
+//        }
+//        return true;
+//    }
+//
+//    private void releaseSlot()
+//    {
+//        if (frameSlotIndex != NO_SLOT)
+//        {
+//            factory.framePool.release(frameSlotIndex);
+//            frameSlotIndex = NO_SLOT;
+//            frameSlotPosition = 0;
+//        }
+//    }
 
-            frameSlotIndex = factory.framePool.acquire(sourceId);
-            if (frameSlotIndex == NO_SLOT)
-            {
-                // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId);
-                handleAbort();
-                http2FrameAvailable = false;
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void releaseSlot()
-    {
-        if (frameSlotIndex != NO_SLOT)
-        {
-            factory.framePool.release(frameSlotIndex);
-            frameSlotIndex = NO_SLOT;
-            frameSlotPosition = 0;
-        }
-    }
-
-    private boolean acquireHeadersSlot()
-    {
-        if (headersSlotIndex == NO_SLOT)
-        {
-            assert headersSlotPosition == 0;
-
-            headersSlotIndex = factory.headersPool.acquire(sourceId);
-            if (headersSlotIndex == NO_SLOT)
-            {
-                // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId);
-                handleAbort();
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void releaseHeadersSlot()
-    {
-        if (headersSlotIndex != NO_SLOT)
-        {
-            factory.headersPool.release(headersSlotIndex);
-            headersSlotIndex = NO_SLOT;
-            headersSlotPosition = 0;
-        }
-    }
+//    private boolean acquireHeadersSlot()
+//    {
+//        if (headersSlotIndex == NO_SLOT)
+//        {
+//            assert headersSlotPosition == 0;
+//
+//            headersSlotIndex = factory.headersPool.acquire(sourceId);
+//            if (headersSlotIndex == NO_SLOT)
+//            {
+//                // all slots are in use, just reset the connection
+//                factory.doReset(networkConsumer, sourceId);
+//                handleAbort();
+//                return false;
+//            }
+//        }
+//        return true;
+//    }
+//
+//    private void releaseHeadersSlot()
+//    {
+//        if (headersSlotIndex != NO_SLOT)
+//        {
+//            factory.headersPool.release(headersSlotIndex);
+//            headersSlotIndex = NO_SLOT;
+//            headersSlotPosition = 0;
+//        }
+//    }
 
     /*
      * Assembles a complete HTTP2 headers (including any continuations) if any.
@@ -487,35 +470,35 @@ final class Http2Connection
      */
     private boolean http2HeadersAvailable(DirectBuffer buffer, int offset, int length, boolean endHeaders)
     {
-        if (endHeaders)
-        {
-            if (headersSlotPosition > 0)
-            {
-                MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
-                headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
-                headersSlotPosition += length;
-                buffer = headersBuffer;
-                offset = 0;
-                length = headersSlotPosition;
-            }
-            int maxLimit = offset + length;
-            expectContinuation = false;
-            releaseHeadersSlot();           // early release, but fine
-            factory.blockRO.wrap(buffer, offset, maxLimit);
-            return true;
-        }
-        else
-        {
-            if (!acquireHeadersSlot())
-            {
-                return false;
-            }
-            MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
-            headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
-            headersSlotPosition += length;
-            expectContinuation = true;
-            expectContinuationStreamId = factory.headersRO.streamId();
-        }
+//        if (endHeaders)
+//        {
+//            if (headersSlotPosition > 0)
+//            {
+//                MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
+//                headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
+//                headersSlotPosition += length;
+//                buffer = headersBuffer;
+//                offset = 0;
+//                length = headersSlotPosition;
+//            }
+//            int maxLimit = offset + length;
+//            expectContinuation = false;
+//            releaseHeadersSlot();           // early release, but fine
+//            factory.blockRO.wrap(buffer, offset, maxLimit);
+//            return true;
+//        }
+//        else
+//        {
+//            if (!acquireHeadersSlot())
+//            {
+//                return false;
+//            }
+//            MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
+//            headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
+//            headersSlotPosition += length;
+//            expectContinuation = true;
+//            expectContinuationStreamId = factory.headersRO.streamId();
+//        }
 
         return false;
     }
@@ -702,7 +685,7 @@ final class Http2Connection
 
         if (factory.headersRO.endStream())
         {
-            httpWriter.doHttpEnd(applicationTarget, stream.targetId);  // TODO use HttpWriteScheduler
+            factory.doEnd(applicationTarget, stream.targetId);  // TODO use HttpWriteScheduler
         }
     }
 
@@ -1064,7 +1047,7 @@ final class Http2Connection
         return router.resolve(authorization, filter, wrapRoute);
     }
 
-    void handleWindow(WindowFW windowRO)
+    void handleWindow(AckFW windowRO)
     {
 
         writeScheduler.onWindow();
@@ -1148,7 +1131,7 @@ final class Http2Connection
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
-        httpWriter.doHttpEnd(applicationTarget, targetId);
+        factory.doEnd(applicationTarget, targetId);
     }
 
     private Http2Stream newStream(int http2StreamId, State state, MessageConsumer applicationTarget, HttpWriter httpWriter)
@@ -1597,42 +1580,42 @@ final class Http2Connection
         }
     }
 
-    void handleHttpData(DataFW dataRO, Correlation correlation)
+    void handleHttpData(TransferFW dataRO, Correlation correlation)
     {
-        OctetsFW extension = dataRO.extension();
-        OctetsFW payload = dataRO.payload();
-
-        if (extension.sizeof() > 0)
-        {
-
-            int pushStreamId = correlation.pushStreamIds.applyAsInt(correlation.http2StreamId);
-            if (pushStreamId != -1)
-            {
-                int promisedStreamId = correlation.promisedStreamIds.getAsInt();
-                Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
-                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers());
-                correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
-            }
-        }
-        if (payload != null)
-        {
-            Http2Stream stream = http2Streams.get(correlation.http2StreamId);
-            if (stream != null)
-            {
-                stream.applicationReplyBudget -= dataRO.length() + dataRO.padding();
-                if (stream.applicationReplyBudget < 0)
-                {
-                    doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
-                    return;
-                }
-            }
-
-            writeScheduler.data(correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
-        }
+//        OctetsFW extension = dataRO.extension();
+//        OctetsFW payload = dataRO.payload();
+//
+//        if (extension.sizeof() > 0)
+//        {
+//
+//            int pushStreamId = correlation.pushStreamIds.applyAsInt(correlation.http2StreamId);
+//            if (pushStreamId != -1)
+//            {
+//                int promisedStreamId = correlation.promisedStreamIds.getAsInt();
+//                Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
+//                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers());
+//                correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
+//            }
+//        }
+//        if (payload != null)
+//        {
+//            Http2Stream stream = http2Streams.get(correlation.http2StreamId);
+//            if (stream != null)
+//            {
+//                stream.applicationReplyBudget -= dataRO.length() + dataRO.padding();
+//                if (stream.applicationReplyBudget < 0)
+//                {
+//                    doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
+//                    return;
+//                }
+//            }
+//
+//            writeScheduler.data(correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
+//        }
 
     }
 
-    void handleHttpEnd(EndFW data, Correlation correlation)
+    void handleHttpEnd(TransferFW data, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
 
@@ -1642,7 +1625,7 @@ final class Http2Connection
         }
     }
 
-    void handleHttpAbort(AbortFW abort, Correlation correlation)
+    void handleHttpAbort(TransferFW abort, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
 
