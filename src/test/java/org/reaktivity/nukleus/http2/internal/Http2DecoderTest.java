@@ -33,6 +33,7 @@ import org.reaktivity.reaktor.internal.memory.DefaultMemoryManager;
 
 import java.io.File;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -48,10 +49,18 @@ public class Http2DecoderTest
 {
 
     private int frameCount = 0;
+    private List<Region> prefaceRegions = new ArrayList<>();
+    private List<Region> headerRegions = new ArrayList<>();
+    private List<Region> payloadRegions = new ArrayList<>();
 
     @Test
     public void decodeSimple()
     {
+        frameCount = 0;
+        prefaceRegions.clear();
+        headerRegions.clear();
+        payloadRegions.clear();
+
         MemoryManager memoryManager = memoryManager();
         MutableDirectBuffer buf = new UnsafeBuffer(new byte[0]);
         long addressOffset = memoryManager.acquire(32768);
@@ -79,7 +88,7 @@ public class Http2DecoderTest
         Region r4 = new Region(addressOffset + offset, settings.sizeof(), 3);
 
         Http2Decoder decoder = new Http2Decoder(memoryManager, DefaultDirectBufferBuilder::new,
-                Settings.DEFAULT_MAX_FRAME_SIZE, this::frame, null, null);
+                Settings.DEFAULT_MAX_FRAME_SIZE, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
 
         MutableDirectBuffer regionBuf = new UnsafeBuffer(new byte[4096]);
         ListFW<RegionFW> regionRO = new ListFW.Builder<>(new RegionFW.Builder(), new RegionFW())
@@ -92,6 +101,17 @@ public class Http2DecoderTest
         decoder.decode(regionRO);
 
         assertEquals(3, frameCount);
+        assertEquals(1, prefaceRegions.size());
+        assertEquals(new Region(r1.address, 24, r1.streamId), prefaceRegions.get(0));
+
+        assertEquals(3, headerRegions.size());
+        assertEquals(new Region(r2.address, 9, r1.streamId), headerRegions.get(0));
+        assertEquals(new Region(r3.address, 9, r2.streamId), headerRegions.get(1));
+        assertEquals(new Region(r4.address, 9, r3.streamId), headerRegions.get(2));
+
+        assertEquals(2, payloadRegions.size());
+        assertEquals(new Region(r2.address + 9, r2.length - 9, r1.streamId), payloadRegions.get(0));
+        assertEquals(new Region(r3.address + 9, r3.length - 9, r2.streamId), payloadRegions.get(1));
     }
 
     @Test
@@ -106,24 +126,31 @@ public class Http2DecoderTest
         // PRI
         int offset = 0;
         buf.putBytes(offset, PRI_REQUEST);
-        offset += PRI_REQUEST.length;
+        Region r1 = new Region(addressOffset + offset, PRI_REQUEST.length, 3);
 
         // HEADERS
+        offset += PRI_REQUEST.length;
         Http2HeadersFW headers = writeHeaders(buf, offset);
-        offset = headers.limit();
+        Region r2 = new Region(addressOffset + offset, headers.sizeof(), 3);
 
         // DATA
+        offset = headers.limit();
         Http2DataFW data = writeData(buf, offset);
-        offset = data.limit();
+        Region r3 = new Region(addressOffset + offset, data.sizeof(), 3);
 
         // SETTINGS
+        offset = data.limit();
         Http2SettingsFW settings = writeSettings(buf, offset);
+        Region r4 = new Region(addressOffset + offset, settings.sizeof(), 3);
         offset = settings.limit();
 
         // Test with all region length combinations
         for(int regionLength=0; regionLength < offset; regionLength++)
         {
             frameCount = 0;
+            prefaceRegions.clear();
+            headerRegions.clear();
+            payloadRegions.clear();
 
             List<Integer> addressList = IntStream.range(0, offset).boxed().collect(Collectors.toList());
             List<Region> regions = batches(addressList, regionLength + 1)
@@ -132,7 +159,7 @@ public class Http2DecoderTest
                     .collect(Collectors.toList());
 
             Http2Decoder decoder = new Http2Decoder(memoryManager, DefaultDirectBufferBuilder::new,
-                    Settings.DEFAULT_MAX_FRAME_SIZE, this::frame, null, null);
+                    Settings.DEFAULT_MAX_FRAME_SIZE, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
 
             List<List<Region>> regionBatches = batches(regions, 2);
             for(List<Region> regionBatch : regionBatches)
@@ -147,7 +174,17 @@ public class Http2DecoderTest
             }
 
             assertEquals(3, frameCount);
-        }
+            assertEquals(1, prefaceRegions.size());
+            assertEquals(new Region(r1.address, 24, r1.streamId), prefaceRegions.get(0));
+
+            assertEquals(3, headerRegions.size());
+            assertEquals(new Region(r2.address, 9, r1.streamId), headerRegions.get(0));
+            assertEquals(new Region(r3.address, 9, r2.streamId), headerRegions.get(1));
+            assertEquals(new Region(r4.address, 9, r3.streamId), headerRegions.get(2));
+
+            assertEquals(2, payloadRegions.size());
+            assertEquals(new Region(r2.address + 9, r2.length - 9, r1.streamId), payloadRegions.get(0));
+            assertEquals(new Region(r3.address + 9, r3.length - 9, r2.streamId), payloadRegions.get(1));        }
     }
 
     private Http2DataFW writeData(MutableDirectBuffer buf, int offset)
@@ -180,6 +217,54 @@ public class Http2DecoderTest
                     .wrap(buf, offset, buf.capacity())
                     .ack()
                     .build();
+    }
+
+    private void prefaceRegion(long address, int length, long streamId)
+    {
+        if (!prefaceRegions.isEmpty())
+        {
+            Region last = prefaceRegions.get(prefaceRegions.size() - 1);
+            if (last.address + last.length == address)
+            {
+                address = last.address;
+                length += last.length;
+                prefaceRegions.remove(prefaceRegions.size() - 1);
+            }
+        }
+        Region newRegion = new Region(address, length, streamId);
+        prefaceRegions.add(newRegion);
+    }
+
+    private void framingRegion(long address, int length, long streamId)
+    {
+        if (!headerRegions.isEmpty())
+        {
+            Region last = headerRegions.get(headerRegions.size() - 1);
+            if (last.address + last.length == address)
+            {
+                address = last.address;
+                length += last.length;
+                headerRegions.remove(headerRegions.size() - 1);
+            }
+        }
+        Region newRegion = new Region(address, length, streamId);
+        headerRegions.add(newRegion);
+    }
+
+    private void payloadRegion(long address, int length, long streamId)
+    {
+        if (!payloadRegions.isEmpty())
+        {
+            Region last = payloadRegions.get(payloadRegions.size() - 1);
+            if (last.address + last.length == address)
+            {
+                address = last.address;
+                length += last.length;
+                payloadRegions.remove(payloadRegions.size() - 1);
+            }
+        }
+        Region newRegion = new Region(address, length, streamId);
+        payloadRegions.add(newRegion);
     }
 
     private void frame(Http2FrameFW frame)
@@ -233,6 +318,19 @@ public class Http2DecoderTest
             this.address = address;
             this.length = length;
             this.streamId = streamId;
+        }
+
+        @Override
+        public boolean equals(Object other)
+        {
+            Region o = (Region) other;
+            return this.address == o.address && this.length == o.length && this.streamId == o.streamId;
+        }
+
+        @Override
+        public int hashCode()
+        {
+            return (int) (address + length + streamId);
         }
 
         public String toString()
