@@ -44,7 +44,7 @@ public interface WriteScheduler
 
     boolean rst(int streamId, Http2ErrorCode errorCode);
 
-    boolean settings(int maxConcurrentStreams, int initialWindowSize);
+    boolean settings(int maxConcurrentStreams);
 
     boolean settingsAck();
 

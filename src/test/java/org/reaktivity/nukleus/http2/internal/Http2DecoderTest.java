@@ -24,7 +24,9 @@ import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
 import org.reaktivity.reaktor.internal.buffer.DefaultDirectBufferBuilder;
@@ -88,7 +90,9 @@ public class Http2DecoderTest
         Region r4 = new Region(addressOffset + offset, settings.sizeof(), 3);
 
         Http2Decoder decoder = new Http2Decoder(memoryManager, DefaultDirectBufferBuilder::new,
-                Settings.DEFAULT_MAX_FRAME_SIZE, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
+                Settings.DEFAULT_MAX_FRAME_SIZE,
+                new Http2PrefaceFW(), new Http2FrameHeaderFW(), new Http2FrameFW(),
+                this::frameHeader, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
 
         MutableDirectBuffer regionBuf = new UnsafeBuffer(new byte[4096]);
         ListFW<RegionFW> regionRO = new ListFW.Builder<>(new RegionFW.Builder(), new RegionFW())
@@ -159,7 +163,9 @@ public class Http2DecoderTest
                     .collect(Collectors.toList());
 
             Http2Decoder decoder = new Http2Decoder(memoryManager, DefaultDirectBufferBuilder::new,
-                    Settings.DEFAULT_MAX_FRAME_SIZE, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
+                    Settings.DEFAULT_MAX_FRAME_SIZE,
+                    new Http2PrefaceFW(), new Http2FrameHeaderFW(), new Http2FrameFW(),
+                    this::frameHeader, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
 
             List<List<Region>> regionBatches = batches(regions, 2);
             for(List<Region> regionBatch : regionBatches)
@@ -265,6 +271,10 @@ public class Http2DecoderTest
         }
         Region newRegion = new Region(address, length, streamId);
         payloadRegions.add(newRegion);
+    }
+
+    private void frameHeader(Http2FrameHeaderFW frameHeader)
+    {
     }
 
     private void frame(Http2FrameFW frame)

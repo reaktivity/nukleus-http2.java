@@ -20,9 +20,12 @@ import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 class HttpWriteScheduler
 {
+    private static final int FIN = 0x01;
+
     private final HttpWriter target;
     private final long targetId;
     private final MessageConsumer applicationTarget;
@@ -35,6 +38,7 @@ class HttpWriteScheduler
 
     private int totalRead;
     private int totalWritten;
+    private final TransferFW.Builder transfer;
 
     HttpWriteScheduler(MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
@@ -43,15 +47,40 @@ class HttpWriteScheduler
         this.target = target;
         this.targetId = targetId;
         this.stream = stream;
+        this.transfer = new TransferFW.Builder().wrap(target.writeBuffer, 0, target.writeBuffer.capacity()).streamId(targetId);
+    }
+
+    void onPayloadRegion(long address, int length)
+    {
+        transfer.regionsItem(b -> b.address(address).length(length).streamId(targetId));
     }
 
     /*
      * @return true if the data is written or stored
      *         false if there are no slots or no space in the buffer
      */
-    boolean onData(Http2DataFW http2DataRO, RegionFW region)
+    boolean onData(Http2DataFW http2DataRO)
     {
-//        totalRead += http2DataRO.dataLength();
+        totalRead += http2DataRO.dataLength();
+        end = http2DataRO.endStream();
+
+        target.doHttpTransfer(applicationTarget, transfer.build());
+        transfer.wrap(target.writeBuffer, 0, target.writeBuffer.capacity()).streamId(targetId);
+
+        // HTTP2 connection-level flow-control
+        stream.connection.writeScheduler.windowUpdate(0, http2DataRO.dataLength());
+
+        // HTTP2 stream-level flow-control
+        stream.connection.writeScheduler.windowUpdate(stream.http2StreamId, http2DataRO.dataLength());
+
+        if (end && !endSent)
+        {
+            endSent = true;
+            transfer.flags(FIN);
+            target.doHttpTransfer(applicationTarget, transfer.build());
+            transfer.wrap(target.writeBuffer, 0, target.writeBuffer.capacity()).streamId(targetId);
+        }
+
 //        end = http2DataRO.endStream();
 //        //target.doHttpData(applicationTarget, targetId, applicationPadding, buffer, offset, length);
 //

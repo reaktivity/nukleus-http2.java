@@ -67,13 +67,11 @@ class Http2Writer
     }
 
     Flyweight.Builder.Visitor visitSettings(
-            int maxConcurrentStreams,
-            int initialWindowSize)
+            int maxConcurrentStreams)
     {
         return (buffer, offset, limit) ->
                 settingsRW.wrap(buffer, offset, limit)
                           .maxConcurrentStreams(maxConcurrentStreams)
-                          .initialWindowSize(initialWindowSize)
                           .build()
                           .sizeof();
     }

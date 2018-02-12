@@ -37,14 +37,21 @@ class HttpWriter
     private static final int RST = 0x02;
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
-    private final TransferFW.Builder writeRW = new TransferFW.Builder();
     private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
 
-    private final MutableDirectBuffer writeBuffer;
+    final MutableDirectBuffer writeBuffer;
+
 
     HttpWriter(MutableDirectBuffer writeBuffer)
     {
         this.writeBuffer = writeBuffer;
+    }
+
+    void doHttpTransfer(
+        MessageConsumer target,
+        TransferFW transfer)
+    {
+        target.accept(transfer.typeId(), transfer.buffer(), transfer.offset(), transfer.sizeof());
     }
 
     // HTTP begin frame's extension data is written using the given buffer

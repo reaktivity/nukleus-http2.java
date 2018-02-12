@@ -40,6 +40,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
@@ -68,6 +69,7 @@ public final class ServerStreamFactory implements StreamFactory
 
     final HttpRouteExFW httpRouteExRO = new HttpRouteExFW();
     final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
+    final Http2FrameHeaderFW frameHeaderRO = new Http2FrameHeaderFW();
     final Http2FrameFW http2RO = new Http2FrameFW();
     final Http2SettingsFW settingsRO = new Http2SettingsFW();
     final Http2DataFW http2DataRO = new Http2DataFW();
@@ -102,8 +104,8 @@ public final class ServerStreamFactory implements StreamFactory
 
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
-    private final MemoryManager memoryManager;
-    private final Supplier<DirectBufferBuilder> supplyBufferBuilder;
+    final MemoryManager memoryManager;
+    final Supplier<DirectBufferBuilder> supplyBufferBuilder;
 
     ServerStreamFactory(
             Http2Configuration config,
@@ -330,7 +332,7 @@ public final class ServerStreamFactory implements StreamFactory
                     final AckFW reset = ackRO.wrap(buffer, index, index + length);
                     http2Connection.handleWindow(reset);
                     // TODO
-                    handleReset(reset);
+                    //handleReset(reset);
                     break;
                 default:
                     // ignore
@@ -496,6 +498,8 @@ public final class ServerStreamFactory implements StreamFactory
         final MessageConsumer target,
         final long targetId)
     {
+        System.out.println("ABORT");
+
         final TransferFW abort = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
                                      .flags(RST)
@@ -509,6 +513,8 @@ public final class ServerStreamFactory implements StreamFactory
         final MessageConsumer throttle,
         final long throttleId)
     {
+        System.out.println("ACK");
+
         final AckFW window = ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                   .streamId(throttleId)
                                   .build();
@@ -520,6 +526,7 @@ public final class ServerStreamFactory implements StreamFactory
         MessageConsumer target,
         long targetId)
     {
+        System.out.println("END");
         TransferFW end = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                              .streamId(targetId)
                              .flags(FIN)
@@ -533,6 +540,8 @@ public final class ServerStreamFactory implements StreamFactory
         final MessageConsumer throttle,
         final long throttleId)
     {
+        System.out.println("RESET");
+
         final AckFW reset = ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                  .streamId(throttleId)
                                  .flags(RST)

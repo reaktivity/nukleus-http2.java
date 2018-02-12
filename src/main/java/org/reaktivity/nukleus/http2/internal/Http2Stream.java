@@ -102,10 +102,14 @@ class Http2Stream
         connection.closeStream(this);
     }
 
+    public void onPayloadRegion(long address, int length, long streamId) {
+        httpWriteScheduler.onPayloadRegion(address, length);
+    }
+
     void onData()
     {
-//        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
-//        assert written;
+        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
+        assert written;
     }
 
     void onAbort()
@@ -205,4 +209,6 @@ class Http2Stream
 //                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
 //        }
     }
+
+
 }

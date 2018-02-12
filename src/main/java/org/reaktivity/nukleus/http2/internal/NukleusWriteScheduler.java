@@ -58,27 +58,28 @@ class NukleusWriteScheduler implements Closeable
         this.memoryManager = memoryManager;
         regionAddress = memoryManager.acquire(REGION_SIZE);
         regionBuffer = new UnsafeBuffer(new byte[0]);
+        System.out.printf("Resolved address %x\n", memoryManager.resolve(regionAddress));
         regionBuffer.wrap(memoryManager.resolve(regionAddress), REGION_SIZE);
-        transfer.wrap(writeBuffer, 0, writeBuffer.capacity());
     }
 
-    int http2Frame(
+    int queueHttp2Frame(
         int lengthGuess,
         Flyweight.Builder.Visitor visitor)
     {
         int length = visitor.visit(regionBuffer, regionWriteOffset, lengthGuess);
-        transfer.regionsItem(b -> b.address(regionAddress + regionWriteOffset).length(length));
+        transfer.regionsItem(b -> b.address(regionAddress + regionWriteOffset).length(length).streamId(targetId));
         regionWriteOffset += length;
         accumulatedLength += length;
 
         return length;
     }
 
-    void http2Data(
+    void queueHttp2Data(
         long address,
-        int length)
+        int length,
+        long regionStreamId)
     {
-        transfer.regionsItem(b -> b.address(address).length(length));
+        transfer.regionsItem(b -> b.address(address).length(length).streamId(regionStreamId));
     }
 
     void doEnd()
@@ -97,12 +98,17 @@ class NukleusWriteScheduler implements Closeable
         }
     }
 
-    void flush()
+    void flushBegin()
+    {
+        transfer.wrap(writeBuffer, 0, writeBuffer.capacity()).streamId(targetId);
+    }
+
+    void flushEnd()
     {
         if (accumulatedLength > 0)
         {
-            http2Writer.doTransfer(networkConsumer, transfer.build());
-            transfer.wrap(writeBuffer, 0, writeBuffer.capacity());
+            TransferFW t = transfer.build();
+            http2Writer.doTransfer(networkConsumer, t);
             accumulatedLength = 0;
         }
     }

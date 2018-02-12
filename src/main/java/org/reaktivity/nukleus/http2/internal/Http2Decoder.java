@@ -36,6 +36,7 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.
 public class Http2Decoder
 {
     private final MemoryManager memoryManager;
+    private final Consumer<Http2FrameHeaderFW> headerConsumer;
     private final Consumer<Http2FrameFW> frameConsumer;
     private final Supplier<DirectBufferBuilder> supplyBufferBuilder;
     private final int maxFrameSize;
@@ -63,6 +64,10 @@ public class Http2Decoder
         MemoryManager memoryManager,
         Supplier<DirectBufferBuilder> supplyBufferBuilder,
         int maxFrameSize,
+        Http2PrefaceFW prefaceRO,
+        Http2FrameHeaderFW frameHeaderRO,
+        Http2FrameFW frameRO,
+        Consumer<Http2FrameHeaderFW> headerConsumer,
         Consumer<Http2FrameFW> frameConsumer,
         RegionConsumer prefaceRegionConsumer,
         RegionConsumer framingRegionConsumer,
@@ -71,14 +76,15 @@ public class Http2Decoder
         this.memoryManager = memoryManager;
         this.supplyBufferBuilder = supplyBufferBuilder;
         this.maxFrameSize = maxFrameSize;
+        this.headerConsumer = headerConsumer;
         this.frameConsumer = frameConsumer;
         this.prefaceRegionConsumer = prefaceRegionConsumer;
         this.framingRegionConsumer = framingRegionConsumer;
         this.payloadRegionConsumer = payloadRegionConsumer;
         compositeBufferBuilder = supplyBufferBuilder.get();
-        prefaceRO = new Http2PrefaceFW();
-        frameHeaderRO = new Http2FrameHeaderFW();
-        frameRO = new Http2FrameFW();
+        this.prefaceRO = prefaceRO;
+        this.frameHeaderRO = frameHeaderRO;
+        this.frameRO = frameRO;
         state = PREFACE;
     }
 
@@ -165,6 +171,7 @@ public class Http2Decoder
             DirectBuffer compositeBuffer = compositeBufferBuilder.build();
             assert compositeBuffer.capacity() == compositeBufferLength;
             Http2FrameHeaderFW frameHeader = frameHeaderRO.wrap(compositeBuffer, 0, compositeBufferLength);
+            headerConsumer.accept(frameHeader);
             if (frameHeader.payloadLength() == 0)
             {
                 // complete frame is in compositeBuffer
