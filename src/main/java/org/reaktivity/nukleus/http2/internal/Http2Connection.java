@@ -61,7 +61,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
@@ -70,7 +69,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 import org.reaktivity.nukleus.route.RouteManager;
 
@@ -125,9 +123,17 @@ final class Http2Connection
     MutableDirectBuffer headersBuffer;
     int headersSlotPosition;
     int curStreamId;
+    MessageConsumer networkThrottle;
+    long networkId;
 
-    Http2Connection(ServerStreamFactory factory, RouteManager router, long networkReplyId, MessageConsumer networkConsumer,
-                    MessageFunction<RouteFW> wrapRoute)
+    Http2Connection(
+        ServerStreamFactory factory,
+        RouteManager router,
+        MessageConsumer networkThrottle,
+        long networkId,
+        long networkReplyId,
+        MessageConsumer networkConsumer,
+        MessageFunction<RouteFW> wrapRoute)
     {
         this.factory = factory;
         this.router = router;
@@ -143,6 +149,8 @@ final class Http2Connection
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
         this.networkConsumer = networkConsumer;
+        this.networkThrottle = networkThrottle;
+        this.networkId = networkId;
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                 ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
@@ -158,10 +166,17 @@ final class Http2Connection
         this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, nameValue));
         this.decoder = new Http2Decoder(factory.memoryManager, factory.supplyBufferBuilder, localSettings.maxFrameSize,
                 factory.prefaceRO, factory.frameHeaderRO, factory.http2RO,
-                this::decodeFrameHeader, this::decodeHttp2Frame, this::region, this::region, this::payloadRegion);
+                this::decodeFrameHeader, this::decodeHttp2Frame, this::prefaceRegion, this::headerRegion, this::payloadRegion);
     }
 
-    void region(long address, int length, long streamId)
+    void prefaceRegion(long address, int length, long streamId)
+    {
+        factory.doAck(networkThrottle, networkId, address, length, streamId);
+        //System.out.printf("-> region address=%d length=%d streamId=%d\n", address, length, streamId);
+
+    }
+
+    void headerRegion(long address, int length, long streamId)
     {
         //System.out.printf("-> region address=%d length=%d streamId=%d\n", address, length, streamId);
 

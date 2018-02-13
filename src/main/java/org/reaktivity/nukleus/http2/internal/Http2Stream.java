@@ -60,7 +60,7 @@ class Http2Stream
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(applicationTarget, httpWriter, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory.memoryManager, applicationTarget, httpWriter, targetId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
         this.maxHeaderSize = 0;
     }
@@ -102,8 +102,8 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    public void onPayloadRegion(long address, int length, long streamId) {
-        httpWriteScheduler.onPayloadRegion(address, length);
+    public void onPayloadRegion(long address, int length, long regionStreamId) {
+        httpWriteScheduler.onPayloadRegion(address, length, regionStreamId);
     }
 
     void onData()

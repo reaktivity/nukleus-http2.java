@@ -15,53 +15,68 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 class HttpWriteScheduler
 {
+    private static final int TRANSFER_SIZE = 4096;
     private static final int FIN = 0x01;
 
+    private final MemoryManager memoryManager;
     private final HttpWriter target;
     private final long targetId;
     private final MessageConsumer applicationTarget;
+    private final MutableDirectBuffer transferBuffer;
+    private final TransferFW.Builder transfer;
+    private final long transferAddress;
 
     private Http2Stream stream;
     private boolean end;
     private boolean endSent;
-    private int applicationBudget;
-    private int applicationPadding;
 
     private int totalRead;
     private int totalWritten;
-    private final TransferFW.Builder transfer;
 
-    HttpWriteScheduler(MessageConsumer applicationTarget, HttpWriter target, long targetId,
-                       Http2Stream stream)
+    HttpWriteScheduler(
+        MemoryManager memoryManager,
+        MessageConsumer applicationTarget,
+        HttpWriter target,
+        long targetId,
+        Http2Stream stream)
     {
+        this.memoryManager = memoryManager;
         this.applicationTarget = applicationTarget;
         this.target = target;
         this.targetId = targetId;
         this.stream = stream;
-        this.transfer = new TransferFW.Builder().wrap(target.writeBuffer, 0, target.writeBuffer.capacity()).streamId(targetId);
+        transferAddress = memoryManager.acquire(TRANSFER_SIZE);
+        transferBuffer = new UnsafeBuffer(new byte[0]);
+        transferBuffer.wrap(memoryManager.resolve(transferAddress), TRANSFER_SIZE);
+        this.transfer = new TransferFW.Builder().wrap(transferBuffer, 0, transferBuffer.capacity()).streamId(targetId);
     }
 
-    void onPayloadRegion(long address, int length)
+    void onPayloadRegion(
+        long address,
+        int length,
+        long regionStreamId)
     {
-        transfer.regionsItem(b -> b.address(address).length(length).streamId(targetId));
+        totalRead += length;
+        transfer.regionsItem(b -> b.address(address).length(length).streamId(regionStreamId));
     }
 
     /*
      * @return true if the data is written or stored
      *         false if there are no slots or no space in the buffer
      */
-    boolean onData(Http2DataFW http2DataRO)
+    boolean onData(
+        Http2DataFW http2DataRO)
     {
-        totalRead += http2DataRO.dataLength();
+        totalWritten += http2DataRO.dataLength();
         end = http2DataRO.endStream();
 
         target.doHttpTransfer(applicationTarget, transfer.build());
@@ -79,6 +94,8 @@ class HttpWriteScheduler
             transfer.flags(FIN);
             target.doHttpTransfer(applicationTarget, transfer.build());
             transfer.wrap(target.writeBuffer, 0, target.writeBuffer.capacity()).streamId(targetId);
+
+            memoryManager.release(transferAddress, TRANSFER_SIZE);
         }
 
 //        end = http2DataRO.endStream();
@@ -104,17 +121,18 @@ class HttpWriteScheduler
 
     void onWindow(int credit, int padding, long groupId)
     {
-        applicationBudget += credit;
 
     }
 
     void onReset()
     {
-
+        memoryManager.release(transferAddress, TRANSFER_SIZE);
     }
 
     void doAbort()
     {
+        memoryManager.release(transferAddress, TRANSFER_SIZE);
+
         //factory.doAbort(applicationTarget, targetId);
     }
 

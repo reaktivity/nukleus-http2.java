@@ -291,7 +291,7 @@ public final class ServerStreamFactory implements StreamFactory
             router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
-            http2Connection = new Http2Connection(ServerStreamFactory.this, router, networkReplyId,
+            http2Connection = new Http2Connection(ServerStreamFactory.this, router, networkThrottle, networkId, networkReplyId,
                     networkReply, wrapRoute);
             http2Connection.handleBegin(begin);
         }
@@ -511,12 +511,16 @@ public final class ServerStreamFactory implements StreamFactory
 
     void doAck(
         final MessageConsumer throttle,
-        final long throttleId)
+        final long throttleId,
+        long address,
+        int length,
+        long streamId)
     {
         System.out.println("ACK");
 
         final AckFW window = ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                   .streamId(throttleId)
+                                  .regionsItem(r -> r.address(address).length(length).streamId(streamId))
                                   .build();
 
         throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
