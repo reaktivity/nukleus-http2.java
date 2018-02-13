@@ -55,7 +55,7 @@ public class Http2DataFW extends Http2FrameFW
         return DATA;
     }
 
-    private boolean padding()
+    public boolean padding()
     {
         return Http2Flags.padded(flags());
     }

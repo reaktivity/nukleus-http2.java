@@ -16,21 +16,25 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 import java.util.Deque;
 import java.util.LinkedList;
 
 class Http2Stream
 {
+    private static final int FIN = 0x01;
+
     final Http2Connection connection;
-    final HttpWriteScheduler httpWriteScheduler;
+    //final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
     final int maxHeaderSize;
     final long targetId;
     final long correlationId;
+    private final MessageConsumer applicationTarget;
     Http2Connection.State state;
     long http2OutWindow;
     long applicationReplyBudget;
@@ -57,10 +61,11 @@ class Http2Stream
         this.targetId = factory.supplyStreamId.getAsLong();
         this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
+        this.applicationTarget = applicationTarget;
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.memoryManager, applicationTarget, httpWriter, targetId, this);
+        //this.httpWriteScheduler = new HttpWriteScheduler(factory.memoryManager, applicationTarget, httpWriter, targetId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
         this.maxHeaderSize = 0;
     }
@@ -78,15 +83,15 @@ class Http2Stream
 
     void onHttpAbort()
     {
-        // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-        {
-            httpWriteScheduler.doAbort();
-        }
-
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
-
-        connection.closeStream(this);
+//        // more request data to be sent, so send ABORT
+//        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+//        {
+//            httpWriteScheduler.doAbort();
+//        }
+//
+//        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+//
+//        connection.closeStream(this);
     }
 
     void onHttpReset()
@@ -102,64 +107,72 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    public void onPayloadRegion(long address, int length, long regionStreamId) {
-        httpWriteScheduler.onPayloadRegion(address, length, regionStreamId);
-    }
-
     void onData()
     {
-        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
-        assert written;
+        boolean end = factory.http2DataRO.endStream();
+
+        factory.transferRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                          .streamId(targetId)
+                          .flags(end ? FIN : 0);
+        Http2Decoder.transferForData(connection.regionsRW.build(), factory.http2RO, factory.http2DataRO, factory.transferRW);
+        TransferFW transfer = factory.transferRW.build();
+        factory.doTransfer(applicationTarget, transfer);
+
+        // HTTP2 connection-level flow-control
+        connection.writeScheduler.windowUpdate(0, factory.http2DataRO.dataLength());
+
+        // HTTP2 stream-level flow-control
+        connection.writeScheduler.windowUpdate(http2StreamId, factory.http2DataRO.dataLength());
     }
 
     void onAbort()
     {
-        // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-        {
-            httpWriteScheduler.doAbort();
-        }
-
-        // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
-        }
-
-        close();
+//        // more request data to be sent, so send ABORT
+//        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+//        {
+//            httpWriteScheduler.doAbort();
+//        }
+//
+//        // reset the response stream
+//        if (applicationReplyThrottle != null)
+//        {
+//            factory.doReset(applicationReplyThrottle, applicationReplyId);
+//        }
+//
+//        close();
     }
 
     void onReset()
     {
-        // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-        {
-            httpWriteScheduler.doAbort();
-        }
-
-        // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
-        }
-
-        close();
+//        // more request data to be sent, so send ABORT
+//        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+//        {
+//            httpWriteScheduler.doAbort();
+//        }
+//
+//        // reset the response stream
+//        if (applicationReplyThrottle != null)
+//        {
+//            factory.doReset(applicationReplyThrottle, applicationReplyId);
+//        }
+//
+//        close();
     }
 
     void onEnd()
     {
-        // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-        {
-            httpWriteScheduler.doAbort();
-        }
-
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
-        }
-
-        close();
+//        // more request data to be sent, so send ABORT
+//        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+//        {
+//            httpWriteScheduler.doAbort();
+//        }
+//
+//        if (applicationReplyThrottle != null)
+//        {
+//            factory.doReset(applicationReplyThrottle, applicationReplyId);
+//        }
+//
+//        close();
     }
 
     void onThrottle(
@@ -192,7 +205,7 @@ class Http2Stream
 
     void close()
     {
-        httpWriteScheduler.onReset();
+//        httpWriteScheduler.onReset();
     }
 
     void sendHttpWindow()
@@ -208,6 +221,16 @@ class Http2Stream
 //            connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
 //                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
 //        }
+    }
+
+    void onAck(long address, int length, long streamId)
+    {
+        AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                 .streamId(applicationReplyId)
+                                 .regionsItem(r -> r.address(address).length(length).streamId(streamId))
+                                 .build();
+
+        factory.doAck(applicationReplyThrottle, ack);
     }
 
 

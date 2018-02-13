@@ -22,6 +22,7 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
@@ -51,6 +52,9 @@ public class Http2DecoderTest
 {
 
     private int frameCount = 0;
+    private ListFW.Builder<RegionFW.Builder, RegionFW> regionsRW =
+            new ListFW.Builder<>(new RegionFW.Builder(), new RegionFW());;
+    private final MutableDirectBuffer parsedRegionsBuf = new UnsafeBuffer(new byte[4096]);
     private List<Region> prefaceRegions = new ArrayList<>();
     private List<Region> headerRegions = new ArrayList<>();
     private List<Region> payloadRegions = new ArrayList<>();
@@ -62,6 +66,8 @@ public class Http2DecoderTest
         prefaceRegions.clear();
         headerRegions.clear();
         payloadRegions.clear();
+
+        regionsRW.wrap(parsedRegionsBuf, 0, parsedRegionsBuf.capacity());
 
         MemoryManager memoryManager = memoryManager();
         MutableDirectBuffer buf = new UnsafeBuffer(new byte[0]);
@@ -91,8 +97,9 @@ public class Http2DecoderTest
 
         Http2Decoder decoder = new Http2Decoder(memoryManager, DefaultDirectBufferBuilder::new,
                 Settings.DEFAULT_MAX_FRAME_SIZE,
+                regionsRW,
                 new Http2PrefaceFW(), new Http2FrameHeaderFW(), new Http2FrameFW(),
-                this::frameHeader, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
+                this::preface, this::frame);
 
         MutableDirectBuffer regionBuf = new UnsafeBuffer(new byte[4096]);
         ListFW<RegionFW> regionRO = new ListFW.Builder<>(new RegionFW.Builder(), new RegionFW())
@@ -164,8 +171,9 @@ public class Http2DecoderTest
 
             Http2Decoder decoder = new Http2Decoder(memoryManager, DefaultDirectBufferBuilder::new,
                     Settings.DEFAULT_MAX_FRAME_SIZE,
+                    regionsRW,
                     new Http2PrefaceFW(), new Http2FrameHeaderFW(), new Http2FrameFW(),
-                    this::frameHeader, this::frame, this::prefaceRegion, this::framingRegion, this::payloadRegion);
+                    this::preface, this::frame);
 
             List<List<Region>> regionBatches = batches(regions, 2);
             for(List<Region> regionBatch : regionBatches)
@@ -273,8 +281,18 @@ public class Http2DecoderTest
         payloadRegions.add(newRegion);
     }
 
-    private void frameHeader(Http2FrameHeaderFW frameHeader)
+
+    private void preface(Http2PrefaceFW preface)
     {
+        ListFW<RegionFW> regions = regionsRW.build();
+
+        MutableDirectBuffer ackBuf = new UnsafeBuffer(new byte[4096]);
+        AckFW.Builder ackRW = new AckFW.Builder().wrap(ackBuf, 0, ackBuf.capacity()).streamId(0);
+        Http2Decoder.ackAll(regions, ackRW);
+        AckFW ack = ackRW.build();
+        ack.regions().forEach(r -> prefaceRegion(r.address(), r.length(), r.streamId()));
+
+        regionsRW.wrap(parsedRegionsBuf, 0, parsedRegionsBuf.capacity());
     }
 
     private void frame(Http2FrameFW frame)
@@ -294,6 +312,8 @@ public class Http2DecoderTest
                 throw new IllegalStateException("Illegal frame count = " + frameCount);
         }
         frameCount++;
+
+        regionsRW.wrap(parsedRegionsBuf, 0, parsedRegionsBuf.capacity());
     }
 
     private MemoryManager memoryManager()

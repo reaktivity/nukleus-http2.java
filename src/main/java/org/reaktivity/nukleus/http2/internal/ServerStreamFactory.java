@@ -65,7 +65,8 @@ public final class ServerStreamFactory implements StreamFactory
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final TransferFW.Builder writeRW = new TransferFW.Builder();
-    private final AckFW.Builder ackRW = new AckFW.Builder();
+    final AckFW.Builder ackRW = new AckFW.Builder();
+    final TransferFW.Builder transferRW = new TransferFW.Builder();
 
     final HttpRouteExFW httpRouteExRO = new HttpRouteExFW();
     final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
@@ -92,7 +93,7 @@ public final class ServerStreamFactory implements StreamFactory
 
     final Http2Configuration config;
     private final RouteManager router;
-    private final MutableDirectBuffer writeBuffer;
+    final MutableDirectBuffer writeBuffer;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
@@ -330,7 +331,7 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 case AckFW.TYPE_ID:
                     final AckFW reset = ackRO.wrap(buffer, index, index + length);
-                    http2Connection.handleWindow(reset);
+                    http2Connection.handleAck(reset);
                     // TODO
                     //handleReset(reset);
                     break;
@@ -511,19 +512,21 @@ public final class ServerStreamFactory implements StreamFactory
 
     void doAck(
         final MessageConsumer throttle,
-        final long throttleId,
-        long address,
-        int length,
-        long streamId)
+        final AckFW ack)
     {
-        System.out.println("ACK");
+//System.out.println("ACK");
+//ack.regions().forEach(r -> System.out.printf("address=%d length=%d\n", r.address(), r.length()));
+        throttle.accept(ack.typeId(), ack.buffer(), ack.offset(), ack.sizeof());
+    }
 
-        final AckFW window = ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                  .streamId(throttleId)
-                                  .regionsItem(r -> r.address(address).length(length).streamId(streamId))
-                                  .build();
+    void doTransfer(
+        final MessageConsumer target,
+        final TransferFW transfer)
+    {
+System.out.println("TRANSFER");
+transfer.regions().forEach(r -> System.out.printf("address=%d length=%d\n", r.address(), r.length()));
 
-        throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
+        target.accept(transfer.typeId(), transfer.buffer(), transfer.offset(), transfer.sizeof());
     }
 
     void doEnd(

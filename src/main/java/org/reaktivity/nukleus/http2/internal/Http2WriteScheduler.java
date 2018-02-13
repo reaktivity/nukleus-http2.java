@@ -35,6 +35,7 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
@@ -48,6 +49,7 @@ public class Http2WriteScheduler implements WriteScheduler
     private final NukleusWriteScheduler writer;
     private final Deque<WriteScheduler.Entry> replyQueue;
     private final MemoryManager memoryManager;
+    private final long targetId;
 
     private boolean end;
     private boolean endSent;
@@ -63,6 +65,7 @@ public class Http2WriteScheduler implements WriteScheduler
         this.memoryManager = memoryManager;
         this.connection = connection;
         this.http2Writer = http2Writer;
+        this.targetId = targetId;
         this.writer = new NukleusWriteScheduler(memoryManager, connection, networkConsumer, http2Writer, targetId);
         this.replyQueue = new LinkedList<>();
     }
@@ -447,8 +450,20 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public void onWindow()
+    public void onAck(AckFW ack)
     {
+        ack.regions().forEach(r ->
+        {
+            if (r.streamId() == targetId)
+            {
+                writer.ack(r.address(), r.length());
+            }
+            else
+            {
+                connection.processTransportAck(r.address(), r.length(), r.streamId());
+            }
+        });
+
         flush();
     }
 
@@ -576,6 +591,12 @@ public class Http2WriteScheduler implements WriteScheduler
         writer.flushBegin();
         writeHttp2Frame(stream, type, sizeofGuess, visitor);
         writer.flushEnd();
+    }
+
+    @Override
+    public void close()
+    {
+        writer.close();
     }
 
     private class Entry implements WriteScheduler.Entry

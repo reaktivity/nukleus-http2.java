@@ -19,11 +19,14 @@ import org.agrona.DirectBuffer;
 import org.reaktivity.nukleus.buffer.DirectBufferBuilder;
 import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -31,12 +34,13 @@ import java.util.function.Supplier;
 import static org.reaktivity.nukleus.http2.internal.Http2Decoder.State.HEADER;
 import static org.reaktivity.nukleus.http2.internal.Http2Decoder.State.PAYLOAD;
 import static org.reaktivity.nukleus.http2.internal.Http2Decoder.State.PREFACE;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.DATA;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 public class Http2Decoder
 {
     private final MemoryManager memoryManager;
-    private final Consumer<Http2FrameHeaderFW> headerConsumer;
+    private final Consumer<Http2PrefaceFW> prefaceConsumer;
     private final Consumer<Http2FrameFW> frameConsumer;
     private final Supplier<DirectBufferBuilder> supplyBufferBuilder;
     private final int maxFrameSize;
@@ -44,10 +48,9 @@ public class Http2Decoder
     private final Http2PrefaceFW prefaceRO;
     private final Http2FrameHeaderFW frameHeaderRO;
     private final Http2FrameFW frameRO;
-    private final RegionConsumer prefaceRegionConsumer;
-    private final RegionConsumer framingRegionConsumer;
-    private final RegionConsumer payloadRegionConsumer;
+    private final ListFW.Builder<RegionFW.Builder, RegionFW> regionsRW;
 
+    // TODO use regionsRW to build composite buffer on demand
     private DirectBufferBuilder compositeBufferBuilder;
     private int compositeBufferLength;
     private int frameSize;
@@ -64,23 +67,20 @@ public class Http2Decoder
         MemoryManager memoryManager,
         Supplier<DirectBufferBuilder> supplyBufferBuilder,
         int maxFrameSize,
+        ListFW.Builder<RegionFW.Builder, RegionFW> regionsRW,
         Http2PrefaceFW prefaceRO,
         Http2FrameHeaderFW frameHeaderRO,
         Http2FrameFW frameRO,
-        Consumer<Http2FrameHeaderFW> headerConsumer,
-        Consumer<Http2FrameFW> frameConsumer,
-        RegionConsumer prefaceRegionConsumer,
-        RegionConsumer framingRegionConsumer,
-        RegionConsumer payloadRegionConsumer)
+        Consumer<Http2PrefaceFW> prefaceConsumer,
+        Consumer<Http2FrameFW> frameConsumer)
     {
         this.memoryManager = memoryManager;
         this.supplyBufferBuilder = supplyBufferBuilder;
         this.maxFrameSize = maxFrameSize;
-        this.headerConsumer = headerConsumer;
+        this.regionsRW = regionsRW;
+        this.prefaceConsumer = prefaceConsumer;
         this.frameConsumer = frameConsumer;
-        this.prefaceRegionConsumer = prefaceRegionConsumer;
-        this.framingRegionConsumer = framingRegionConsumer;
-        this.payloadRegionConsumer = payloadRegionConsumer;
+
         compositeBufferBuilder = supplyBufferBuilder.get();
         this.prefaceRO = prefaceRO;
         this.frameHeaderRO = frameHeaderRO;
@@ -130,8 +130,7 @@ public class Http2Decoder
         long streamId)
     {
         int remaining = Math.min(frameSize - compositeBufferLength, length);
-        payloadRegionConsumer.accept(address, remaining, streamId);
-
+        regionsRW.item(r -> r.address(address).length(remaining).streamId(streamId));
         compositeBufferBuilder.wrap(memoryManager.resolve(address), remaining);
         compositeBufferLength += remaining;
         if (compositeBufferLength == frameSize)
@@ -162,7 +161,7 @@ public class Http2Decoder
         long streamId)
     {
         int remaining = Math.min(9 - compositeBufferLength, length);
-        framingRegionConsumer.accept(address, remaining, streamId);
+        regionsRW.item(r -> r.address(address).length(remaining).streamId(streamId));
         compositeBufferBuilder.wrap(memoryManager.resolve(address), remaining);
         compositeBufferLength += remaining;
         if (compositeBufferLength == 9)
@@ -171,7 +170,6 @@ public class Http2Decoder
             DirectBuffer compositeBuffer = compositeBufferBuilder.build();
             assert compositeBuffer.capacity() == compositeBufferLength;
             Http2FrameHeaderFW frameHeader = frameHeaderRO.wrap(compositeBuffer, 0, compositeBufferLength);
-            headerConsumer.accept(frameHeader);
             if (frameHeader.payloadLength() == 0)
             {
                 // complete frame is in compositeBuffer
@@ -196,7 +194,7 @@ public class Http2Decoder
         long streamId)
     {
         int remaining = Math.min(PRI_REQUEST.length - compositeBufferLength, length);
-        prefaceRegionConsumer.accept(address, remaining, streamId);
+        regionsRW.item(r -> r.address(address).length(remaining).streamId(streamId));
         compositeBufferBuilder.wrap(memoryManager.resolve(address), remaining);
         compositeBufferLength += remaining;
         if (compositeBufferLength == PRI_REQUEST.length)
@@ -204,6 +202,7 @@ public class Http2Decoder
             DirectBuffer compositeBuffer = compositeBufferBuilder.build();
             assert compositeBuffer.capacity() == compositeBufferLength;
             prefaceRO.wrap(compositeBuffer, 0, compositeBufferLength);
+            prefaceConsumer.accept(prefaceRO);
             // TODO prefaceRO.error()
             compositeBufferLength = 0;
             compositeBufferBuilder = supplyBufferBuilder.get();
@@ -211,6 +210,79 @@ public class Http2Decoder
         }
 
         return remaining;
+    }
+
+    static void ackAll(
+        ListFW<RegionFW> regions,
+        AckFW.Builder ackRW)
+    {
+        regions.forEach(r ->
+            ackRW.regionsItem(ar -> ar.address(r.address()).length(r.length()).streamId(r.streamId()))
+        );
+    }
+
+    static void ackForData(
+        ListFW<RegionFW> regions,
+        Http2FrameFW http2RO,
+        Http2DataFW http2DataRO,
+        AckFW.Builder ackRW)
+    {
+        assert http2RO.type() == DATA;
+        Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+
+        int dataStart = 9 + (dataRO.padding() ? 1 : 0);
+        int dataEnd = dataStart + dataRO.dataLength();
+
+        int[] total = new int[1];
+        regions.forEach(r ->
+        {
+            // add intersection of this region and  (0 .. dataStart)
+            if (dataStart - total[0] > 0)
+            {
+                int length = Math.min(dataStart - total[0], r.length());
+                ackRW.regionsItem(ar -> ar.address(r.address()).length(length).streamId(r.streamId()));
+            }
+
+            // add intersection of this region and (dataEnd .. frame end)
+            if (total[0] + r.length() > dataEnd)
+            {
+                int offset = total[0] < dataEnd ? dataEnd - total[0] : 0;
+                int length = r.length() - offset;
+                ackRW.regionsItem(ar -> ar.address(r.address() + offset).length(length).streamId(r.streamId()));
+            }
+            total[0] += r.length();
+        });
+    }
+
+    static void transferForData(
+        ListFW<RegionFW> regions,
+        Http2FrameFW http2RO,
+        Http2DataFW http2DataRO,
+        TransferFW.Builder transferRW)
+    {
+        assert http2RO.type() == DATA;
+        Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
+        if (dataRO.padding())
+        {
+            System.out.println("TODO padding is not yet implemented");
+        }
+
+        int dataStart = 9 + (dataRO.padding() ? 1 : 0);
+        int dataEnd = dataStart + dataRO.dataLength();
+
+        // Transfer for application payload
+        int[] total = new int[1];
+        regions.forEach(r ->
+        {
+            System.out.printf("(address=%d length=%d)  total=%d dataStart=%d dataEnd=%d\n", r.address(), r.length(), total[0], dataStart, dataEnd);
+            // TODO for padding need to break up regions
+            if (total[0] >= dataStart)
+            {
+                System.out.printf("\tAdding (address=%d length=%d)\n", r.address(), r.length());
+                transferRW.regionsItem(ar -> ar.address(r.address()).length(r.length()).streamId(r.streamId()));
+            }
+            total[0] += r.length();
+        });
     }
 
 }

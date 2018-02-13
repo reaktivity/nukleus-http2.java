@@ -91,11 +91,15 @@ class NukleusWriteScheduler implements Closeable
         long address,
         int length)
     {
+        // Assume acks are coming in order
+        assert address == regionAddress + regionAckOffset;
+
         regionAckOffset += length;
         if (regionAckOffset == regionWriteOffset)
         {
             regionWriteOffset = regionAckOffset = 0;
         }
+        System.out.printf("regionWriteOffset=%d regionAckOffset=%d\n", regionAckOffset, regionAckOffset);
     }
 
     void flushBegin()

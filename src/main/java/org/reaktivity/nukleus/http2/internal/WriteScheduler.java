@@ -19,9 +19,12 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
+
+import java.io.Closeable;
 
 /*
  * Writes HTTP2 frames to a connection. There are multiple streams multiplexed in
@@ -33,7 +36,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
  * 3. HTTP2 streams are selected in a round-robin way
  ...
  */
-public interface WriteScheduler
+public interface WriteScheduler extends Closeable
 {
 
     boolean windowUpdate(int streamId, int update);
@@ -58,11 +61,14 @@ public interface WriteScheduler
 
     void doEnd();
 
-    void onWindow();
+    void onAck(AckFW ack);
 
     void onHttp2Window();
 
     void onHttp2Window(int streamId);
+
+    @Override
+    void close();
 
     interface Entry
     {
