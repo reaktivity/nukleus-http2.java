@@ -61,7 +61,7 @@ public final class ServerStreamFactory implements StreamFactory
 
     private final BeginFW beginRO = new BeginFW();
     private final TransferFW writeRO = new TransferFW();
-    private final AckFW ackRO = new AckFW();
+    final AckFW ackRO = new AckFW();
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final TransferFW.Builder writeRW = new TransferFW.Builder();
@@ -262,6 +262,8 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 case TransferFW.TYPE_ID:
                     final TransferFW data = writeRO.wrap(buffer, index, index + length);
+System.out.printf("recv HTTP2 TRANSFER FIN=%s RST=%s\n", ((data.flags()&FIN) == FIN), ((data.flags()&RST) == RST));
+data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
                     handleData(data);
 
                     if ((data.flags() & FIN) == FIN)
@@ -406,6 +408,8 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 case TransferFW.TYPE_ID:
                     final TransferFW data = writeRO.wrap(buffer, index, index + length);
+System.out.printf("recv HTTP TRANSFER FIN=%s RST=%s\n", ((data.flags()&FIN) == FIN), ((data.flags()&RST) == RST));
+data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
                     handleData(data);
 
                     if ((data.flags() & FIN) == FIN)
@@ -499,23 +503,22 @@ public final class ServerStreamFactory implements StreamFactory
         final MessageConsumer target,
         final long targetId)
     {
-        System.out.println("ABORT");
-
         final TransferFW abort = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
                                      .flags(RST)
                                      .extension(e -> e.reset())
                                      .build();
-
-        target.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
+        doTransfer(target, abort);
     }
 
     void doAck(
         final MessageConsumer throttle,
         final AckFW ack)
     {
-//System.out.println("ACK");
-//ack.regions().forEach(r -> System.out.printf("address=%d length=%d\n", r.address(), r.length()));
+System.out.printf("send ACK FIN=%s RST=%s\n", ((ack.flags()&FIN) == FIN), ((ack.flags()&RST) == RST));
+ack.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
+System.out.println();
+
         throttle.accept(ack.typeId(), ack.buffer(), ack.offset(), ack.sizeof());
     }
 
@@ -523,9 +526,8 @@ public final class ServerStreamFactory implements StreamFactory
         final MessageConsumer target,
         final TransferFW transfer)
     {
-System.out.println("TRANSFER");
-transfer.regions().forEach(r -> System.out.printf("address=%d length=%d\n", r.address(), r.length()));
-
+System.out.printf("send TRANSFER FIN=%s RST=%s\n", ((transfer.flags()&FIN) == FIN), ((transfer.flags()&RST) == RST));
+transfer.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
         target.accept(transfer.typeId(), transfer.buffer(), transfer.offset(), transfer.sizeof());
     }
 
@@ -533,27 +535,22 @@ transfer.regions().forEach(r -> System.out.printf("address=%d length=%d\n", r.ad
         MessageConsumer target,
         long targetId)
     {
-        System.out.println("END");
         TransferFW end = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                              .streamId(targetId)
                              .flags(FIN)
                              .extension(e -> e.reset())
                              .build();
-
-        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+        doTransfer(target, end);
     }
 
     void doReset(
         final MessageConsumer throttle,
         final long throttleId)
     {
-        System.out.println("RESET");
-
         final AckFW reset = ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                  .streamId(throttleId)
                                  .flags(RST)
                                  .build();
-
-        throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+        doAck(throttle, reset);
     }
 }

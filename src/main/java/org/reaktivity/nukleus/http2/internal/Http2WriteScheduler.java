@@ -460,7 +460,7 @@ public class Http2WriteScheduler implements WriteScheduler
             }
             else
             {
-                connection.processTransportAck(r.address(), r.length(), r.streamId());
+                connection.processTransportAck(ack.flags(), r.address(), r.length(), r.streamId());
             }
         });
 

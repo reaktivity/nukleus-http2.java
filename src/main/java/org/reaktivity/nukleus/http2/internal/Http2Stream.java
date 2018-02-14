@@ -37,7 +37,6 @@ class Http2Stream
     private final MessageConsumer applicationTarget;
     Http2Connection.State state;
     long http2OutWindow;
-    long applicationReplyBudget;
     long http2InWindow;
 
     long contentLength;
@@ -51,6 +50,10 @@ class Http2Stream
 
     MessageConsumer applicationReplyThrottle;
     long applicationReplyId;
+
+    int responseBytes;
+    int ackedResponseBytes;
+    boolean responseReceived;
 
     Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
                 MessageConsumer applicationTarget, HttpWriter httpWriter)
@@ -75,10 +78,11 @@ class Http2Stream
         return http2StreamId%2 == 1;
     }
 
-    void onHttpEnd()
+    void onResponseEnd()
     {
         connection.writeScheduler.dataEos(http2StreamId);
-        applicationReplyThrottle = null;
+        responseReceived = true;
+        //applicationReplyThrottle = null;
     }
 
     void onHttpAbort()
@@ -107,7 +111,7 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    void onData()
+    void onRequestData()
     {
         boolean end = factory.http2DataRO.endStream();
 
@@ -123,6 +127,12 @@ class Http2Stream
 
         // HTTP2 stream-level flow-control
         connection.writeScheduler.windowUpdate(http2StreamId, factory.http2DataRO.dataLength());
+    }
+
+    void onResponseData(TransferFW data)
+    {
+        data.regions().forEach(r -> responseBytes += r.length());
+        connection.writeScheduler.data(http2StreamId, data);
     }
 
     void onAbort()
@@ -176,31 +186,21 @@ class Http2Stream
     }
 
     void onThrottle(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
+        int msgTypeId,
+        DirectBuffer buffer,
+        int index,
+        int length)
     {
-//        switch (msgTypeId)
-//        {
-//            case WindowFW.TYPE_ID:
-//                if (isClientInitiated())
-//                {
-//                    factory.windowRO.wrap(buffer, index, index + length);
-//                    int credit = factory.windowRO.credit();
-//                    int padding = factory.windowRO.padding();
-//                    long groupId = factory.windowRO.groupId();
-//
-//                    httpWriteScheduler.onWindow(credit, padding, groupId);
-//                }
-//                break;
-//            case ResetFW.TYPE_ID:
-//                onHttpReset();
-//                break;
-//            default:
-//                // ignore
-//                break;
-//        }
+        switch (msgTypeId)
+        {
+            case AckFW.TYPE_ID:
+                final AckFW ack = factory.ackRO.wrap(buffer, index, index + length);
+                connection.handleApplicationAck(ack);
+                break;
+            default:
+                // ignore
+                break;
+        }
     }
 
     void close()
@@ -223,15 +223,22 @@ class Http2Stream
 //        }
     }
 
-    void onAck(long address, int length, long streamId)
+    void onTransportAck(int tflags, long address, int length, long streamId)
     {
+        ackedResponseBytes += length;
+
+        int flags = 0;
+        if (responseReceived && responseBytes == ackedResponseBytes)
+        {
+            flags |= FIN;
+        }
         AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
                                  .streamId(applicationReplyId)
+                                 .flags(flags)
                                  .regionsItem(r -> r.address(address).length(length).streamId(streamId))
                                  .build();
 
         factory.doAck(applicationReplyThrottle, ack);
     }
-
 
 }

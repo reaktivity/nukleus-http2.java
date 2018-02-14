@@ -15,7 +15,6 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
@@ -66,7 +65,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
@@ -78,6 +76,7 @@ import org.reaktivity.nukleus.route.RouteManager;
 final class Http2Connection
 {
     private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
+    private static final int FIN = 0x01;
 
     ServerStreamFactory factory;
     private DecoderState decoderState;
@@ -210,84 +209,6 @@ final class Http2Connection
         factory.doAck(networkThrottle, ack);
     }
 
-//    void payloadRegion(long address, int length, long streamId)
-//    {
-//        Http2Stream stream = http2Streams.get(curStreamId);
-//        if (stream != null)
-//        {
-//            stream.onPayloadRegion(address, length, streamId);
-//        }
-//    }
-
-    /*
-    void ackAll()
-    {
-        factory.http2RO.payloadLength();
-        ListFW<RegionFW> regions = regionsRW.build();
-        factory.ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId();
-        regions.forEach(r ->
-            factory.ackRW.regionsItem(ar -> ar.address(r.address()).length(r.length()).streamId(r.streamId()))
-        );
-        AckFW ack = factory.ackRW.build();
-    }
-
-    void ackAndTransfer()
-    {
-        assert factory.http2RO.type() == DATA;
-        Http2DataFW dataRO = factory.http2DataRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(),
-                factory.http2RO.limit());
-
-        int dataStart = 9 + (dataRO.padding() ? 1 : 0);
-        int dataEnd = dataStart + dataRO.dataLength();
-
-        ListFW<RegionFW> regions = regionsRW.build();
-
-        // Ack for framing (frame header, padding lengthm padding)
-        factory.ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                     .streamId();
-        int[] total = new int[1];
-        regions.forEach(r ->
-        {
-            // add intersection of this region and  (0 .. dataStart)
-            if (dataStart - total[0] > 0)
-            {
-                int length = Math.min(dataStart - total[0], r.length());
-                factory.ackRW.regionsItem(ar -> ar.address(r.address()).length(length).streamId(r.streamId()));
-            }
-
-            // add intersection of this region and (dataEnd .. frame end)
-            if (total[0] + r.length() > dataEnd)
-            {
-                int offset = total[0] < dataEnd ? dataEnd - total[0] : 0;
-                int length = r.length() - offset;
-                factory.ackRW.regionsItem(ar -> ar.address(r.address() + offset).length(length).streamId(r.streamId()));
-            }
-            total[0] += r.length();
-        });
-        AckFW ack = factory.ackRW.build();
-        factory.doAck(ack);
-
-        // Transfer for application payload
-        total[0] = 0;
-        factory.transferRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                .streamId();
-        regions.forEach(r ->
-        {
-            if (dataStart <= total[0] + r.length() && total[0] <= dataEnd)
-            {
-                int offset = total[0] < dataStart ? dataStart - total[0] : 0;
-                int length = total[0] + r.length() > dataEnd ? dataEnd - total[0] : 0;
-                int length1 = length - offset;
-                factory.transferRW.regionsItem(ar -> ar.address(r.address() + offset).length(length1).streamId(r.streamId()));
-            }
-            total[0] += r.length();
-
-        });
-        TransferFW transfer = factory.transferRW.build();
-        factory.doTransfer(transfer);
-    }
-*/
     void processUnexpected(
             long streamId)
     {
@@ -320,14 +241,6 @@ final class Http2Connection
     void handleData(TransferFW dataRO)
     {
         decoder.decode(dataRO.regions());
-//        OctetsFW payload = dataRO.payload();
-//        int limit = payload.limit();
-//
-//        int offset = payload.offset();
-//        while (offset < limit)
-//        {
-//            offset += decoderState.decode(dataRO.buffer(), offset, limit);
-//        }
     }
 
     void handleAbort()
@@ -344,20 +257,18 @@ final class Http2Connection
 
     void handleEnd(TransferFW end)
     {
+        // TODO wait until upstreams are closed
+        AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                 .streamId(networkId)
+                                 .flags(FIN)
+                                 .build();
+        factory.doAck(networkThrottle, ack);
+
         decoderState = (b, o, l) -> o;
 
         http2Streams.forEach((i, s) -> s.onEnd());
         writeScheduler.doEnd();
         cleanConnection();
-    }
-
-    private int http2FrameLength(DirectBuffer buffer, final int offset, int limit)
-    {
-        assert limit - offset >= 3;
-
-        int length = (buffer.getByte(offset) & 0xFF) << 16;
-        length += (buffer.getShort(offset + 1, BIG_ENDIAN) & 0xFF_FF);
-        return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
     }
 
     private boolean acquireHeadersSlot()
@@ -654,7 +565,7 @@ final class Http2Connection
 
         if (factory.headersRO.endStream())
         {
-            factory.doEnd(applicationTarget, stream.targetId);  // TODO use HttpWriteScheduler
+            factory.doEnd(applicationTarget, stream.targetId);
         }
     }
 
@@ -844,7 +755,7 @@ final class Http2Connection
             stream.state = State.HALF_CLOSED_REMOTE;
         }
 
-        stream.onData();
+        stream.onRequestData();
     }
 
     private void doSettings()
@@ -1029,6 +940,16 @@ final class Http2Connection
     void handleAck(AckFW ack)
     {
         writeScheduler.onAck(ack);
+    }
+
+    void handleApplicationAck(AckFW ack)
+    {
+        factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                     .streamId(networkId);
+        ack.regions().forEach(r -> factory.ackRW.regionsItem(m -> m.address(r.address()).length(r.length()).streamId(r.streamId())));
+        AckFW newAck = factory.ackRW.build();
+
+        factory.doAck(networkThrottle, newAck);
     }
 
     void error(Http2ErrorCode errorCode)
@@ -1564,8 +1485,13 @@ final class Http2Connection
         if (stream != null)
         {
             data.regions().forEach(r -> regionStreams.put(r.streamId(), stream));
+            stream.onResponseData(data);
         }
-        writeScheduler.data(correlation.http2StreamId, data);
+        else
+        {
+
+        }
+        //writeScheduler.data(correlation.http2StreamId, data);
 
 //        OctetsFW extension = dataRO.extension();
 //        OctetsFW payload = dataRO.payload();
@@ -1600,12 +1526,12 @@ final class Http2Connection
 
     }
 
-    void processTransportAck(long address, int length, long targetId)
+    void processTransportAck(int flags, long address, int length, long targetId)
     {
         Http2Stream stream = regionStreams.get(targetId);
         if (stream != null)
         {
-            stream.onAck(address, length, targetId);
+            stream.onTransportAck(flags, address, length, targetId);
         }
         else
         {
@@ -1619,7 +1545,7 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
 
         if (stream != null)
         {
-            stream.onHttpEnd();
+            stream.onResponseEnd();
         }
     }
 

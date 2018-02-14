@@ -274,11 +274,9 @@ public class Http2Decoder
         int[] total = new int[1];
         regions.forEach(r ->
         {
-            System.out.printf("(address=%d length=%d)  total=%d dataStart=%d dataEnd=%d\n", r.address(), r.length(), total[0], dataStart, dataEnd);
             // TODO for padding need to break up regions
             if (total[0] >= dataStart)
             {
-                System.out.printf("\tAdding (address=%d length=%d)\n", r.address(), r.length());
                 transferRW.regionsItem(ar -> ar.address(r.address()).length(r.length()).streamId(r.streamId()));
             }
             total[0] += r.length();

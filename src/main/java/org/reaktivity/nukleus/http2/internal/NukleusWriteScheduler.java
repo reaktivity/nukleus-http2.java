@@ -41,6 +41,7 @@ class NukleusWriteScheduler implements Closeable
     private final long regionAddress;
     private int regionWriteOffset;
     private int regionAckOffset;
+    private boolean released;
 
     NukleusWriteScheduler(
         MemoryManager memoryManager,
@@ -99,7 +100,6 @@ class NukleusWriteScheduler implements Closeable
         {
             regionWriteOffset = regionAckOffset = 0;
         }
-        System.out.printf("regionWriteOffset=%d regionAckOffset=%d\n", regionAckOffset, regionAckOffset);
     }
 
     void flushBegin()
@@ -131,7 +131,12 @@ class NukleusWriteScheduler implements Closeable
     @Override
     public void close()
     {
-        memoryManager.release(regionAddress, REGION_SIZE);
+        if (!released)
+        {
+            released = true;
+            System.out.printf("Releasing acquired memory (%d, %d)\n", regionAddress, REGION_SIZE);
+            memoryManager.release(regionAddress, REGION_SIZE);
+        }
     }
 
 }
