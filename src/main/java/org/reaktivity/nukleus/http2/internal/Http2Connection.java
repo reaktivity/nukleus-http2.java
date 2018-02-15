@@ -79,7 +79,6 @@ final class Http2Connection
     private static final int FIN = 0x01;
 
     ServerStreamFactory factory;
-    private DecoderState decoderState;
 
     long sourceId;
     long authorization;
@@ -256,7 +255,7 @@ final class Http2Connection
         cleanConnection();
     }
 
-    void handleEnd(TransferFW end)
+    void onNetworkTransferFin(TransferFW end)
     {
         // TODO wait until upstreams are closed
         AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
@@ -265,9 +264,7 @@ final class Http2Connection
                                  .build();
         factory.doAck(networkThrottle, ack);
 
-        decoderState = (b, o, l) -> o;
-
-        http2Streams.forEach((i, s) -> s.onEnd());
+        http2Streams.forEach((i, s) -> s.onNetworkTransferFin());
         writeScheduler.doEnd();
         cleanConnection();
     }

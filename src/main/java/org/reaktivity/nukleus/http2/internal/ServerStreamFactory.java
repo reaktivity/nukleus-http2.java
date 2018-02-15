@@ -308,7 +308,7 @@ System.out.printf("recv HTTP2 TRANSFER streamid=%d FIN=%s RST=%s\n", data.stream
         private void onNetworkTransferFin(
             TransferFW end)
         {
-            http2Connection.handleEnd(end);
+            http2Connection.onNetworkTransferFin(end);
         }
 
         private void onNetworkTransferRst(

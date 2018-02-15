@@ -181,13 +181,13 @@ class Http2Stream implements Closeable
 //        close();
     }
 
-    void onEnd()
+    void onNetworkTransferFin()
     {
-//        // more request data to be sent, so send ABORT
-//        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-//        {
-//            httpWriteScheduler.doAbort();
-//        }
+        // more request data to be sent, so send TRANSFER(RST)
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            doApplicationTransferRst();
+        }
 //
 //        if (applicationReplyThrottle != null)
 //        {

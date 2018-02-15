@@ -206,6 +206,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not valid anymore as server doesn't send initial window size as 0")
     @Test
     @Specification({
             "${route}/server/controller",
