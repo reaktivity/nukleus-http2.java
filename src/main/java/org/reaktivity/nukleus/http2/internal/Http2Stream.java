@@ -94,16 +94,16 @@ class Http2Stream implements Closeable
         //applicationReplyThrottle = null;
     }
 
-    void onHttpAbort()
+    void onApplicationReplyTransferRst()
     {
-//        // more request data to be sent, so send ABORT
-//        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-//        {
-//            httpWriteScheduler.doAbort();
-//        }
-//
-//        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
-//
+        // more request data to be sent, so send TRANSFER(RST)
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            doApplicationTransferRst();
+        }
+
+        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+
 //        connection.closeStream(this);
     }
 
@@ -155,12 +155,8 @@ class Http2Stream implements Closeable
             doApplicationTransferRst();
         }
 
-//
-//        // reset the response stream
-//        if (applicationReplyThrottle != null)
-//        {
-//            factory.doReset(applicationReplyThrottle, applicationReplyId);
-//        }
+        // reset the response (if all the application reply regions are acked)
+        doApplicationReplyAckRst();
 //
 //        close();
     }
@@ -173,13 +169,8 @@ class Http2Stream implements Closeable
             doApplicationTransferRst();
         }
 
-
-//
-//        // reset the response stream
-//        if (applicationReplyThrottle != null)
-//        {
-//            factory.doReset(applicationReplyThrottle, applicationReplyId);
-//        }
+        // reset the response (if all the application reply regions are acked)
+        doApplicationReplyAckRst();
 //
 //        close();
     }
@@ -291,7 +282,7 @@ class Http2Stream implements Closeable
 
     private void doApplicationReplyAckRst()
     {
-        if (!ackedResponseRst && completeResponseReceived && responseBytes == ackedResponseBytes)
+        if (!ackedResponseRst && applicationReplyThrottle != null && responseBytes == ackedResponseBytes)
         {
             ackedResponseRst = true;
             AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())

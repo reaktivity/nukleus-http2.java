@@ -474,7 +474,7 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
         private void handleResponseRst(
             TransferFW abort)
         {
-            http2Connection.handleHttpAbort(abort, correlation);
+            http2Connection.onApplicationReplyTransferRst(abort, correlation);
         }
 
     }

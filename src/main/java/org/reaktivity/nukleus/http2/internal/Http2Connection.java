@@ -1549,13 +1549,13 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
         }
     }
 
-    void handleHttpAbort(TransferFW abort, Correlation correlation)
+    void onApplicationReplyTransferRst(TransferFW abort, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
 
         if (stream != null)
         {
-            stream.onHttpAbort();
+            stream.onApplicationReplyTransferRst();
 
         }
     }
