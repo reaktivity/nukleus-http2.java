@@ -262,17 +262,17 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 case TransferFW.TYPE_ID:
                     final TransferFW data = writeRO.wrap(buffer, index, index + length);
-System.out.printf("recv HTTP2 TRANSFER FIN=%s RST=%s\n", ((data.flags()&FIN) == FIN), ((data.flags()&RST) == RST));
-data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
+System.out.printf("recv HTTP2 TRANSFER streamid=%d FIN=%s RST=%s\n", data.streamId(), ((data.flags()&FIN) == FIN), ((data.flags()&RST) == RST));
+//data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
                     handleData(data);
 
                     if ((data.flags() & FIN) == FIN)
                     {
-                        handleEnd(data);
+                        onNetworkTransferFin(data);
                     }
                     if ((data.flags() & RST) == RST)
                     {
-                        handleAbort(data);
+                        onNetworkTransferRst(data);
                     }
                     break;
                 default:
@@ -305,13 +305,13 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
             http2Connection.handleData(data);
         }
 
-        private void handleEnd(
+        private void onNetworkTransferFin(
             TransferFW end)
         {
             http2Connection.handleEnd(end);
         }
 
-        private void handleAbort(
+        private void onNetworkTransferRst(
             TransferFW abort)
         {
             correlations.remove(networkCorrelationId);
@@ -320,7 +320,7 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
             doAbort(networkReply, networkReplyId);
 
             // aborts http request stream, resets http response stream
-            http2Connection.handleAbort();
+            http2Connection.onNetworkTransferRst();
         }
 
         private void handleThrottle(
@@ -332,10 +332,17 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
             switch (msgTypeId)
             {
                 case AckFW.TYPE_ID:
-                    final AckFW reset = ackRO.wrap(buffer, index, index + length);
-                    http2Connection.handleAck(reset);
-                    // TODO
-                    //handleReset(reset);
+                    final AckFW ack = ackRO.wrap(buffer, index, index + length);
+                    http2Connection.onNetworkReplyAck(ack);
+
+                    if ((ack.flags() & FIN) == FIN)
+                    {
+                        onNetworkReplyAckFin(ack);
+                    }
+                    if ((ack.flags() & RST) == RST)
+                    {
+                        onNetworkReplyAckRst(ack);
+                    }
                     break;
                 default:
                     // ignore
@@ -343,10 +350,15 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
             }
         }
 
-        private void handleReset(
+        private void onNetworkReplyAckFin(
             AckFW reset)
         {
-            http2Connection.handleReset(reset);
+        }
+
+        private void onNetworkReplyAckRst(
+            AckFW reset)
+        {
+            http2Connection.onNetworkReplyAckRst(reset);
 
             doReset(networkThrottle, networkId);
         }
@@ -408,17 +420,17 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
             {
                 case TransferFW.TYPE_ID:
                     final TransferFW data = writeRO.wrap(buffer, index, index + length);
-System.out.printf("recv HTTP TRANSFER FIN=%s RST=%s\n", ((data.flags()&FIN) == FIN), ((data.flags()&RST) == RST));
+System.out.printf("recv HTTP TRANSFER streamid=%d FIN=%s RST=%s\n", data.streamId(), ((data.flags()&FIN) == FIN), ((data.flags()&RST) == RST));
 data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
                     handleData(data);
 
                     if ((data.flags() & FIN) == FIN)
                     {
-                        handleEnd(data);
+                        handleResponseFin(data);
                     }
                     if ((data.flags() & RST) == RST)
                     {
-                        handleAbort(data);
+                        handleResponseRst(data);
                     }
                     break;
                 default:
@@ -453,13 +465,13 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
             http2Connection.handleHttpData(data, correlation);
         }
 
-        private void handleEnd(
+        private void handleResponseFin(
             TransferFW end)
         {
-            http2Connection.handleHttpEnd(end, correlation);
+            http2Connection.handleResponseFin(end, correlation);
         }
 
-        private void handleAbort(
+        private void handleResponseRst(
             TransferFW abort)
         {
             http2Connection.handleHttpAbort(abort, correlation);
@@ -515,8 +527,8 @@ data.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%
         final MessageConsumer throttle,
         final AckFW ack)
     {
-System.out.printf("send ACK FIN=%s RST=%s\n", ((ack.flags()&FIN) == FIN), ((ack.flags()&RST) == RST));
-ack.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
+System.out.printf("send ACK streamid=%d FIN=%s RST=%s\n", ack.streamId(), ((ack.flags()&FIN) == FIN), ((ack.flags()&RST) == RST));
+//ack.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
 System.out.println();
 
         throttle.accept(ack.typeId(), ack.buffer(), ack.offset(), ack.sizeof());
@@ -526,8 +538,8 @@ System.out.println();
         final MessageConsumer target,
         final TransferFW transfer)
     {
-System.out.printf("send TRANSFER FIN=%s RST=%s\n", ((transfer.flags()&FIN) == FIN), ((transfer.flags()&RST) == RST));
-transfer.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
+System.out.printf("send TRANSFER streamid=%d FIN=%s RST=%s\n", transfer.streamId(), ((transfer.flags()&FIN) == FIN), ((transfer.flags()&RST) == RST));
+//transfer.regions().forEach(r -> System.out.printf("\taddress=%d length=%d streamid=%d\n", r.address(), r.length(), r.streamId()));
         target.accept(transfer.typeId(), transfer.buffer(), transfer.offset(), transfer.sizeof());
     }
 

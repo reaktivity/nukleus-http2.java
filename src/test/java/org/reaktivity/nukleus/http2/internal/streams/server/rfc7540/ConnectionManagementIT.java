@@ -97,6 +97,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not implemented for zero copy")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -107,6 +108,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not implemented for zero copy")
     @Test
     @Specification({
             "${route}/server/controller",

@@ -311,10 +311,10 @@ public class Http2WriteScheduler implements WriteScheduler
             writer.flushBegin();
             while (length > 0)
             {
-                int chunk = Math.min(region.length(), connection.remoteSettings.maxFrameSize);
+                int chunk = Math.min(length, connection.remoteSettings.maxFrameSize);
                 Flyweight.Builder.Visitor visitor = http2Writer.visitDataHeader(streamId, chunk);
                 writeHttp2Frame(stream, type, chunk, visitor);
-                writeHttp2DataFrameWithoutHeader(stream, type, address, length, region.streamId());
+                writeHttp2DataFrameWithoutHeader(stream, type, address, chunk, region.streamId());
 
                 address += chunk;
                 length -= chunk;
@@ -421,14 +421,6 @@ public class Http2WriteScheduler implements WriteScheduler
             entry.write();
         }
         writer.flushEnd();
-
-        for(Http2Stream stream : connection.http2Streams.values())
-        {
-            if (stream.applicationReplyThrottle != null)
-            {
-                stream.sendHttpWindow();
-            }
-        }
 
         if (entryCount == 0 && end && !endSent)
         {
@@ -672,27 +664,27 @@ public class Http2WriteScheduler implements WriteScheduler
         boolean fits()
         {
             // limit by nuklei window, http2 windows, peer's max frame size
-            int min = Math.min((int) connection.http2OutWindow, (int) stream.http2OutWindow);
-            min = Math.min(min, length);
-            min = Math.min(min, connection.remoteSettings.maxFrameSize);
-            min = Math.min(min, writer.remaining() - 9);
+            int chunk = Math.min((int) connection.http2OutWindow, (int) stream.http2OutWindow);
+            chunk = Math.min(chunk, length);
+            chunk = Math.min(chunk, connection.remoteSettings.maxFrameSize);
+            chunk = Math.min(chunk, writer.remaining() - 9);
 
-            if (min > 0)
+            if (chunk > 0)
             {
-                int remaining = length - min;
+                int remaining = length - chunk;
                 if (remaining > 0)
                 {
                     entryCount--;
                     stream.replyQueue.poll();
-                    DataEntry entry1 = new DataEntry(stream, streamId, type, address, min, regionStreamId);
-                    DataEntry entry2 = new DataEntry(stream, streamId, type, address, remaining, regionStreamId);
+                    DataEntry entry1 = new DataEntry(stream, streamId, type, address, chunk, regionStreamId);
+                    DataEntry entry2 = new DataEntry(stream, streamId, type, address + chunk, remaining, regionStreamId);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
                 }
             }
 
-            return min > 0;
+            return chunk > 0;
         }
 
         @Override

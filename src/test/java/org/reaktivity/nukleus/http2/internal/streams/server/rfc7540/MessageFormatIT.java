@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
 
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -98,6 +99,7 @@ public class MessageFormatIT
         k3po.finish();
     }
 
+    @Ignore("PUSH_PROMISE not implemented for zero copy")
     @Test
     @Specification({
             "${route}/server/controller",

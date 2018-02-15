@@ -224,7 +224,7 @@ final class Http2Connection
         {
             closeStream(http2Stream);
         }
-        http2Streams.clear();
+//        http2Streams.clear();
         writeScheduler.close();
     }
 
@@ -243,15 +243,16 @@ final class Http2Connection
         decoder.decode(dataRO.regions());
     }
 
-    void handleAbort()
+    void onNetworkTransferRst()
     {
-        http2Streams.forEach((i, s) -> s.onAbort());
+        http2Streams.forEach((i, s) -> s.onNetworkTransferRst());
         cleanConnection();
     }
 
-    void handleReset(AckFW reset)
+    void onNetworkReplyAckRst(
+        AckFW ack)
     {
-        http2Streams.forEach((i, s) -> s.onReset());
+        http2Streams.forEach((i, s) -> s.onNetworkReplyAckRst());
         cleanConnection();
     }
 
@@ -275,7 +276,7 @@ final class Http2Connection
     {
         if (headersBuffer == null)
         {
-            headersBuffer = new UnsafeBuffer(new byte[8192]);
+            headersBuffer = new UnsafeBuffer(new byte[8192]);       // TODO use memoryManager
         }
         return true;
     }
@@ -388,7 +389,7 @@ final class Http2Connection
     private void processHttp2Frame(Http2FrameFW http2RO)
     {
         Http2FrameType http2FrameType = factory.http2RO.type();
-        System.out.printf("-> %d %s\n", System.currentTimeMillis()%100000, http2RO);
+        //System.out.printf("-> %d %s\n", System.currentTimeMillis()%100000, http2RO);
         // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
         if (!http2HeadersAvailable())
         {
@@ -603,7 +604,7 @@ final class Http2Connection
         }
         else
         {
-            stream.onReset();
+            stream.onNetworkReplyAckRst();
             closeStream(stream);
         }
     }
@@ -623,7 +624,7 @@ final class Http2Connection
                 promisedStreamCount--;
             }
             factory.correlations.remove(stream.targetId);
-            http2Streams.remove(stream.http2StreamId);
+//            http2Streams.remove(stream.http2StreamId);
             stream.close();
         }
     }
@@ -937,7 +938,7 @@ final class Http2Connection
         return router.resolve(authorization, filter, wrapRoute);
     }
 
-    void handleAck(AckFW ack)
+    void onNetworkReplyAck(AckFW ack)
     {
         writeScheduler.onAck(ack);
     }
@@ -1469,8 +1470,6 @@ final class Http2Connection
             stream.applicationReplyThrottle = applicationReplyThrottle;
             stream.applicationReplyId = applicationReplyId;
 
-            stream.sendHttpWindow();
-
             if (extension.sizeof() > 0)
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
@@ -1531,7 +1530,7 @@ final class Http2Connection
         Http2Stream stream = regionStreams.get(targetId);
         if (stream != null)
         {
-            stream.onTransportAck(flags, address, length, targetId);
+            stream.onNetworkReplyAck(flags, address, length, targetId);
         }
         else
         {
@@ -1539,13 +1538,17 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
         }
     }
 
-    void handleHttpEnd(TransferFW data, Correlation correlation)
+    void handleResponseFin(TransferFW data, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
 
         if (stream != null)
         {
-            stream.onResponseEnd();
+            stream.onApplicationReplyFin();
+        }
+        else
+        {
+            System.out.println("********** stream is null");
         }
     }
 
@@ -1562,7 +1565,7 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
 
     void doRstByUs(Http2Stream stream, Http2ErrorCode errorCode)
     {
-        stream.onReset();
+        stream.onNetworkReplyAckRst();
         writeScheduler.rst(stream.http2StreamId, errorCode);
         closeStream(stream);
     }
