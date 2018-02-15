@@ -131,11 +131,14 @@ class Http2Stream implements Closeable
         TransferFW transfer = factory.transferRW.build();
         factory.doTransfer(applicationTarget, transfer);
 
-        // HTTP2 connection-level flow-control
-        connection.writeScheduler.windowUpdate(0, factory.http2DataRO.dataLength());
+        if (factory.http2DataRO.dataLength() > 0)
+        {
+            // HTTP2 connection-level flow-control
+            connection.writeScheduler.windowUpdate(0, factory.http2DataRO.dataLength());
 
-        // HTTP2 stream-level flow-control
-        connection.writeScheduler.windowUpdate(http2StreamId, factory.http2DataRO.dataLength());
+            // HTTP2 stream-level flow-control
+            connection.writeScheduler.windowUpdate(http2StreamId, factory.http2DataRO.dataLength());
+        }
     }
 
     void onResponseData(TransferFW data)
