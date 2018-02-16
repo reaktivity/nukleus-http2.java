@@ -31,9 +31,7 @@ class Http2Stream implements Closeable
     private static final int RST = 0x02;
 
     final Http2Connection connection;
-    //final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
-    final int maxHeaderSize;
     final long targetId;
     final long correlationId;
     private final MessageConsumer applicationTarget;
@@ -56,7 +54,8 @@ class Http2Stream implements Closeable
     int responseBytes;
     int ackedResponseBytes;
     boolean completeResponseReceived;
-    boolean ackedApplicationReplyFinOrRst;
+    boolean sentApplicationReplyAck;
+    boolean recvApplicationAck;
 
     boolean requestTransferRst;
 
@@ -76,9 +75,6 @@ class Http2Stream implements Closeable
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        //this.httpWriteScheduler = new HttpWriteScheduler(factory.memoryManager, applicationTarget, httpWriter, targetId, this);
-        // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
-        this.maxHeaderSize = 0;
     }
 
     boolean isClientInitiated()
@@ -91,7 +87,10 @@ class Http2Stream implements Closeable
         connection.writeScheduler.dataEos(http2StreamId);
         completeResponseReceived = true;
         doApplicationReplyAckFin();
-        //applicationReplyThrottle = null;
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
     void onApplicationReplyTransferRst()
@@ -103,21 +102,25 @@ class Http2Stream implements Closeable
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
-
-//        connection.closeStream(this);
+        doApplicationReplyAckRst();
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
-    void onHttpReset()
+    void onRstStream()
     {
-        // reset the response stream
-        if (applicationReplyThrottle != null)
+        // more request data to be sent, so send TRANSFER(RST)
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            doApplicationTransferRst();
         }
+    }
 
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
-
-        connection.closeStream(this);
+    void doRstStream(Http2ErrorCode errorCode)
+    {
+        connection.writeScheduler.rst(http2StreamId, errorCode);
     }
 
     void onRequestData()
@@ -157,8 +160,10 @@ class Http2Stream implements Closeable
 
         // reset the response (if all the application reply regions are acked)
         doApplicationReplyAckRst();
-//
-//        close();
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
     void onNetworkReplyAckFin()
@@ -171,8 +176,11 @@ class Http2Stream implements Closeable
 
         // reset the response (if all the application reply regions are acked)
         pendingApplicationReplyAckRst = doApplicationReplyAckFin();
-//
-//        close();
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
     void onNetworkReplyAckRst()
@@ -185,8 +193,11 @@ class Http2Stream implements Closeable
 
         // reset the response (if all the application reply regions are acked)
         pendingApplicationReplyAckRst = doApplicationReplyAckRst();
-//
-//        close();
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
     void onNetworkTransferFin()
@@ -196,13 +207,10 @@ class Http2Stream implements Closeable
         {
             doApplicationTransferRst();
         }
-//
-//        if (applicationReplyThrottle != null)
-//        {
-//            factory.doReset(applicationReplyThrottle, applicationReplyId);
-//        }
-//
-//        close();
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
     void onThrottle(
@@ -218,11 +226,11 @@ class Http2Stream implements Closeable
                 connection.onApplicationAck(ack);
                 if ((ack.flags() & FIN) == FIN)
                 {
-                    onApplicationAckFin(ack);
+                    onApplicationAckFin();
                 }
                 if ((ack.flags() & RST) == RST)
                 {
-                    onApplicationAckRst(ack);
+                    onApplicationAckRst();
                 }
                 break;
             default:
@@ -231,23 +239,34 @@ class Http2Stream implements Closeable
         }
     }
 
-    private void onApplicationAckFin(AckFW ack)
+    private void onApplicationAckFin()
     {
-        connection.onApplicationAckFin(http2StreamId);
+        recvApplicationAck = true;
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
+
+        connection.onApplicationAckFin();
     }
 
-    private void onApplicationAckRst(AckFW ack)
+    private void onApplicationAckRst()
     {
-        // more request data to be sent, so send TRANSFER(RST)
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
-        {
-            doApplicationTransferRst();
-        }
+        recvApplicationAck = true;
 
         // send RST_STREAM on HTTP2 stream
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
 
-        connection.onApplicationAckRst(http2StreamId);
+        // reset the response (if all the application reply regions are acked)
+        doApplicationReplyAckRst();
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
+
+        connection.onApplicationAckRst();
     }
 
     @Override
@@ -256,11 +275,7 @@ class Http2Stream implements Closeable
         if (!closed)
         {
             closed = true;
-
-            // Response stream close
-            doApplicationReplyAckRst();
         }
-        //httpWriteScheduler.onReset();
     }
 
     void onNetworkReplyAck(int tflags, long address, int length, long streamId)
@@ -286,9 +301,9 @@ class Http2Stream implements Closeable
 
     private boolean doApplicationReplyAckFin()
     {
-        if (!ackedApplicationReplyFinOrRst && completeResponseReceived && responseBytes == ackedResponseBytes)
+        if (!sentApplicationReplyAck && completeResponseReceived && responseBytes == ackedResponseBytes)
         {
-            ackedApplicationReplyFinOrRst = true;
+            sentApplicationReplyAck = true;
             AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
                                      .streamId(applicationReplyId)
                                      .flags(FIN)
@@ -303,9 +318,9 @@ class Http2Stream implements Closeable
 
     private boolean doApplicationReplyAckRst()
     {
-        if (!ackedApplicationReplyFinOrRst && applicationReplyThrottle != null && responseBytes == ackedResponseBytes)
+        if (!sentApplicationReplyAck && applicationReplyThrottle != null && responseBytes == ackedResponseBytes)
         {
-            ackedApplicationReplyFinOrRst = true;
+            sentApplicationReplyAck = true;
             AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
                                      .streamId(applicationReplyId)
                                      .flags(RST)

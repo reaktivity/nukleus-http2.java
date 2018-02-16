@@ -349,11 +349,10 @@ public class Http2WriteScheduler implements WriteScheduler
                 0 <= stream.http2OutWindow)
         {
             writeHttp2FrameAndFlush(stream, type, sizeof, data);
-            connection.closeStream(stream);
         }
         else
         {
-            DataEosEntry entry = new DataEosEntry(stream, streamId, length, type, data);
+            Entry entry = new Entry(stream, streamId, length, type, data);
             addEntry(entry);
         }
 
@@ -635,7 +634,6 @@ public class Http2WriteScheduler implements WriteScheduler
         void write()
         {
             super.write();
-            connection.closeStream(stream);
         }
     }
 

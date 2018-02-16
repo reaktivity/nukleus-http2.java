@@ -126,6 +126,9 @@ final class Http2Connection
     MessageConsumer networkThrottle;
     long networkId;
     MutableDirectBuffer regionsBuf;
+    boolean pendingNetworkAckFin;
+    boolean pendingNetworkAckRst;
+
 
     Http2Connection(
         ServerStreamFactory factory,
@@ -218,13 +221,8 @@ final class Http2Connection
 
     void cleanConnection()
     {
-        //releaseSlot();
-        //releaseHeadersSlot();
-        for(Http2Stream http2Stream : http2Streams.values())
-        {
-            closeStream(http2Stream);
-        }
-//        http2Streams.clear();
+        releaseHeadersSlot();
+
         writeScheduler.close();
     }
 
@@ -246,49 +244,65 @@ final class Http2Connection
     void onNetworkTransferFin(TransferFW end)
     {
         http2Streams.forEach((i, s) -> s.onNetworkTransferFin());
-
-        // TODO wait until upstreams are closed
-        AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
-                                 .streamId(networkId)
-                                 .flags(FIN)
-                                 .build();
-        factory.doAck(networkThrottle, ack);
+        pendingNetworkAckFin = true;
+        doNetworkAckFin();
 
         writeScheduler.doEnd();
-        cleanConnection();
+    }
+
+    void doNetworkAckFin()
+    {
+        if (pendingNetworkAckFin && http2Streams.isEmpty())
+        {
+            pendingNetworkAckFin = false;
+
+            AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                     .streamId(networkId)
+                                     .flags(FIN)
+                                     .build();
+            factory.doAck(networkThrottle, ack);
+
+            cleanConnection();
+        }
     }
 
     void onNetworkTransferRst()
     {
         http2Streams.forEach((i, s) -> s.onNetworkTransferRst());
+        pendingNetworkAckRst = true;
+        doNetworkAckRst();
+    }
 
-        // TODO wait until upstreams are closed
-        AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
-                                 .streamId(networkId)
-                                 .flags(RST)
-                                 .build();
-        factory.doAck(networkThrottle, ack);
+    void doNetworkAckRst()
+    {
+        if (pendingNetworkAckRst && http2Streams.isEmpty())
+        {
+            pendingNetworkAckRst = false;
 
-        // aborts reply stream
-        factory.doAbort(networkReply, networkReplyId);
+            AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                     .streamId(networkId)
+                                     .flags(RST)
+                                     .build();
+            factory.doAck(networkThrottle, ack);
 
-        cleanConnection();
+            // aborts reply stream
+            factory.doAbort(networkReply, networkReplyId);
+
+            cleanConnection();
+        }
     }
 
     void onNetworkReplyAckFin()
     {
         http2Streams.forEach((i, s) -> s.onNetworkReplyAckFin());
-        cleanConnection();
-
-        factory.doReset(networkThrottle, networkId);
+        doNetworkAckFin();
     }
 
     void onNetworkReplyAckRst()
     {
         http2Streams.forEach((i, s) -> s.onNetworkReplyAckRst());
-        cleanConnection();
-
-        factory.doReset(networkThrottle, networkId);
+        pendingNetworkAckRst = true;
+        doNetworkAckRst();
     }
 
     private boolean acquireHeadersSlot()
@@ -622,8 +636,7 @@ final class Http2Connection
         }
         else
         {
-            stream.onNetworkReplyAckRst();
-            closeStream(stream);
+            stream.onRstStream();
         }
     }
 
@@ -642,8 +655,7 @@ final class Http2Connection
                 promisedStreamCount--;
             }
             factory.correlations.remove(stream.targetId);
-//            http2Streams.remove(stream.http2StreamId);
-            stream.close();
+            http2Streams.remove(stream.http2StreamId);
         }
     }
 
@@ -738,7 +750,6 @@ final class Http2Connection
         if (stream.state == HALF_CLOSED_REMOTE)
         {
             error(Http2ErrorCode.STREAM_CLOSED);
-            closeStream(stream);
             return;
         }
         Http2DataFW dataRO = factory.http2DataRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(),
@@ -746,7 +757,6 @@ final class Http2Connection
         if (dataRO.dataLength() < 0)        // because of invalid padding length
         {
             error(Http2ErrorCode.PROTOCOL_ERROR);
-            closeStream(stream);
             return;
         }
 
@@ -1563,12 +1573,14 @@ final class Http2Connection
         }
     }
 
-    void onApplicationAckRst(int http2StreamId)
+    void onApplicationAckRst()
     {
+        doNetworkAckRst();
     }
 
-    void onApplicationAckFin(int http2StreamId)
+    void onApplicationAckFin()
     {
+        doNetworkAckFin();
     }
 
     void onApplicationReplyTransferRst(TransferFW abort, Correlation correlation)
@@ -1584,9 +1596,7 @@ final class Http2Connection
 
     void doRstByUs(Http2Stream stream, Http2ErrorCode errorCode)
     {
-        stream.onNetworkReplyAckRst();
-        writeScheduler.rst(stream.http2StreamId, errorCode);
-        closeStream(stream);
+        stream.doRstStream(errorCode);
     }
 
     enum State

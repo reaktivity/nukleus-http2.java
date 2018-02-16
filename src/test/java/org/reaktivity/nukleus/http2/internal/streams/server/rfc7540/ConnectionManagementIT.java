@@ -161,6 +161,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("race between read aborted and write aborted")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -172,6 +173,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("race between read aborted and write aborted")
     @Test
     @Specification({
             "${route}/server/controller",
