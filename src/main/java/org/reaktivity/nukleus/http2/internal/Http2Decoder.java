@@ -21,7 +21,6 @@ import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;

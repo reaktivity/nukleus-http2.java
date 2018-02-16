@@ -334,7 +334,8 @@ public class Http2DecoderTest
         return new DefaultMemoryManager(layout);
     }
 
-    private static <T> List<List<T>> batches(List<T> source, int length) {
+    private static <T> List<List<T>> batches(List<T> source, int length)
+    {
         int size = source.size();
         int fullChunks = (size - 1) / length;
         return IntStream.range(0, fullChunks + 1)

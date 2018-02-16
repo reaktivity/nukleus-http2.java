@@ -17,8 +17,6 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;

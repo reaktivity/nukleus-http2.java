@@ -21,7 +21,6 @@ import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
-import org.reaktivity.nukleus.http2.internal.types.stream.RegionFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
 import java.io.Closeable;

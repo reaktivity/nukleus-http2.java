@@ -77,6 +77,7 @@ final class Http2Connection
 {
     private static final Map<String, String> EMPTY_HEADERS = Collections.emptyMap();
     private static final int FIN = 0x01;
+    private static final int RST = 0x02;
 
     ServerStreamFactory factory;
 
@@ -89,7 +90,7 @@ final class Http2Connection
 
     final WriteScheduler writeScheduler;
 
-    final long sourceOutputEstId;
+    final long networkReplyId;
     private final HpackContext decodeContext;
     private final HpackContext encodeContext;
     private final MessageFunction<RouteFW> wrapRoute;
@@ -117,7 +118,7 @@ final class Http2Connection
     private final HeadersContext headersContext = new HeadersContext();
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
     final Http2Writer http2Writer;
-    MessageConsumer networkConsumer;
+    MessageConsumer networkReply;
     RouteManager router;
     String sourceName;
     MutableDirectBuffer headersBuffer;
@@ -132,13 +133,13 @@ final class Http2Connection
         MessageConsumer networkThrottle,
         long networkId,
         long networkReplyId,
-        MessageConsumer networkConsumer,
+        MessageConsumer networkReply,
         MessageFunction<RouteFW> wrapRoute)
     {
         this.factory = factory;
         this.router = router;
         this.wrapRoute = wrapRoute;
-        sourceOutputEstId = networkReplyId;
+        this.networkReplyId = networkReplyId;
         http2Streams = new Int2ObjectHashMap<>();
         regionStreams = new Long2ObjectHashMap<>();
         localSettings = new Settings();
@@ -146,10 +147,10 @@ final class Http2Connection
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         http2Writer = factory.http2Writer;
-        writeScheduler = new Http2WriteScheduler(factory.memoryManager, this, networkConsumer, http2Writer, sourceOutputEstId);
+        writeScheduler = new Http2WriteScheduler(factory.memoryManager, this, networkReply, http2Writer, this.networkReplyId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
-        this.networkConsumer = networkConsumer;
+        this.networkReply = networkReply;
         this.networkThrottle = networkThrottle;
         this.networkId = networkId;
 
@@ -211,7 +212,7 @@ final class Http2Connection
     void processUnexpected(
             long streamId)
     {
-        factory.doReset(networkConsumer, streamId);
+        factory.doReset(networkReply, streamId);
         cleanConnection();
     }
 
@@ -242,21 +243,10 @@ final class Http2Connection
         decoder.decode(dataRO.regions());
     }
 
-    void onNetworkTransferRst()
-    {
-        http2Streams.forEach((i, s) -> s.onNetworkTransferRst());
-        cleanConnection();
-    }
-
-    void onNetworkReplyAckRst(
-        AckFW ack)
-    {
-        http2Streams.forEach((i, s) -> s.onNetworkReplyAckRst());
-        cleanConnection();
-    }
-
     void onNetworkTransferFin(TransferFW end)
     {
+        http2Streams.forEach((i, s) -> s.onNetworkTransferFin());
+
         // TODO wait until upstreams are closed
         AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
                                  .streamId(networkId)
@@ -264,9 +254,41 @@ final class Http2Connection
                                  .build();
         factory.doAck(networkThrottle, ack);
 
-        http2Streams.forEach((i, s) -> s.onNetworkTransferFin());
         writeScheduler.doEnd();
         cleanConnection();
+    }
+
+    void onNetworkTransferRst()
+    {
+        http2Streams.forEach((i, s) -> s.onNetworkTransferRst());
+
+        // TODO wait until upstreams are closed
+        AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                 .streamId(networkId)
+                                 .flags(RST)
+                                 .build();
+        factory.doAck(networkThrottle, ack);
+
+        // aborts reply stream
+        factory.doAbort(networkReply, networkReplyId);
+
+        cleanConnection();
+    }
+
+    void onNetworkReplyAckFin()
+    {
+        http2Streams.forEach((i, s) -> s.onNetworkReplyAckFin());
+        cleanConnection();
+
+        factory.doReset(networkThrottle, networkId);
+    }
+
+    void onNetworkReplyAckRst()
+    {
+        http2Streams.forEach((i, s) -> s.onNetworkReplyAckRst());
+        cleanConnection();
+
+        factory.doReset(networkThrottle, networkId);
     }
 
     private boolean acquireHeadersSlot()
@@ -940,11 +962,12 @@ final class Http2Connection
         writeScheduler.onAck(ack);
     }
 
-    void handleApplicationAck(AckFW ack)
+    void onApplicationAck(AckFW ack)
     {
         factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
                      .streamId(networkId);
-        ack.regions().forEach(r -> factory.ackRW.regionsItem(m -> m.address(r.address()).length(r.length()).streamId(r.streamId())));
+        ack.regions().forEach(r -> factory.ackRW.regionsItem(
+                m -> m.address(r.address()).length(r.length()).streamId(r.streamId())));
         AckFW newAck = factory.ackRW.build();
 
         factory.doAck(networkThrottle, newAck);
@@ -1038,7 +1061,7 @@ final class Http2Connection
         Http2Stream http2Stream = new Http2Stream(factory, this, http2StreamId, state, applicationTarget, httpWriter);
         http2Streams.put(http2StreamId, http2Stream);
 
-        Correlation correlation = new Correlation(http2Stream.correlationId, sourceOutputEstId, writeScheduler,
+        Correlation correlation = new Correlation(http2Stream.correlationId, networkReplyId, writeScheduler,
                 this::doPromisedRequest, this, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId);
 
         factory.correlations.put(http2Stream.correlationId, correlation);
@@ -1475,7 +1498,7 @@ final class Http2Connection
         }
     }
 
-    void handleHttpData(TransferFW data, Correlation correlation)
+    void onApplicationReplyTransfer(TransferFW data, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
         if (stream != null)
@@ -1535,7 +1558,7 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
         }
     }
 
-    void handleResponseFin(TransferFW data, Correlation correlation)
+    void onApplicationReplyTransferFin(TransferFW data, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
 
@@ -1547,6 +1570,14 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
         {
             System.out.println("********** stream is null");
         }
+    }
+
+    void onApplicationAckRst(int http2StreamId)
+    {
+    }
+
+    void onApplicationAckFin(int http2StreamId)
+    {
     }
 
     void onApplicationReplyTransferRst(TransferFW abort, Correlation correlation)
