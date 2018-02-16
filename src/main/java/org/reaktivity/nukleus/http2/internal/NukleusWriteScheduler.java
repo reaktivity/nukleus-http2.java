@@ -59,7 +59,6 @@ class NukleusWriteScheduler implements Closeable
         this.memoryManager = memoryManager;
         regionAddress = memoryManager.acquire(REGION_SIZE);
         regionBuffer = new UnsafeBuffer(new byte[0]);
-        System.out.printf("Resolved address %x\n", memoryManager.resolve(regionAddress));
         regionBuffer.wrap(memoryManager.resolve(regionAddress), REGION_SIZE);
     }
 
@@ -134,7 +133,6 @@ class NukleusWriteScheduler implements Closeable
         if (!released)
         {
             released = true;
-            System.out.printf("Releasing acquired memory (%d, %d)\n", regionAddress, REGION_SIZE);
             memoryManager.release(regionAddress, REGION_SIZE);
         }
     }

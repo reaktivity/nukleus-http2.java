@@ -408,7 +408,6 @@ final class Http2Connection
     private void processHttp2Frame(Http2FrameFW http2RO)
     {
         Http2FrameType http2FrameType = factory.http2RO.type();
-        //System.out.printf("-> %d %s\n", System.currentTimeMillis()%100000, http2RO);
         // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
         if (!http2HeadersAvailable())
         {
@@ -1552,10 +1551,6 @@ final class Http2Connection
         {
             stream.onNetworkReplyAck(flags, address, length, targetId);
         }
-        else
-        {
-System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, targetId);
-        }
     }
 
     void onApplicationReplyTransferFin(TransferFW data, Correlation correlation)
@@ -1565,10 +1560,6 @@ System.out.printf("Couldn't pass on ACK (%d, %d, %d)\n", address, length, target
         if (stream != null)
         {
             stream.onApplicationReplyFin();
-        }
-        else
-        {
-            System.out.println("********** stream is null");
         }
     }
 

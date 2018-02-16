@@ -263,7 +263,7 @@ public class Http2Decoder
         Http2DataFW dataRO = http2DataRO.wrap(http2RO.buffer(), http2RO.offset(), http2RO.limit());
         if (dataRO.padding())
         {
-            System.out.println("TODO padding is not yet implemented");
+            throw new UnsupportedOperationException("TODO padding is not yet implemented");
         }
 
         int dataStart = 9 + (dataRO.padding() ? 1 : 0);

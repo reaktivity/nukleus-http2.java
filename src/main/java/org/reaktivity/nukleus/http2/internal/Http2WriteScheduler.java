@@ -542,7 +542,6 @@ public class Http2WriteScheduler implements WriteScheduler
         if (canStreamWrite(stream, type))
         {
             int sizeof = writer.queueHttp2Frame(sizeofGuess, visitor);
-            System.out.printf("<- %d %s sizeof=%d\n", System.currentTimeMillis()%100000, type, sizeof);
 
             assert sizeof >= 9;
         }
@@ -557,7 +556,6 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         if (canStreamWrite(stream, type))
         {
-            System.out.printf("<- %s %s length=%d\n", System.currentTimeMillis()%100000, type, length);
             writer.queueHttp2Data(address, length, regionStreamId);
 
             stream.http2OutWindow -= length;
