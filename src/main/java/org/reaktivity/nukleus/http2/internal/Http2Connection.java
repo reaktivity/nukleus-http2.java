@@ -129,6 +129,7 @@ final class Http2Connection
     boolean pendingNetworkAckFin;
     boolean pendingNetworkAckRst;
     boolean networkReplyTransferRst;
+    boolean networkReplyTransferFin;
 
     Http2Connection(
         ServerStreamFactory factory,
@@ -243,6 +244,18 @@ final class Http2Connection
 
     void onNetworkTransferFin(TransferFW end)
     {
+        // FINs reply stream
+        // TODO wait for HTTP2 frames to be written ?
+        if (!networkReplyTransferFin)
+        {
+            networkReplyTransferFin = true;
+            TransferFW transfer = factory.transferRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                     .streamId(networkReplyId)
+                                     .flags(FIN)
+                                     .build();
+            factory.doTransfer(networkReply, transfer);
+        }
+
         http2Streams.forEach((i, s) -> s.onNetworkTransferFin());
         pendingNetworkAckFin = true;
         doNetworkAckFin();
