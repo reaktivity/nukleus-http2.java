@@ -1672,10 +1672,4 @@ final class Http2Connection
 
     }
 
-    @FunctionalInterface
-    private interface DecoderState
-    {
-        int decode(DirectBuffer buffer, int offset, int length);
-    }
-
 }

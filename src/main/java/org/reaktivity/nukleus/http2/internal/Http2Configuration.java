@@ -19,11 +19,15 @@ import org.reaktivity.nukleus.Configuration;
 
 class Http2Configuration extends Configuration
 {
+    public static final String TRANSFER_CAPACITY_PROPERTY_NAME = "nukleus.tcp.transfer.capacity";
+
     private static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
     private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = 100;
 
     private static final String HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN = "nukleus.http2.server.access.control.allow.origin";
     private static final boolean HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT = false;
+
+    private static final int TRANSFER_CAPACITY_DEFAULT = 1 << 16;
 
     Http2Configuration(Configuration config)
     {
@@ -38,6 +42,11 @@ class Http2Configuration extends Configuration
     boolean accessControlAllowOrigin()
     {
         return getBoolean(HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN, HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT);
+    }
+
+    int transferCapacity()
+    {
+        return getInteger(TRANSFER_CAPACITY_PROPERTY_NAME, TRANSFER_CAPACITY_DEFAULT);
     }
 
 }

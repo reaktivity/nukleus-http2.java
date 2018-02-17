@@ -26,8 +26,6 @@ import java.io.Closeable;
 
 class NukleusWriteScheduler implements Closeable
 {
-    private static final int REGION_SIZE = 65536;
-
     private final Http2Connection connection;
     private final Http2Writer http2Writer;
     private final long targetId;
@@ -35,6 +33,7 @@ class NukleusWriteScheduler implements Closeable
     private final MutableDirectBuffer writeBuffer;
     private final TransferFW.Builder transfer;
     private final MemoryManager memoryManager;
+    private final int transferCapacity;
 
     private int accumulatedLength;
     private final MutableDirectBuffer regionBuffer;
@@ -57,9 +56,10 @@ class NukleusWriteScheduler implements Closeable
         this.writeBuffer = http2Writer.writeBuffer;
         this.transfer = new TransferFW.Builder();
         this.memoryManager = memoryManager;
-        regionAddress = memoryManager.acquire(REGION_SIZE);
+        transferCapacity = connection.factory.config.transferCapacity();
+        regionAddress = memoryManager.acquire(transferCapacity);
         regionBuffer = new UnsafeBuffer(new byte[0]);
-        regionBuffer.wrap(memoryManager.resolve(regionAddress), REGION_SIZE);
+        regionBuffer.wrap(memoryManager.resolve(regionAddress), transferCapacity);
     }
 
     int queueHttp2Frame(
@@ -133,7 +133,7 @@ class NukleusWriteScheduler implements Closeable
         if (!released)
         {
             released = true;
-            memoryManager.release(regionAddress, REGION_SIZE);
+            memoryManager.release(regionAddress, transferCapacity);
         }
     }
 
