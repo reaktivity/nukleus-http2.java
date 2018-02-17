@@ -19,7 +19,7 @@ import org.reaktivity.nukleus.Configuration;
 
 class Http2Configuration extends Configuration
 {
-    public static final String TRANSFER_CAPACITY_PROPERTY_NAME = "nukleus.tcp.transfer.capacity";
+    public static final String TRANSFER_CAPACITY_PROPERTY_NAME = "nukleus.http2.transfer.capacity";
 
     private static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
     private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = 100;
