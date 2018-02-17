@@ -288,10 +288,16 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         else
         {
-            // TOD ACK the regions
+            // TODO ACK the regions
         }
 
-        transfer.regions().forEach(r -> dataRegion(streamId, r));
+        transfer.regions().forEach(r ->
+        {
+            if (r.length() > 0)
+            {
+                dataRegion(streamId, r);
+            }
+        });
         return true;
     }
 
@@ -637,7 +643,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
     }
 
-    private class DataEntry extends Entry
+    private class DataEntry extends Entry implements WriteScheduler.DataEntry
     {
         final long address;
         final long regionStreamId;
@@ -696,6 +702,23 @@ public class Http2WriteScheduler implements WriteScheduler
             return String.format("length=%d", length);
         }
 
+        @Override
+        public long regionAddress()
+        {
+            return address;
+        }
+
+        @Override
+        public int length()
+        {
+            return length;
+        }
+
+        @Override
+        public long streamId()
+        {
+            return regionStreamId;
+        }
     }
 
 }

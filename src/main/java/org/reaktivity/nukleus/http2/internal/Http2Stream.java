@@ -61,6 +61,10 @@ class Http2Stream implements Closeable
 
     boolean closed;
     private boolean pendingApplicationReplyAckRst;
+    private boolean networkTransferRst;
+    private boolean networkTransferFin;
+    private boolean networkReplyAckFin;
+    private boolean networkReplyAckRst;
 
     Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
                 MessageConsumer applicationTarget, HttpWriter httpWriter)
@@ -101,8 +105,13 @@ class Http2Stream implements Closeable
             doApplicationTransferRst();
         }
 
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+        if (!(networkTransferRst || networkReplyAckRst))
+        {
+            connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+        }
+
         doApplicationReplyAckRst();
+
         if (recvApplicationAck && sentApplicationReplyAck)
         {
             connection.closeStream(this);
@@ -121,6 +130,29 @@ class Http2Stream implements Closeable
     void doRstStream(Http2ErrorCode errorCode)
     {
         connection.writeScheduler.rst(http2StreamId, errorCode);
+/*
+        // Send ACK for buffered regions
+        if (!replyQueue.isEmpty())
+        {
+            try {
+                factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                             .streamId(applicationReplyId);
+                replyQueue.stream().filter(e -> e instanceof WriteScheduler.DataEntry).forEach(e ->
+                {
+                    WriteScheduler.DataEntry de = (WriteScheduler.DataEntry) e;
+                    ackedResponseBytes += de.length();
+                    factory.ackRW.regionsItem(r -> r.address(de.regionAddress()).length(de.length()).streamId(de.streamId()));
+                });
+                AckFW ack = factory.ackRW.build();
+                factory.doAck(applicationReplyThrottle, ack);
+
+                replyQueue.clear();
+            } catch (Exception e)
+            {
+                e.printStackTrace();
+            }
+        }
+        */
     }
 
     void onRequestData()
@@ -152,6 +184,8 @@ class Http2Stream implements Closeable
 
     void onNetworkTransferRst()
     {
+        networkTransferRst = true;
+
         // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
@@ -168,6 +202,8 @@ class Http2Stream implements Closeable
 
     void onNetworkReplyAckFin()
     {
+        networkReplyAckFin = true;
+
         // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
@@ -185,6 +221,8 @@ class Http2Stream implements Closeable
 
     void onNetworkReplyAckRst()
     {
+        networkReplyAckRst = true;
+
         // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
@@ -202,6 +240,8 @@ class Http2Stream implements Closeable
 
     void onNetworkTransferFin()
     {
+        networkTransferFin = true;
+
         // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
@@ -255,8 +295,11 @@ class Http2Stream implements Closeable
     {
         recvApplicationAck = true;
 
-        // send RST_STREAM on HTTP2 stream
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+        if (!(networkTransferRst || networkReplyAckRst))
+        {
+            // send RST_STREAM on HTTP2 stream
+            doRstStream(Http2ErrorCode.CONNECT_ERROR);
+        }
 
         // reset the response (if all the application reply regions are acked)
         doApplicationReplyAckRst();
@@ -318,15 +361,29 @@ class Http2Stream implements Closeable
 
     private boolean doApplicationReplyAckRst()
     {
-        if (!sentApplicationReplyAck && applicationReplyThrottle != null && responseBytes == ackedResponseBytes)
+        int buffered[] = new int[1];
+        replyQueue.stream()
+                  .filter(e -> e instanceof WriteScheduler.DataEntry)
+                  .forEach(e -> buffered[0] += ((WriteScheduler.DataEntry) e).length());
+
+        if (!sentApplicationReplyAck && applicationReplyThrottle != null && responseBytes == buffered[0] + ackedResponseBytes)
         {
             sentApplicationReplyAck = true;
-            AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+            factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
                                      .streamId(applicationReplyId)
-                                     .flags(RST)
-                                     .build();
+                                     .flags(RST);
+
+            replyQueue.stream().filter(e -> e instanceof WriteScheduler.DataEntry).forEach(e ->
+            {
+                WriteScheduler.DataEntry de = (WriteScheduler.DataEntry) e;
+                ackedResponseBytes += de.length();
+                factory.ackRW.regionsItem(r -> r.address(de.regionAddress()).length(de.length()).streamId(de.streamId()));
+            });
+            AckFW ack = factory.ackRW.build();
 
             factory.doAck(applicationReplyThrottle, ack);
+            replyQueue.clear();
+
             return true;
         }
 

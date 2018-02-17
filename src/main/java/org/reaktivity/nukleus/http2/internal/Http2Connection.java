@@ -128,7 +128,7 @@ final class Http2Connection
     MutableDirectBuffer regionsBuf;
     boolean pendingNetworkAckFin;
     boolean pendingNetworkAckRst;
-
+    boolean networkReplyTransferRst;
 
     Http2Connection(
         ServerStreamFactory factory,
@@ -268,8 +268,16 @@ final class Http2Connection
 
     void onNetworkTransferRst()
     {
-        http2Streams.forEach((i, s) -> s.onNetworkTransferRst());
+        // Aborts reply stream
+        if (!networkReplyTransferRst)
+        {
+            networkReplyTransferRst = true;
+            factory.doAbort(networkReply, networkReplyId);
+        }
+
+        // Wait until all application ACKs
         pendingNetworkAckRst = true;
+        http2Streams.forEach((i, s) -> s.onNetworkTransferRst());
         doNetworkAckRst();
     }
 
@@ -284,9 +292,6 @@ final class Http2Connection
                                      .flags(RST)
                                      .build();
             factory.doAck(networkThrottle, ack);
-
-            // aborts reply stream
-            factory.doAbort(networkReply, networkReplyId);
 
             cleanConnection();
         }

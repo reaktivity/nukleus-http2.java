@@ -73,4 +73,12 @@ public interface WriteScheduler extends Closeable
     {
     }
 
+    interface  DataEntry extends Entry
+    {
+        long regionAddress();
+        int length();
+        long streamId();
+    }
+
+
 }
