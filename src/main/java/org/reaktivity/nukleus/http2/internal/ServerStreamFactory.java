@@ -17,15 +17,15 @@ package org.reaktivity.nukleus.http2.internal;
 
 import static java.util.Objects.requireNonNull;
 
-import java.util.function.IntUnaryOperator;
-import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
+import java.util.function.Supplier;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
 import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.buffer.BufferPool;
+import org.reaktivity.nukleus.buffer.DirectBufferBuilder;
+import org.reaktivity.nukleus.buffer.MemoryManager;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
@@ -33,15 +33,14 @@ import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
@@ -49,32 +48,29 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 import org.reaktivity.nukleus.route.RouteManager;
 import org.reaktivity.nukleus.stream.StreamFactory;
 
 public final class ServerStreamFactory implements StreamFactory
 {
-
-    private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
-    private static final double INWINDOW_THRESHOLD = 0.5;
+    private static final int FIN = 0x01;
+    private static final int RST = 0x02;
 
     final RouteFW routeRO = new RouteFW();
 
     private final BeginFW beginRO = new BeginFW();
-    private final DataFW dataRO = new DataFW();
-    private final EndFW endRO = new EndFW();
-    final AbortFW abortRO = new AbortFW();
+    private final TransferFW writeRO = new TransferFW();
+    final AckFW ackRO = new AckFW();
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
-    private final AbortFW.Builder abortRW = new AbortFW.Builder();
-
-    final WindowFW windowRO = new WindowFW();
-    final ResetFW resetRO = new ResetFW();
+    private final TransferFW.Builder writeRW = new TransferFW.Builder();
+    final AckFW.Builder ackRW = new AckFW.Builder();
+    final TransferFW.Builder transferRW = new TransferFW.Builder();
 
     final HttpRouteExFW httpRouteExRO = new HttpRouteExFW();
     final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
+    final Http2FrameHeaderFW frameHeaderRO = new Http2FrameHeaderFW();
     final Http2FrameFW http2RO = new Http2FrameFW();
     final Http2SettingsFW settingsRO = new Http2SettingsFW();
     final Http2DataFW http2DataRO = new Http2DataFW();
@@ -95,17 +91,9 @@ public final class ServerStreamFactory implements StreamFactory
 
     final Http2PingFW pingRO = new Http2PingFW();
 
-    private final WindowFW.Builder windowRW = new WindowFW.Builder();
-    private final ResetFW.Builder resetRW = new ResetFW.Builder();
-
     final Http2Configuration config;
     private final RouteManager router;
-    private final MutableDirectBuffer writeBuffer;
-    final BufferPool bufferPool;
-    final BufferPool framePool;
-    final BufferPool headersPool;
-    final BufferPool httpWriterPool;
-    final BufferPool http2ReplyPool;
+    final MutableDirectBuffer writeBuffer;
     final LongSupplier supplyStreamId;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
@@ -117,42 +105,28 @@ public final class ServerStreamFactory implements StreamFactory
 
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
-    final LongSupplier supplyGroupId;
-    final LongFunction<IntUnaryOperator> groupBudgetClaimer;
-    final LongFunction<IntUnaryOperator> groupBudgetReleaser;
+    final MemoryManager memoryManager;
+    final Supplier<DirectBufferBuilder> supplyBufferBuilder;
 
     ServerStreamFactory(
             Http2Configuration config,
             RouteManager router,
             MutableDirectBuffer writeBuffer,
-            BufferPool bufferPool,
             LongSupplier supplyStreamId,
             LongSupplier supplyCorrelationId,
             Long2ObjectHashMap<Correlation> correlations,
-            LongSupplier supplyGroupId,
-            LongFunction<IntUnaryOperator> groupBudgetClaimer,
-            LongFunction<IntUnaryOperator> groupBudgetReleaser)
+            MemoryManager memoryManager,
+            Supplier<DirectBufferBuilder> supplyBufferBuilder)
     {
         this.config = config;
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
-        this.bufferPool = requireNonNull(bufferPool);
-        if (bufferPool.slotCapacity() < Settings.DEFAULT_INITIAL_WINDOW_SIZE)
-        {
-            String msg = String.format("Need larger slot, current slot=%d window=%d",
-                    bufferPool.slotCapacity(), Settings.DEFAULT_INITIAL_WINDOW_SIZE);
-            throw new IllegalArgumentException(msg);
-        }
-        this.framePool = bufferPool.duplicate();
-        this.headersPool = bufferPool.duplicate();
-        this.httpWriterPool = bufferPool.duplicate();
-        this.http2ReplyPool = bufferPool.duplicate();
+
         this.supplyStreamId = requireNonNull(supplyStreamId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
-        this.supplyGroupId = requireNonNull(supplyGroupId);
-        this.groupBudgetClaimer = requireNonNull(groupBudgetClaimer);
-        this.groupBudgetReleaser = requireNonNull(groupBudgetReleaser);
+        this.memoryManager = requireNonNull(memoryManager);
+        this.supplyBufferBuilder = requireNonNull(supplyBufferBuilder);
 
         this.httpWriter = new HttpWriter(writeBuffer);
         this.http2Writer = new Http2Writer(writeBuffer);
@@ -242,8 +216,6 @@ public final class ServerStreamFactory implements StreamFactory
 
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
-        private int initialWindow = bufferPool.slotCapacity();
-        private int window;
 
         private ServerAcceptStream(
                 MessageConsumer networkThrottle,
@@ -288,17 +260,18 @@ public final class ServerStreamFactory implements StreamFactory
         {
             switch (msgTypeId)
             {
-                case DataFW.TYPE_ID:
-                    final DataFW data = dataRO.wrap(buffer, index, index + length);
+                case TransferFW.TYPE_ID:
+                    final TransferFW data = writeRO.wrap(buffer, index, index + length);
                     handleData(data);
-                    break;
-                case EndFW.TYPE_ID:
-                    final EndFW end = endRO.wrap(buffer, index, index + length);
-                    handleEnd(end);
-                    break;
-                case AbortFW.TYPE_ID:
-                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
-                    handleAbort(abort);
+
+                    if ((data.flags() & FIN) == FIN)
+                    {
+                        onNetworkTransferFin(data);
+                    }
+                    if ((data.flags() & RST) == RST)
+                    {
+                        onNetworkTransferRst(data);
+                    }
                     break;
                 default:
                     doReset(networkThrottle, networkId);
@@ -315,74 +288,53 @@ public final class ServerStreamFactory implements StreamFactory
             networkReply = router.supplyTarget(networkReplyName);
             networkReplyId = supplyStreamId.getAsLong();
 
-            initialWindow = bufferPool.slotCapacity();
-            doWindow(networkThrottle, networkId, initialWindow, 0, 0);
-            window = initialWindow;
-
             doBegin(networkReply, networkReplyId, 0L, networkCorrelationId);
             router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
-            http2Connection = new Http2Connection(ServerStreamFactory.this, router, networkReplyId,
+            http2Connection = new Http2Connection(ServerStreamFactory.this, router, networkThrottle, networkId, networkReplyId,
                     networkReply, wrapRoute);
             http2Connection.handleBegin(begin);
         }
 
         private void handleData(
-                DataFW data)
+            TransferFW data)
         {
-            window -= dataRO.length() + dataRO.padding();
-            if (window < 0)
-            {
-                doReset(networkThrottle, networkId);
-                //http2Connection.handleReset();
-            }
-            else
-            {
-                if (window < initialWindow * INWINDOW_THRESHOLD)
-                {
-                    int windowPending = initialWindow - window;
-                    window = initialWindow;
-                    doWindow(networkThrottle, networkId, windowPending, 0, 0);
-                }
-
-                http2Connection.handleData(data);
-            }
+            http2Connection.handleData(data);
         }
 
-        private void handleEnd(
-                EndFW end)
+        private void onNetworkTransferFin(
+            TransferFW end)
         {
-            http2Connection.handleEnd(end);
+            http2Connection.onNetworkTransferFin(end);
         }
 
-        private void handleAbort(
-                AbortFW abort)
+        private void onNetworkTransferRst(
+            TransferFW abort)
         {
-            correlations.remove(networkCorrelationId);
-
-            // aborts reply stream
-            doAbort(networkReply, networkReplyId);
-
-            // aborts http request stream, resets http response stream
-            http2Connection.handleAbort();
+            http2Connection.onNetworkTransferRst();
         }
 
         private void handleThrottle(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
-                case WindowFW.TYPE_ID:
-                    final WindowFW window = windowRO.wrap(buffer, index, index + length);
-                    handleWindow(window);
-                    break;
-                case ResetFW.TYPE_ID:
-                    final ResetFW reset = resetRO.wrap(buffer, index, index + length);
-                    handleReset(reset);
+                case AckFW.TYPE_ID:
+                    final AckFW ack = ackRO.wrap(buffer, index, index + length);
+                    http2Connection.onNetworkReplyAck(ack);
+
+                    if ((ack.flags() & FIN) == FIN)
+                    {
+                        onNetworkReplyAckFin();
+                    }
+                    if ((ack.flags() & RST) == RST)
+                    {
+                        onNetworkReplyAckRst();
+                    }
                     break;
                 default:
                     // ignore
@@ -390,26 +342,14 @@ public final class ServerStreamFactory implements StreamFactory
             }
         }
 
-        private void handleWindow(
-                WindowFW window)
+        private void onNetworkReplyAckFin()
         {
-            int credit = windowRO.credit();
-            int padding = windowRO.padding();
-            if (http2Connection.outWindowThreshold == -1)
-            {
-                http2Connection.outWindowThreshold = (int) (OUTWINDOW_LOW_THRESHOLD * credit);
-            }
-            http2Connection.networkReplyBudget += credit;
-            http2Connection.networkReplyPadding = padding;
-            http2Connection.handleWindow(window);
+            http2Connection.onNetworkReplyAckFin();
         }
 
-        private void handleReset(
-                ResetFW reset)
+        private void onNetworkReplyAckRst()
         {
-            http2Connection.handleReset(reset);
-
-            doReset(networkThrottle, networkId);
+            http2Connection.onNetworkReplyAckRst();
         }
     }
 
@@ -425,8 +365,8 @@ public final class ServerStreamFactory implements StreamFactory
         private Correlation correlation;
 
         private ServerConnectReplyStream(
-                MessageConsumer applicationReplyThrottle,
-                long applicationReplyId)
+            MessageConsumer applicationReplyThrottle,
+            long applicationReplyId)
         {
             this.applicationReplyThrottle = applicationReplyThrottle;
             this.applicationReplyId = applicationReplyId;
@@ -434,10 +374,10 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleStream(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             streamState.accept(msgTypeId, buffer, index, length);
         }
@@ -460,24 +400,25 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void afterBegin(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
-                case DataFW.TYPE_ID:
-                    final DataFW data = dataRO.wrap(buffer, index, index + length);
+                case TransferFW.TYPE_ID:
+                    final TransferFW data = writeRO.wrap(buffer, index, index + length);
                     handleData(data);
-                    break;
-                case EndFW.TYPE_ID:
-                    final EndFW end = endRO.wrap(buffer, index, index + length);
-                    handleEnd(end);
-                    break;
-                case AbortFW.TYPE_ID:
-                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
-                    handleAbort(abort);
+
+                    if ((data.flags() & FIN) == FIN)
+                    {
+                        handleResponseFin(data);
+                    }
+                    if ((data.flags() & RST) == RST)
+                    {
+                        handleResponseRst(data);
+                    }
                     break;
                 default:
                     doReset(applicationReplyThrottle, applicationReplyId);
@@ -486,7 +427,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleBegin(
-                BeginFW begin)
+            BeginFW begin)
         {
             final long sourceRef = begin.sourceRef();
             final long correlationId = begin.correlationId();
@@ -506,30 +447,30 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleData(
-                DataFW data)
+            TransferFW data)
         {
-            http2Connection.handleHttpData(data, correlation);
+            http2Connection.onApplicationReplyTransfer(data, correlation);
         }
 
-        private void handleEnd(
-                EndFW end)
+        private void handleResponseFin(
+            TransferFW end)
         {
-            http2Connection.handleHttpEnd(end, correlation);
+            http2Connection.onApplicationReplyTransferFin(end, correlation);
         }
 
-        private void handleAbort(
-                AbortFW abort)
+        private void handleResponseRst(
+            TransferFW abort)
         {
-            http2Connection.handleHttpAbort(abort, correlation);
+            http2Connection.onApplicationReplyTransferRst(abort, correlation);
         }
 
     }
 
     private void doBegin(
-            final MessageConsumer target,
-            final long targetId,
-            final long targetRef,
-            final long correlationId)
+        final MessageConsumer target,
+        final long targetId,
+        final long targetRef,
+        final long correlationId)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
@@ -542,43 +483,67 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
-    private void doAbort(
-            final MessageConsumer target,
-            final long targetId)
+    void doData(
+        final MessageConsumer target,
+        final long targetId,
+        final long address,
+        final int length)
     {
-        final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+        final TransferFW abort = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
+                                     .regionsItem(b -> b.address(address).length(length))
                                      .extension(e -> e.reset())
                                      .build();
 
         target.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
     }
 
-    void doWindow(
-            final MessageConsumer throttle,
-            final long throttleId,
-            final int credit,
-            final int padding,
-            final long groupId)
+    void doAbort(
+        final MessageConsumer target,
+        final long targetId)
     {
-        final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                        .streamId(throttleId)
-                                        .credit(credit)
-                                        .padding(padding)
-                                        .groupId(groupId)
-                                        .build();
+        final TransferFW abort = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                     .streamId(targetId)
+                                     .flags(RST)
+                                     .extension(e -> e.reset())
+                                     .build();
+        doTransfer(target, abort);
+    }
 
-        throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
+    void doAck(
+        final MessageConsumer throttle,
+        final AckFW ack)
+    {
+        throttle.accept(ack.typeId(), ack.buffer(), ack.offset(), ack.sizeof());
+    }
+
+    void doTransfer(
+        final MessageConsumer target,
+        final TransferFW transfer)
+    {
+        target.accept(transfer.typeId(), transfer.buffer(), transfer.offset(), transfer.sizeof());
+    }
+
+    void doEnd(
+        MessageConsumer target,
+        long targetId)
+    {
+        TransferFW end = writeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                             .streamId(targetId)
+                             .flags(FIN)
+                             .extension(e -> e.reset())
+                             .build();
+        doTransfer(target, end);
     }
 
     void doReset(
-            final MessageConsumer throttle,
-            final long throttleId)
+        final MessageConsumer throttle,
+        final long throttleId)
     {
-        final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .streamId(throttleId)
-                                     .build();
-
-        throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+        final AckFW reset = ackRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                                 .streamId(throttleId)
+                                 .flags(RST)
+                                 .build();
+        doAck(throttle, reset);
     }
 }

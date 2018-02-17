@@ -17,14 +17,12 @@ package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 import static java.nio.ByteOrder.BIG_ENDIAN;
 
 /*
-    Flyweight for for all HTTP2 frames
+    Flyweight for for all HTTP2 frame headers
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -33,18 +31,15 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
     +=+=============================================================+
-    |                   Frame Payload (0...)                      ...
-    +---------------------------------------------------------------+
+
  */
-public class Http2FrameFW extends Flyweight
+public class Http2FrameHeaderFW extends Flyweight
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
     private static final int STREAM_ID_OFFSET = 5;
     private static final int PAYLOAD_OFFSET = 9;
-
-    private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
     public int payloadLength()
     {
@@ -78,52 +73,31 @@ public class Http2FrameFW extends Flyweight
         return offset() + PAYLOAD_OFFSET;
     }
 
-    public final DirectBuffer payload()
-    {
-        return payloadRO;
-    }
-
     @Override
     public final int limit()
     {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
+        return offset() + PAYLOAD_OFFSET;
     }
 
     @Override
-    public Http2FrameFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2FrameHeaderFW wrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         if (maxLimit - offset < 9)
         {
-            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough bytes for 9-octet header");
+            throw new IllegalArgumentException("Invalid HTTP2 frame header (not enough bytes for 9-octet header)");
         }
         super.wrap(buffer, offset, maxLimit);
-
-        if (maxLimit - offset < payloadLength() + 9)
-        {
-            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough payload bytes");
-        }
-
-        if (payloadLength() > 0)
-        {
-            payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength());
-        }
 
         checkLimit(limit(), maxLimit);
 
         return this;
     }
 
-    public Http2FrameFW canWrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2FrameHeaderFW canWrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         if (maxLimit - offset < 9)
         {
             return null;            // Not enough bytes for 9-octet header
-        }
-        super.wrap(buffer, offset, maxLimit);
-
-        if (maxLimit - offset < payloadLength() + 9)
-        {
-            return null;            // Not enough payload bytes
         }
 
         return wrap(buffer, offset, maxLimit);
@@ -136,62 +110,54 @@ public class Http2FrameFW extends Flyweight
                 type(), payloadLength(), flags(), streamId());
     }
 
-    protected static class Builder<B extends Builder, T extends Http2FrameFW> extends Flyweight.Builder<T>
+    public static class Builder extends Flyweight.Builder<Http2FrameHeaderFW>
     {
-        private final Http2FrameFW frame;
 
-        public Builder(T frame)
+        public Builder()
         {
-            super(frame);
-            this.frame = frame;
+            super(new Http2FrameHeaderFW());
         }
 
         @Override
-        public B wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
+        public Http2FrameHeaderFW.Builder wrap(MutableDirectBuffer buffer, int offset, int maxLimit)
         {
             super.wrap(buffer, offset, maxLimit);
 
-            buffer.putByte(offset + TYPE_OFFSET, frame.type().type());
+            buffer.putByte(offset + TYPE_OFFSET, (byte) 0);
             buffer.putByte(offset + FLAGS_OFFSET, (byte) 0);
             buffer.putInt(offset + STREAM_ID_OFFSET, 0, BIG_ENDIAN);
             payloadLength(0);
 
-            return (B) this;
+            return this;
         }
 
-        public final B flags(byte f)
+        public final Http2FrameHeaderFW.Builder type(Http2FrameType type)
+        {
+            buffer().putByte(offset() + TYPE_OFFSET, type.type());
+            return this;
+        }
+
+        public final Http2FrameHeaderFW.Builder flags(byte f)
         {
             byte flags = buffer().getByte(offset() + FLAGS_OFFSET);
             flags |= f;
             buffer().putByte(offset() + FLAGS_OFFSET, flags);
-            return (B) this;
+            return this;
         }
 
-        public final B streamId(int streamId)
+        public final Http2FrameHeaderFW.Builder streamId(int streamId)
         {
             buffer().putInt(offset() + STREAM_ID_OFFSET, streamId, BIG_ENDIAN);
-            return (B) this;
+            return this;
         }
 
-        public final B payload(DirectBuffer buffer)
-        {
-            return payload(buffer, 0, buffer.capacity());
-        }
-
-        public B payload(DirectBuffer payload, int offset, int length)
-        {
-            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
-            payloadLength(length);
-            return (B) this;
-        }
-
-        protected final B payloadLength(int length)
+        public final Http2FrameHeaderFW.Builder payloadLength(int length)
         {
             buffer().putShort(offset() + LENGTH_OFFSET, (short) ((length & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
             buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) (length & 0x00_00_00_FF));
 
-            limit(offset() + PAYLOAD_OFFSET + length);
-            return (B) this;
+            limit(offset() + PAYLOAD_OFFSET);
+            return this;
         }
 
     }

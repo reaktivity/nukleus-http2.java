@@ -15,6 +15,7 @@
  */
 package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
 
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -77,17 +78,6 @@ public class MessageFormatIT
         k3po.finish();
     }
 
-
-    @Test
-    @Specification({
-            "${route}/server/controller",
-            "${spec}/max.nukleus.data.frame.size/client",
-            "${nukleus}/max.nukleus.data.frame.size/server" })
-    public void maxNukleusDataFrameSize() throws Exception
-    {
-        k3po.finish();
-    }
-
     @Test
     @Specification({
             "${route}/server/controller",
@@ -98,6 +88,7 @@ public class MessageFormatIT
         k3po.finish();
     }
 
+    @Ignore("PUSH_PROMISE not implemented for zero copy")
     @Test
     @Specification({
             "${route}/server/controller",

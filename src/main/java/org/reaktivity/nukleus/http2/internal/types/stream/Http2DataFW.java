@@ -55,7 +55,7 @@ public class Http2DataFW extends Http2FrameFW
         return DATA;
     }
 
-    private boolean padding()
+    public boolean padding()
     {
         return Http2Flags.padded(flags());
     }
@@ -95,7 +95,7 @@ public class Http2DataFW extends Http2FrameFW
                     String.format("Invalid DATA frame stream-id=%d (must not be 0)", streamId));
         }
 
-        if (dataLength() >= 0)
+        if (dataLength() > 0)
         {
             dataRO.wrap(buffer, dataOffset(), dataLength());
         }

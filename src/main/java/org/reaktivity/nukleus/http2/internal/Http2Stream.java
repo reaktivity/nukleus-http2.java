@@ -16,35 +16,32 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.types.stream.AckFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.TransferFW;
 
+import java.io.Closeable;
 import java.util.Deque;
 import java.util.LinkedList;
 
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
-
-class Http2Stream
+class Http2Stream implements Closeable
 {
+    private static final int FIN = 0x01;
+    private static final int RST = 0x02;
+
     final Http2Connection connection;
-    final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
-    final int maxHeaderSize;
     final long targetId;
     final long correlationId;
+    private final MessageConsumer applicationTarget;
     Http2Connection.State state;
     long http2OutWindow;
-    long applicationReplyBudget;
     long http2InWindow;
 
     long contentLength;
     long totalData;
 
-    private int replySlot = NO_SLOT;
-    CircularDirectBuffer replyBuffer;
     Deque<WriteScheduler.Entry> replyQueue = new LinkedList<>();
     boolean endStream;
 
@@ -53,6 +50,21 @@ class Http2Stream
 
     MessageConsumer applicationReplyThrottle;
     long applicationReplyId;
+
+    int responseBytes;
+    int ackedResponseBytes;
+    boolean completeResponseReceived;
+    boolean sentApplicationReplyAck;
+    boolean recvApplicationAck;
+
+    boolean requestTransferRst;
+
+    boolean closed;
+    private boolean pendingApplicationReplyAckRst;
+    private boolean networkTransferRst;
+    private boolean networkTransferFin;
+    private boolean networkReplyAckFin;
+    private boolean networkReplyAckRst;
 
     Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
                 MessageConsumer applicationTarget, HttpWriter httpWriter)
@@ -63,19 +75,10 @@ class Http2Stream
         this.targetId = factory.supplyStreamId.getAsLong();
         this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
+        this.applicationTarget = applicationTarget;
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.httpWriterPool, applicationTarget, httpWriter, targetId, this);
-        // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
-        this.maxHeaderSize = 0;     // maxHeaderSize();
-    }
-
-    // Estimate only - no of DATA frames + WINDOW frames
-    private int maxHeaderSize()
-    {
-        int frameCount = (int) Math.ceil(factory.bufferPool.slotCapacity()/connection.remoteSettings.maxFrameSize) + 10;
-        return frameCount * 9;
     }
 
     boolean isClientInitiated()
@@ -83,115 +86,192 @@ class Http2Stream
         return http2StreamId%2 == 1;
     }
 
-    void onHttpEnd()
+    void onApplicationReplyFin()
     {
         connection.writeScheduler.dataEos(http2StreamId);
-        applicationReplyThrottle = null;
+        completeResponseReceived = true;
+        doApplicationReplyAckFin();
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
-    void onHttpAbort()
+    void onApplicationReplyTransferRst()
     {
-        // more request data to be sent, so send ABORT
+        // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            doApplicationTransferRst();
         }
 
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
-
-        connection.closeStream(this);
-    }
-
-    void onHttpReset()
-    {
-        // reset the response stream
-        if (applicationReplyThrottle != null)
+        if (!(networkTransferRst || networkReplyAckRst))
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
         }
 
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+        doApplicationReplyAckRst();
 
-        connection.closeStream(this);
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
-    void onData()
+    void onRstStream()
     {
-        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
-        assert written;
-    }
-
-    void onAbort()
-    {
-        // more request data to be sent, so send ABORT
+        // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            doApplicationTransferRst();
         }
-
-        // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
-        }
-
-        close();
     }
 
-    void onReset()
+    void doRstStream(Http2ErrorCode errorCode)
     {
-        // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        connection.writeScheduler.rst(http2StreamId, errorCode);
+/*
+        // Send ACK for buffered regions
+        if (!replyQueue.isEmpty())
         {
-            httpWriteScheduler.doAbort();
-        }
+            try {
+                factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                             .streamId(applicationReplyId);
+                replyQueue.stream().filter(e -> e instanceof WriteScheduler.DataEntry).forEach(e ->
+                {
+                    WriteScheduler.DataEntry de = (WriteScheduler.DataEntry) e;
+                    ackedResponseBytes += de.length();
+                    factory.ackRW.regionsItem(r -> r.address(de.regionAddress()).length(de.length()).streamId(de.streamId()));
+                });
+                AckFW ack = factory.ackRW.build();
+                factory.doAck(applicationReplyThrottle, ack);
 
-        // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+                replyQueue.clear();
+            } catch (Exception e)
+            {
+                e.printStackTrace();
+            }
         }
-
-        close();
+        */
     }
 
-    void onEnd()
+    void onRequestData()
     {
-        // more request data to be sent, so send ABORT
+        boolean end = factory.http2DataRO.endStream();
+
+        factory.transferRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                          .streamId(targetId)
+                          .flags(end ? FIN : 0);
+        Http2Decoder.transferForData(connection.regionsRW.build(), factory.http2RO, factory.http2DataRO, factory.transferRW);
+        TransferFW transfer = factory.transferRW.build();
+        factory.doTransfer(applicationTarget, transfer);
+
+        if (factory.http2DataRO.dataLength() > 0)
+        {
+            // HTTP2 connection-level flow-control
+            connection.writeScheduler.windowUpdate(0, factory.http2DataRO.dataLength());
+
+            // HTTP2 stream-level flow-control
+            connection.writeScheduler.windowUpdate(http2StreamId, factory.http2DataRO.dataLength());
+        }
+    }
+
+    void onResponseData(TransferFW data)
+    {
+        data.regions().forEach(r -> responseBytes += r.length());
+        connection.writeScheduler.data(http2StreamId, data);
+    }
+
+    void onNetworkTransferRst()
+    {
+        networkTransferRst = true;
+
+        // more request data to be sent, so send TRANSFER(RST)
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            doApplicationTransferRst();
         }
 
-        if (applicationReplyThrottle != null)
+        // reset the response (if all the application reply regions are acked)
+        doApplicationReplyAckRst();
+        if (recvApplicationAck && sentApplicationReplyAck)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            connection.closeStream(this);
+        }
+    }
+
+    void onNetworkReplyAckFin()
+    {
+        networkReplyAckFin = true;
+
+        // more request data to be sent, so send TRANSFER(RST)
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            doApplicationTransferRst();
         }
 
-        close();
+        // reset the response (if all the application reply regions are acked)
+        pendingApplicationReplyAckRst = doApplicationReplyAckFin();
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
+    }
+
+    void onNetworkReplyAckRst()
+    {
+        networkReplyAckRst = true;
+
+        // more request data to be sent, so send TRANSFER(RST)
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            doApplicationTransferRst();
+        }
+
+        // reset the response (if all the application reply regions are acked)
+        pendingApplicationReplyAckRst = doApplicationReplyAckRst();
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
+    }
+
+    void onNetworkTransferFin()
+    {
+        networkTransferFin = true;
+
+        // more request data to be sent, so send TRANSFER(RST)
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            doApplicationTransferRst();
+        }
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
     }
 
     void onThrottle(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
+        int msgTypeId,
+        DirectBuffer buffer,
+        int index,
+        int length)
     {
         switch (msgTypeId)
         {
-            case WindowFW.TYPE_ID:
-                if (isClientInitiated())
+            case AckFW.TYPE_ID:
+                final AckFW ack = factory.ackRO.wrap(buffer, index, index + length);
+                connection.onApplicationAck(ack);
+                if ((ack.flags() & FIN) == FIN)
                 {
-                    factory.windowRO.wrap(buffer, index, index + length);
-                    int credit = factory.windowRO.credit();
-                    int padding = factory.windowRO.padding();
-                    long groupId = factory.windowRO.groupId();
-
-                    httpWriteScheduler.onWindow(credit, padding, groupId);
+                    onApplicationAckFin();
                 }
-                break;
-            case ResetFW.TYPE_ID:
-                onHttpReset();
+                if ((ack.flags() & RST) == RST)
+                {
+                    onApplicationAckRst();
+                }
                 break;
             default:
                 // ignore
@@ -199,52 +279,129 @@ class Http2Stream
         }
     }
 
-    /*
-     * @return true if there is a buffer
-     *         false if all slots are taken
-     */
-    MutableDirectBuffer acquireReplyBuffer()
+    private void onApplicationAckFin()
     {
-        if (replySlot == NO_SLOT)
+        recvApplicationAck = true;
+
+        if (recvApplicationAck && sentApplicationReplyAck)
         {
-            replySlot = factory.http2ReplyPool.acquire(connection.sourceOutputEstId);
-            if (replySlot != NO_SLOT)
+            connection.closeStream(this);
+        }
+
+        connection.onApplicationAckFin();
+    }
+
+    private void onApplicationAckRst()
+    {
+        recvApplicationAck = true;
+
+        if (!(networkTransferRst || networkReplyAckRst))
+        {
+            // send RST_STREAM on HTTP2 stream
+            doRstStream(Http2ErrorCode.CONNECT_ERROR);
+        }
+
+        // reset the response (if all the application reply regions are acked)
+        doApplicationReplyAckRst();
+
+        if (recvApplicationAck && sentApplicationReplyAck)
+        {
+            connection.closeStream(this);
+        }
+
+        connection.onApplicationAckRst();
+    }
+
+    @Override
+    public void close()
+    {
+        if (!closed)
+        {
+            closed = true;
+        }
+    }
+
+    void onNetworkReplyAck(int tflags, long address, int length, long streamId)
+    {
+        ackedResponseBytes += length;
+
+        AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                 .streamId(applicationReplyId)
+                                 .regionsItem(r -> r.address(address).length(length).streamId(streamId))
+                                 .build();
+
+        factory.doAck(applicationReplyThrottle, ack);
+
+        if (pendingApplicationReplyAckRst)
+        {
+            doApplicationReplyAckRst();
+        }
+        else
+        {
+            doApplicationReplyAckFin();
+        }
+    }
+
+    private boolean doApplicationReplyAckFin()
+    {
+        if (!sentApplicationReplyAck && completeResponseReceived && responseBytes == ackedResponseBytes)
+        {
+            sentApplicationReplyAck = true;
+            AckFW ack = factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                     .streamId(applicationReplyId)
+                                     .flags(FIN)
+                                     .build();
+
+            factory.doAck(applicationReplyThrottle, ack);
+            return true;
+        }
+
+        return false;
+    }
+
+    private boolean doApplicationReplyAckRst()
+    {
+        int buffered[] = new int[1];
+        replyQueue.stream()
+                  .filter(e -> e instanceof WriteScheduler.DataEntry)
+                  .forEach(e -> buffered[0] += ((WriteScheduler.DataEntry) e).length());
+
+        if (!sentApplicationReplyAck && applicationReplyThrottle != null && responseBytes == buffered[0] + ackedResponseBytes)
+        {
+            sentApplicationReplyAck = true;
+            factory.ackRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                     .streamId(applicationReplyId)
+                                     .flags(RST);
+
+            replyQueue.stream().filter(e -> e instanceof WriteScheduler.DataEntry).forEach(e ->
             {
-                int capacity = factory.http2ReplyPool.buffer(replySlot).capacity();
-                replyBuffer = new CircularDirectBuffer(capacity);
-            }
+                WriteScheduler.DataEntry de = (WriteScheduler.DataEntry) e;
+                ackedResponseBytes += de.length();
+                factory.ackRW.regionsItem(r -> r.address(de.regionAddress()).length(de.length()).streamId(de.streamId()));
+            });
+            AckFW ack = factory.ackRW.build();
+
+            factory.doAck(applicationReplyThrottle, ack);
+            replyQueue.clear();
+
+            return true;
         }
-        return replySlot != NO_SLOT ? factory.http2ReplyPool.buffer(replySlot) : null;
+
+        return false;
     }
 
-    void releaseReplyBuffer()
+    private void doApplicationTransferRst()
     {
-        if (replySlot != NO_SLOT)
+        if (!requestTransferRst)
         {
-            factory.http2ReplyPool.release(replySlot);
-            replySlot = NO_SLOT;
-            replyBuffer = null;
+            requestTransferRst = true;
+            TransferFW transfer = factory.transferRW.wrap(factory.writeBuffer, 0, factory.writeBuffer.capacity())
+                                                    .streamId(targetId)
+                                                    .flags(RST)
+                                                    .build();
+
+            factory.doTransfer(applicationTarget, transfer);
         }
     }
 
-    void close()
-    {
-        httpWriteScheduler.onReset();
-        releaseReplyBuffer();
-    }
-
-    void sendHttpWindow()
-    {
-        // buffer may already have some data, so can only send window for remaining
-        int occupied = replyBuffer == null ? 0 : replyBuffer.size();
-        long maxWindow = Math.min(http2OutWindow, connection.factory.bufferPool.slotCapacity() - occupied);
-        long applicationReplyCredit = maxWindow - applicationReplyBudget;
-        if (applicationReplyCredit > 0)
-        {
-            applicationReplyBudget += applicationReplyCredit;
-            int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
-            connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
-                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
-        }
-    }
 }

@@ -97,6 +97,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not implemented for zero copy")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -107,6 +108,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not implemented for zero copy")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -159,6 +161,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("race between read aborted and write aborted")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -170,6 +173,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("race between read aborted and write aborted")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -204,6 +208,7 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Ignore("Not valid anymore as server doesn't send initial window size as 0")
     @Test
     @Specification({
             "${route}/server/controller",
