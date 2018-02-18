@@ -168,6 +168,9 @@ class Http2Stream implements Closeable
 
         if (factory.http2DataRO.dataLength() > 0)
         {
+            http2InWindow += factory.http2DataRO.dataLength();
+            connection.http2InWindow += factory.http2DataRO.dataLength();
+
             // HTTP2 connection-level flow-control
             connection.writeScheduler.windowUpdate(0, factory.http2DataRO.dataLength());
 
