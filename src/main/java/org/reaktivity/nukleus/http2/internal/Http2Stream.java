@@ -118,7 +118,11 @@ class Http2Stream
     void onData()
     {
         boolean written = httpWriteScheduler.onData(factory.http2DataRO);
-        assert written;
+        if (!written)
+        {
+            connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
+            onAbort();
+        }
     }
 
     void onAbort()

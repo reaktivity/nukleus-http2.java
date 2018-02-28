@@ -80,8 +80,8 @@ class HttpWriteScheduler
                 if (dst != null)
                 {
                     boolean written = targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
-                    assert written;
-                    assert totalRead == totalWritten + targetBuffer.size();
+//                    assert written;
+//                    assert totalRead == totalWritten + targetBuffer.size();
 
                     return written;
                 }
@@ -103,8 +103,8 @@ class HttpWriteScheduler
             MutableDirectBuffer buffer = acquire();
             boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
                     http2DataRO.dataLength());
-            assert written;
-            assert totalRead == totalWritten + targetBuffer.size();
+//            assert written;
+//            assert totalRead == totalWritten + targetBuffer.size();
 
             return written;
         }
