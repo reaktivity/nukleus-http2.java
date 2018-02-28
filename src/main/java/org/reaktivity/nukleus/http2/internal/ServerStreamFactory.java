@@ -137,12 +137,6 @@ public final class ServerStreamFactory implements StreamFactory
         this.router = requireNonNull(router);
         this.writeBuffer = requireNonNull(writeBuffer);
         this.bufferPool = requireNonNull(bufferPool);
-        if (bufferPool.slotCapacity() < Settings.DEFAULT_INITIAL_WINDOW_SIZE)
-        {
-            String msg = String.format("Need larger slot, current slot=%d window=%d",
-                    bufferPool.slotCapacity(), Settings.DEFAULT_INITIAL_WINDOW_SIZE);
-            throw new IllegalArgumentException(msg);
-        }
         this.framePool = bufferPool.duplicate();
         this.headersPool = bufferPool.duplicate();
         this.httpWriterPool = bufferPool.duplicate();
