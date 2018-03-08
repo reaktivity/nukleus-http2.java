@@ -62,51 +62,30 @@ class NukleusWriteScheduler
     {
         if (accumulatedLength > 0)
         {
-            toNetwork(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
-            int adjustment = nukleusBudgetAdjustment(accumulatedLength);
+            http2Writer.doData(networkConsumer, targetId, connection.networkReplyPadding,
+                    writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
 
-            connection.networkReplyBudget -= accumulatedLength + adjustment;
+            // Every nukleus DATA frame incurs padding overhead
+            connection.networkReplyBudget -= accumulatedLength + connection.networkReplyPadding;
             assert connection.networkReplyBudget >= 0;
 
             accumulatedLength = 0;
         }
-
-        assert accumulatedLength == 0;
     }
 
     boolean fits(int sizeof)
     {
         int candidateSizeof = accumulatedLength + sizeof;
-        int adjustment = nukleusBudgetAdjustment(candidateSizeof);
 
-        return candidateSizeof + adjustment <= connection.networkReplyBudget;
+        // Every nukleus DATA frame incurs padding overhead
+        return candidateSizeof + connection.networkReplyPadding <= connection.networkReplyBudget;
     }
 
     int remaining()
     {
-        int adjustment = nukleusBudgetAdjustment(accumulatedLength);
-        int sizeof = connection.networkReplyBudget - (accumulatedLength + adjustment);
-        int remaining = fits(sizeof) ? sizeof : sizeof - connection.networkReplyPadding;
-        return Math.max(remaining, 0);
-    }
-
-    int nukleusBudgetAdjustment(int sizeof)
-    {
-        int nukleusFrameCount = (int) Math.ceil((double)sizeof/65535);
-
         // Every nukleus DATA frame incurs padding overhead
-        return nukleusFrameCount * connection.networkReplyPadding;
-    }
-
-    private void toNetwork(MutableDirectBuffer buffer, int offset, int length)
-    {
-        while (length > 0)
-        {
-            int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            http2Writer.doData(networkConsumer, targetId, connection.networkReplyPadding, buffer, offset, chunk);
-            offset += chunk;
-            length -= chunk;
-        }
+        int remaining = connection.networkReplyBudget - (accumulatedLength + connection.networkReplyPadding);
+        return Math.max(remaining, 0);
     }
 
 }
