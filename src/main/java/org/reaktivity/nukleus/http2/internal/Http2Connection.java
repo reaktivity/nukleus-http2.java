@@ -1315,8 +1315,19 @@ final class Http2Connection
         }
     }
 
-    private void decodeHeaderField(HpackHeaderFieldFW hf,
-                                   BiConsumer<DirectBuffer, DirectBuffer> nameValue)
+    private void decodeHeaderField(
+        HpackHeaderFieldFW hf,
+        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
+    {
+        if (!headersContext.error())
+        {
+            decodeHF(hf, nameValue);
+        }
+    }
+
+    private void decodeHF(
+        HpackHeaderFieldFW hf,
+        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
     {
         int index;
         DirectBuffer name = null;
@@ -1348,6 +1359,11 @@ final class Http2Connection
                     case INDEXED:
                     {
                         index = literalRO.nameIndex();
+                        if (!decodeContext.valid(index))
+                        {
+                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                            return;
+                        }
                         name = decodeContext.nameBuffer(index);
 
                         HpackStringFW valueRO = literalRO.valueLiteral();
