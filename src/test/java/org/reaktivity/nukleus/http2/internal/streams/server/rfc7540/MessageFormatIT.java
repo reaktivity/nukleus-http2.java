@@ -107,4 +107,13 @@ public class MessageFormatIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/invalid.hpack.index/client" })
+    public void invalidHpackIndex() throws Exception
+    {
+        k3po.finish();
+    }
 }
