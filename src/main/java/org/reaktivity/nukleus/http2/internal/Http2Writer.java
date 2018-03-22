@@ -64,6 +64,7 @@ class Http2Writer
     void doData(
             MessageConsumer target,
             long targetId,
+            long traceId,
             int padding,
             MutableDirectBuffer payload,
             int offset,
@@ -74,6 +75,7 @@ class Http2Writer
 
         DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
                             .streamId(targetId)
+                            .trace(traceId)
                             .groupId(0)
                             .padding(padding)
                             .payload(p -> p.set((b, o, l) -> length))

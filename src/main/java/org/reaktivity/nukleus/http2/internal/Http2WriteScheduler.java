@@ -64,6 +64,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean windowUpdate(int streamId, int update)
     {
+        long traceId = 0;
         int length = 4;                     // 4 window size increment
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Http2FrameType type = WINDOW_UPDATE;
@@ -72,11 +73,11 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            http2(stream, type, sizeof, visitor);
+            http2(stream, traceId, type, sizeof, visitor);
         }
         else
         {
-            Entry entry = new Entry(stream, streamId, length, type, visitor);
+            Entry entry = new Entry(stream, streamId, traceId, length, type, visitor);
             addEntry(entry);
         }
         return true;
@@ -87,6 +88,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         assert length == 8;
 
+        long traceId = 0;
         int streamId = 0;
         int sizeof = 9 + length;             // +9 for HTTP2 framing, +8 for a ping
         Http2FrameType type = PING;
@@ -94,14 +96,14 @@ public class Http2WriteScheduler implements WriteScheduler
         if (!buffered() && hasNukleusBudget(length))
         {
             Flyweight.Builder.Visitor visitor = http2Writer.visitPingAck(buffer, offset, length);
-            http2(null, type, sizeof, visitor);
+            http2(null, traceId, type, sizeof, visitor);
         }
         else
         {
             MutableDirectBuffer copy = new UnsafeBuffer(new byte[8]);
             copy.putBytes(0, buffer, offset, length);
             Flyweight.Builder.Visitor visitor = http2Writer.visitPingAck(copy, 0, length);
-            Entry entry = new Entry(null, streamId, length, type, visitor);
+            Entry entry = new Entry(null, streamId, traceId, length, type, visitor);
             addEntry(entry);
         }
 
@@ -112,6 +114,7 @@ public class Http2WriteScheduler implements WriteScheduler
     public boolean goaway(int lastStreamId, Http2ErrorCode errorCode)
     {
         int streamId = 0;
+        long traceId = 0;
         int length = 8;                     // 8 for goaway payload
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Flyweight.Builder.Visitor goaway = http2Writer.visitGoaway(lastStreamId, errorCode);
@@ -119,11 +122,11 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            http2(null, type, sizeof, goaway);
+            http2(null, traceId, type, sizeof, goaway);
         }
         else
         {
-            Entry entry = new Entry(null, streamId, length, type, goaway);
+            Entry entry = new Entry(null, streamId, traceId, length, type, goaway);
             addEntry(entry);
         }
 
@@ -133,6 +136,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
+        long traceId = 0;
         int length = 4;                     // 4 for RST_STREAM payload
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Flyweight.Builder.Visitor visitor = http2Writer.visitRst(streamId, errorCode);
@@ -141,11 +145,11 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            http2(stream, type, sizeof, visitor);
+            http2(stream, traceId, type, sizeof, visitor);
         }
         else
         {
-            Entry entry = new Entry(stream, streamId, length, type, visitor);
+            Entry entry = new Entry(stream, streamId, traceId, length, type, visitor);
             addEntry(entry);
         }
 
@@ -155,6 +159,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean settings(int maxConcurrentStreams, int initialWindowSize)
     {
+        long traceId = 0;
         int streamId = 0;
         int length = 6;                     // 6 for a setting
         int sizeof = length + 9;            // +9 for HTTP2 framing
@@ -163,11 +168,11 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            http2(null, type, sizeof, settings);
+            http2(null, traceId, type, sizeof, settings);
         }
         else
         {
-            Entry entry = new Entry(null, streamId, length, type, settings);
+            Entry entry = new Entry(null, streamId, traceId, length, type, settings);
             addEntry(entry);
         }
 
@@ -177,6 +182,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean settingsAck()
     {
+        long traceId = 0;
         int streamId = 0;
         int length = 0;
         int sizeof = length + 9;                 // +9 for HTTP2 framing
@@ -185,11 +191,11 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            http2(null, type, sizeof, visitor);
+            http2(null, traceId, type, sizeof, visitor);
         }
         else
         {
-            Entry entry = new Entry(null, streamId, length, type, visitor);
+            Entry entry = new Entry(null, streamId, traceId, length, type, visitor);
             addEntry(entry);
         }
 
@@ -197,7 +203,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean headers(int streamId, byte flags, ListFW<HttpHeaderFW> headers)
+    public boolean headers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);        // estimate only
@@ -218,13 +224,13 @@ public class Http2WriteScheduler implements WriteScheduler
         if (buffered() || !hasNukleusBudget(length))
         {
             Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, flags, copy, 0, length);
-            Entry entry = new Entry(stream, streamId, length, type, visitor);
+            Entry entry = new Entry(stream, streamId, traceId, length, type, visitor);
             addEntry(entry);
         }
         else
         {
             Flyweight.Builder.Visitor visitor = http2Writer.visitHeaders(streamId, flags, headers, connection::mapHeaders);
-            http2(stream, type, sizeof, visitor);
+            http2(stream, traceId, type, sizeof, visitor);
         }
 
         return true;
@@ -233,6 +239,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers)
     {
+        long traceId = 0;
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);            // estimate only
         int sizeof = 9 + 4 + length;                    // +9 for HTTP2 framing, +4 for promised stream id
@@ -254,21 +261,21 @@ public class Http2WriteScheduler implements WriteScheduler
             Flyweight.Builder.Visitor visitor =
                     http2Writer.visitPushPromise(streamId, promisedStreamId, copy, 0, length);
 
-            Entry entry = new Entry(stream, streamId, length, type, visitor);
+            Entry entry = new Entry(stream, streamId, traceId, length, type, visitor);
             addEntry(entry);
         }
         else
         {
             Flyweight.Builder.Visitor pushPromise =
                     http2Writer.visitPushPromise(streamId, promisedStreamId, headers, connection::mapPushPromise);
-            http2(stream, type, sizeof, pushPromise);
+            http2(stream, traceId, type, sizeof, pushPromise);
         }
 
         return true;
     }
 
     @Override
-    public boolean data(int streamId, DirectBuffer buffer, int offset, int length)
+    public boolean data(long traceId, int streamId, DirectBuffer buffer, int offset, int length)
     {
         assert length > 0;
         assert streamId != 0;
@@ -289,7 +296,7 @@ public class Http2WriteScheduler implements WriteScheduler
             {
                 int chunk = Math.min(length, connection.remoteSettings.maxFrameSize);
                 Flyweight.Builder.Visitor data = http2Writer.visitData(streamId, buffer, offset, chunk);
-                http2(stream, type, chunk + 9, data, false);
+                http2(stream, traceId, type, chunk + 9, data, false);
                 offset += chunk;
                 length -= chunk;
             }
@@ -311,7 +318,7 @@ public class Http2WriteScheduler implements WriteScheduler
             int part1 = cdb.writeContiguous(replyBuffer, buffer, offset, length);
             assert part1 > 0;
             Flyweight.Builder.Visitor data1 = http2Writer.visitData(streamId, buffer, offset, part1);
-            DataEntry entry1 = new DataEntry(stream, streamId, type, part1, data1);
+            DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, part1, data1);
             addEntry(entry1);
 
             int part2 = length - part1;
@@ -326,7 +333,7 @@ public class Http2WriteScheduler implements WriteScheduler
                     throw new RuntimeException(msg);
                 }
                 Flyweight.Builder.Visitor data2 = http2Writer.visitData(streamId, buffer, offset + part1, part2);
-                DataEntry entry2 = new DataEntry(stream, streamId, type, part2, data2);
+                DataEntry entry2 = new DataEntry(stream, streamId, traceId, type, part2, data2);
                 addEntry(entry2);
             }
             flush();
@@ -335,7 +342,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean dataEos(int streamId)
+    public boolean dataEos(long traceId, int streamId)
     {
         int length = 0;
         int sizeof = length + 9;    // +9 for HTTP2 framing
@@ -352,12 +359,12 @@ public class Http2WriteScheduler implements WriteScheduler
         if (!buffered() && !buffered(streamId) && hasNukleusBudget(length) && 0 <= connection.http2OutWindow &&
                 0 <= stream.http2OutWindow)
         {
-            http2(stream, type, sizeof, data);
+            http2(stream, -1L, type, sizeof, data);
             connection.closeStream(stream);
         }
         else
         {
-            DataEosEntry entry = new DataEosEntry(stream, streamId, length, type, data);
+            DataEosEntry entry = new DataEosEntry(stream, streamId, traceId, length, type, data);
             addEntry(entry);
         }
 
@@ -543,12 +550,12 @@ public class Http2WriteScheduler implements WriteScheduler
         return streamId == 0 ? null : connection.http2Streams.get(streamId);
     }
 
-    private void http2(Http2Stream stream, Http2FrameType type,
+    private void http2(Http2Stream stream, long traceId, Http2FrameType type,
                        int sizeofGuess, Flyweight.Builder.Visitor visitor, boolean flush)
     {
         if (canStreamWrite(stream, type))
         {
-            int sizeof = writer.http2Frame(sizeofGuess, visitor);
+            int sizeof = writer.http2Frame(traceId, sizeofGuess, visitor);
             assert sizeof >= 9;
 
             int length = sizeof - 9;
@@ -571,26 +578,28 @@ public class Http2WriteScheduler implements WriteScheduler
         return stream == null || type == RST_STREAM || stream.state != Http2Connection.State.CLOSED;
     }
 
-    private void http2(Http2Stream stream, Http2FrameType type,
+    private void http2(Http2Stream stream, long traceId, Http2FrameType type,
                        int sizeofGuess, Flyweight.Builder.Visitor visitor)
     {
-        http2(stream, type, sizeofGuess, visitor, true);
+        http2(stream, traceId, type, sizeofGuess, visitor, true);
     }
 
     private class Entry implements WriteScheduler.Entry
     {
         final int streamId;
+        final long traceId;
         final int length;
         final int sizeof;
         final Http2FrameType type;
         final Flyweight.Builder.Visitor visitor;
         final Http2Stream stream;
 
-        Entry(Http2Stream stream, int streamId, int length, Http2FrameType type,
+        Entry(Http2Stream stream, int streamId, long traceId, int length, Http2FrameType type,
               Flyweight.Builder.Visitor visitor)
         {
             this.stream = stream;
             this.streamId = streamId;
+            this.traceId = traceId;
             this.length = length;
             this.sizeof = length + 9;
             this.type = type;
@@ -606,17 +615,17 @@ public class Http2WriteScheduler implements WriteScheduler
 
         void write()
         {
-            http2(stream, type, sizeof, visitor, false);
+            http2(stream, -1L, type, sizeof, visitor, false);
         }
 
     }
 
     private class DataEosEntry extends Entry
     {
-        DataEosEntry(Http2Stream stream, int streamId, int length, Http2FrameType type,
+        DataEosEntry(Http2Stream stream, int streamId, long traceId, int length, Http2FrameType type,
                      Flyweight.Builder.Visitor visitor)
         {
-            super(stream, streamId, length, type, visitor);
+            super(stream, streamId, traceId, length, type, visitor);
         }
 
         @Override
@@ -632,11 +641,12 @@ public class Http2WriteScheduler implements WriteScheduler
         DataEntry(
                 Http2Stream stream,
                 int streamId,
+                long traceId,
                 Http2FrameType type,
                 int length,
                 Flyweight.Builder.Visitor visitor)
         {
-            super(stream, streamId, length, type, visitor);
+            super(stream, streamId, traceId, length, type, visitor);
 
             assert streamId != 0;
         }
@@ -656,8 +666,8 @@ public class Http2WriteScheduler implements WriteScheduler
                 {
                     entryCount--;
                     stream.replyQueue.poll();
-                    DataEntry entry1 = new DataEntry(stream, streamId, type, min, visitor);
-                    DataEntry entry2 = new DataEntry(stream, streamId, type, remaining, visitor);
+                    DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, min, visitor);
+                    DataEntry entry2 = new DataEntry(stream, streamId, traceId, type, remaining, visitor);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
@@ -676,7 +686,7 @@ public class Http2WriteScheduler implements WriteScheduler
             int readLength = stream.replyBuffer.read(length);
             assert readLength == length;
             Flyweight.Builder.Visitor visitor = http2Writer.visitData(streamId, read, offset, readLength);
-            http2(stream, type, readLength, visitor, false);
+            http2(stream, traceId, type, readLength, visitor, false);
         }
 
         public String toString()

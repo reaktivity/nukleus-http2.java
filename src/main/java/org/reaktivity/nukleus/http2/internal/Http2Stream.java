@@ -83,9 +83,9 @@ class Http2Stream
         return http2StreamId%2 == 1;
     }
 
-    void onHttpEnd()
+    void onHttpEnd(long traceId)
     {
-        connection.writeScheduler.dataEos(http2StreamId);
+        connection.writeScheduler.dataEos(traceId, http2StreamId);
         applicationReplyThrottle = null;
     }
 
@@ -115,9 +115,9 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    void onData()
+    void onData(long traceId)
     {
-        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
+        boolean written = httpWriteScheduler.onData(traceId, factory.http2DataRO);
         if (!written)
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);

@@ -35,6 +35,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;
     private LongSupplier supplyStreamId;
+    private LongSupplier supplyTrace;
     private LongSupplier supplyGroupId;
     private LongSupplier supplyCorrelationId;
     private Supplier<BufferPool> supplyBufferPool;
@@ -81,6 +82,14 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
+    public StreamFactoryBuilder setTraceSupplier(LongSupplier supplyTrace)
+    {
+        this.supplyTrace = supplyTrace;
+        return this;
+    }
+
+
+    @Override
     public StreamFactoryBuilder setGroupBudgetClaimer(LongFunction<IntUnaryOperator> groupBudgetClaimer)
     {
         this.groupBudgetClaimer = groupBudgetClaimer;
@@ -116,6 +125,6 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
         final BufferPool bufferPool = supplyBufferPool.get();
 
         return new ServerStreamFactory(config, router, writeBuffer, bufferPool, supplyStreamId, supplyCorrelationId,
-                correlations, supplyGroupId, groupBudgetClaimer, groupBudgetReleaser);
+                correlations, supplyGroupId, supplyTrace, groupBudgetClaimer, groupBudgetReleaser);
     }
 }

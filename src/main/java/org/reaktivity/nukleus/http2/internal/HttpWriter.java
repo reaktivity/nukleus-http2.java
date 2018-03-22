@@ -91,6 +91,7 @@ class HttpWriter
     void doHttpData(
             MessageConsumer target,
             long targetId,
+            long traceId,
             int padding,
             DirectBuffer payload,
             int offset,
@@ -100,6 +101,7 @@ class HttpWriter
 
         DataFW data = dataRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                             .streamId(targetId)
+                            .trace(traceId)
                             .groupId(0)
                             .padding(padding)
                             .payload(p -> p.set(payload, offset, length))
@@ -110,10 +112,12 @@ class HttpWriter
 
     void doHttpEnd(
             MessageConsumer target,
-            long targetId)
+            long targetId,
+            long traceId)
     {
         EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                          .streamId(targetId)
+                         .trace(traceId)
                          .extension(e -> e.reset())
                          .build();
 

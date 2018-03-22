@@ -107,6 +107,7 @@ public final class ServerStreamFactory implements StreamFactory
     final BufferPool httpWriterPool;
     final BufferPool http2ReplyPool;
     final LongSupplier supplyStreamId;
+    final LongSupplier supplyTrace;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
     final Http2Writer http2Writer;
@@ -130,6 +131,7 @@ public final class ServerStreamFactory implements StreamFactory
             LongSupplier supplyCorrelationId,
             Long2ObjectHashMap<Correlation> correlations,
             LongSupplier supplyGroupId,
+            LongSupplier supplyTrace,
             LongFunction<IntUnaryOperator> groupBudgetClaimer,
             LongFunction<IntUnaryOperator> groupBudgetReleaser)
     {
@@ -145,6 +147,7 @@ public final class ServerStreamFactory implements StreamFactory
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
         this.supplyGroupId = requireNonNull(supplyGroupId);
+        this.supplyTrace = requireNonNull(supplyTrace);
         this.groupBudgetClaimer = requireNonNull(groupBudgetClaimer);
         this.groupBudgetReleaser = requireNonNull(groupBudgetReleaser);
 
