@@ -107,7 +107,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
@@ -136,13 +136,13 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
         close();
     }
 
-    void onReset()
+    void onReset(long networkReplyTraceId)
     {
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
@@ -153,7 +153,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, networkReplyTraceId);
         }
 
         close();
@@ -169,7 +169,7 @@ class Http2Stream
 
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
         close();

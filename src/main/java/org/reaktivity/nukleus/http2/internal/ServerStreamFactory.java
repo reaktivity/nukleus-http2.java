@@ -273,7 +273,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(networkThrottle, networkId);
+                doReset(networkThrottle, networkId, 0);
             }
         }
 
@@ -298,7 +298,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(networkThrottle, networkId);
+                    doReset(networkThrottle, networkId, 0);
                     break;
             }
         }
@@ -331,7 +331,7 @@ public final class ServerStreamFactory implements StreamFactory
             window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
-                doReset(networkThrottle, networkId);
+                doReset(networkThrottle, networkId, 0);
                 //http2Connection.handleReset();
             }
             else
@@ -406,7 +406,7 @@ public final class ServerStreamFactory implements StreamFactory
         {
             http2Connection.handleReset(reset);
 
-            doReset(networkThrottle, networkId);
+            doReset(networkThrottle, networkId, 0);
         }
     }
 
@@ -452,7 +452,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId);
+                doReset(applicationReplyThrottle, applicationReplyId, 0);
             }
         }
 
@@ -477,7 +477,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(applicationReplyThrottle, applicationReplyId);
+                    doReset(applicationReplyThrottle, applicationReplyId, 0);
                     break;
             }
         }
@@ -498,7 +498,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId);
+                doReset(applicationReplyThrottle, applicationReplyId, 0);
             }
         }
 
@@ -570,10 +570,12 @@ public final class ServerStreamFactory implements StreamFactory
 
     void doReset(
             final MessageConsumer throttle,
-            final long throttleId)
+            final long throttleId,
+            final long traceId)
     {
         final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(throttleId)
+                                     .trace(traceId)
                                      .build();
 
         throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());

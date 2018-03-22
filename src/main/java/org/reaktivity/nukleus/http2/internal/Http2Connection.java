@@ -175,7 +175,7 @@ final class Http2Connection
     void processUnexpected(
             long streamId)
     {
-        factory.doReset(networkConsumer, streamId);
+        factory.doReset(networkConsumer, streamId, 0);
         cleanConnection();
     }
 
@@ -223,7 +223,7 @@ final class Http2Connection
 
     void handleReset(ResetFW reset)
     {
-        http2Streams.forEach((i, s) -> s.onReset());
+        http2Streams.forEach((i, s) -> s.onReset(reset.trace()));
         cleanConnection();
     }
 
@@ -375,7 +375,7 @@ final class Http2Connection
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId);
+                factory.doReset(networkConsumer, sourceId, 0);
                 handleAbort(0);
                 http2FrameAvailable = false;
                 return false;
@@ -404,7 +404,7 @@ final class Http2Connection
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId);
+                factory.doReset(networkConsumer, sourceId, 0);
                 handleAbort(0);
                 return false;
             }
@@ -741,7 +741,7 @@ final class Http2Connection
         }
         else
         {
-            stream.onReset();
+            stream.onReset(0);
             closeStream(stream);
         }
     }
@@ -1599,7 +1599,7 @@ final class Http2Connection
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
         if (stream == null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
         else
         {
@@ -1675,7 +1675,7 @@ final class Http2Connection
 
     void doRstByUs(Http2Stream stream, Http2ErrorCode errorCode)
     {
-        stream.onReset();
+        stream.onReset(0);
         writeScheduler.rst(stream.http2StreamId, errorCode);
         closeStream(stream);
     }
