@@ -699,7 +699,7 @@ final class Http2Connection
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpWriter.doHttpBegin(applicationTarget, stream.targetId, targetRef, stream.correlationId,
+        httpWriter.doHttpBegin(applicationTarget, stream.targetId, traceId, targetRef, stream.correlationId,
                 beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
         router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
 
@@ -1147,7 +1147,8 @@ final class Http2Connection
         long targetId = http2Stream.targetId;
         long targetRef = route.targetRef();
 
-        httpWriter.doHttpBegin(applicationTarget, targetId, targetRef, http2Stream.correlationId,
+        httpWriter.doHttpBegin(applicationTarget, targetId, factory.supplyTrace.getAsLong(),
+                targetRef, http2Stream.correlationId,
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);

@@ -53,6 +53,7 @@ class HttpWriter
     void doHttpBegin(
             MessageConsumer target,
             long targetId,
+            long traceId,
             long targetRef,
             long correlationId,
             DirectBuffer extBuffer,
@@ -61,6 +62,7 @@ class HttpWriter
     {
         BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                .streamId(targetId)
+                               .trace(traceId)
                                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
                                .sourceRef(targetRef)
                                .correlationId(correlationId)
@@ -73,12 +75,14 @@ class HttpWriter
     void doHttpBegin(
             MessageConsumer target,
             long targetId,
+            long traceId,
             long targetRef,
             long correlationId,
             Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> mutator)
     {
         BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                .streamId(targetId)
+                               .trace(traceId)
                                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
                                .sourceRef(targetRef)
                                .correlationId(correlationId)

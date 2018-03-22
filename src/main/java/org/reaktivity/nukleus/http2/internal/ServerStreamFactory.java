@@ -316,7 +316,7 @@ public final class ServerStreamFactory implements StreamFactory
             doWindow(networkThrottle, networkId, initialWindow, 0, 0);
             window = initialWindow;
 
-            doBegin(networkReply, networkReplyId, 0L, networkCorrelationId);
+            doBegin(networkReply, networkReplyId, supplyTrace.getAsLong(), 0L, networkCorrelationId);
             router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
@@ -525,6 +525,7 @@ public final class ServerStreamFactory implements StreamFactory
     private void doBegin(
             final MessageConsumer target,
             final long targetId,
+            final long traceId,
             final long targetRef,
             final long correlationId)
     {
