@@ -531,6 +531,7 @@ public final class ServerStreamFactory implements StreamFactory
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
+                                     .trace(traceId)
                                      .source("http2")
                                      .sourceRef(targetRef)
                                      .correlationId(correlationId)
