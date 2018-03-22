@@ -94,7 +94,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(0);
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
@@ -121,16 +121,16 @@ class Http2Stream
         if (!written)
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
-            onAbort();
+            onAbort(0);
         }
     }
 
-    void onAbort()
+    void onAbort(long traceId)
     {
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(traceId);
         }
 
         // reset the response stream
@@ -147,7 +147,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(0);
         }
 
         // reset the response stream
@@ -164,7 +164,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(0);
         }
 
         if (applicationReplyThrottle != null)

@@ -126,10 +126,12 @@ class HttpWriter
 
     void doHttpAbort(
             final MessageConsumer target,
-            final long targetId)
+            final long targetId,
+            final long traceId)
     {
         final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
+                                     .trace(traceId)
                                      .extension(e -> e.reset())
                                      .build();
 

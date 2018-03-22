@@ -48,7 +48,7 @@ public interface WriteScheduler
 
     boolean headers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers);
 
-    boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers);
+    boolean pushPromise(long traceId, int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers);
 
     boolean data(long traceId, int streamId, DirectBuffer buffer, int offset, int length);
 

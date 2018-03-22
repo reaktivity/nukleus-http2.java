@@ -362,7 +362,7 @@ public final class ServerStreamFactory implements StreamFactory
             doAbort(networkReply, networkReplyId);
 
             // aborts http request stream, resets http response stream
-            http2Connection.handleAbort();
+            http2Connection.handleAbort(abort.trace());
         }
 
         private void handleThrottle(

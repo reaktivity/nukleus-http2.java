@@ -183,9 +183,9 @@ class HttpWriteScheduler
         release();
     }
 
-    void doAbort()
+    void doAbort(long traceId)
     {
-        target.doHttpAbort(applicationTarget, targetId);
+        target.doHttpAbort(applicationTarget, targetId, traceId);
         release();
     }
 

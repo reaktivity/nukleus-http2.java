@@ -215,9 +215,9 @@ final class Http2Connection
         traceId = 0;
     }
 
-    void handleAbort()
+    void handleAbort(long traceId)
     {
-        http2Streams.forEach((i, s) -> s.onAbort());
+        http2Streams.forEach((i, s) -> s.onAbort(traceId));
         cleanConnection();
     }
 
@@ -376,7 +376,7 @@ final class Http2Connection
             {
                 // all slots are in use, just reset the connection
                 factory.doReset(networkConsumer, sourceId);
-                handleAbort();
+                handleAbort(0);
                 http2FrameAvailable = false;
                 return false;
             }
@@ -405,7 +405,7 @@ final class Http2Connection
             {
                 // all slots are in use, just reset the connection
                 factory.doReset(networkConsumer, sourceId);
-                handleAbort();
+                handleAbort(0);
                 return false;
             }
         }
@@ -1630,7 +1630,7 @@ final class Http2Connection
             {
                 int promisedStreamId = correlation.promisedStreamIds.getAsInt();
                 Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
-                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers());
+                writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.headers());
                 correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
             }
         }

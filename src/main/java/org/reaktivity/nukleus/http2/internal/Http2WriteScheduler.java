@@ -64,7 +64,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean windowUpdate(int streamId, int update)
     {
-        long traceId = 0;
+        long traceId = connection.factory.supplyTrace.getAsLong();
         int length = 4;                     // 4 window size increment
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Http2FrameType type = WINDOW_UPDATE;
@@ -88,7 +88,7 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         assert length == 8;
 
-        long traceId = 0;
+        long traceId = connection.factory.supplyTrace.getAsLong();
         int streamId = 0;
         int sizeof = 9 + length;             // +9 for HTTP2 framing, +8 for a ping
         Http2FrameType type = PING;
@@ -114,7 +114,7 @@ public class Http2WriteScheduler implements WriteScheduler
     public boolean goaway(int lastStreamId, Http2ErrorCode errorCode)
     {
         int streamId = 0;
-        long traceId = 0;
+        long traceId = connection.factory.supplyTrace.getAsLong();
         int length = 8;                     // 8 for goaway payload
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Flyweight.Builder.Visitor goaway = http2Writer.visitGoaway(lastStreamId, errorCode);
@@ -136,7 +136,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
-        long traceId = 0;
+        long traceId = connection.factory.supplyTrace.getAsLong();
         int length = 4;                     // 4 for RST_STREAM payload
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Flyweight.Builder.Visitor visitor = http2Writer.visitRst(streamId, errorCode);
@@ -159,7 +159,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean settings(int maxConcurrentStreams, int initialWindowSize)
     {
-        long traceId = 0;
+        long traceId = connection.factory.supplyTrace.getAsLong();
         int streamId = 0;
         int length = 6;                     // 6 for a setting
         int sizeof = length + 9;            // +9 for HTTP2 framing
@@ -182,7 +182,7 @@ public class Http2WriteScheduler implements WriteScheduler
     @Override
     public boolean settingsAck()
     {
-        long traceId = 0;
+        long traceId = connection.factory.supplyTrace.getAsLong();
         int streamId = 0;
         int length = 0;
         int sizeof = length + 9;                 // +9 for HTTP2 framing
@@ -237,9 +237,8 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers)
+    public boolean pushPromise(long traceId, int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers)
     {
-        long traceId = 0;
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);            // estimate only
         int sizeof = 9 + 4 + length;                    // +9 for HTTP2 framing, +4 for promised stream id
