@@ -41,6 +41,7 @@ class HttpWriteScheduler
 
     private int totalRead;
     private int totalWritten;
+    private long traceId;
 
     HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
@@ -56,8 +57,15 @@ class HttpWriteScheduler
      * @return true if the data is written or stored
      *         false if there are no slots or no space in the buffer
      */
-    boolean onData(Http2DataFW http2DataRO)
+    boolean onData(long traceId, Http2DataFW http2DataRO)
     {
+        // keep traceId of the only first data frame and we don't write traceId
+        // for subsequent data frames until the buffer is drained. This ok since
+        // we don't expect data to be buffered (except for initial request)
+        if (this.traceId == 0 && targetBuffer == null)
+        {
+            this.traceId = traceId;
+        }
         totalRead += http2DataRO.dataLength();
         end = http2DataRO.endStream();
 
@@ -92,7 +100,7 @@ class HttpWriteScheduler
             if (end && !endSent)
             {
                 endSent = true;
-                target.doHttpEnd(applicationTarget, targetId);
+                target.doHttpEnd(applicationTarget, targetId, traceId);
             }
 
             return true;
@@ -135,7 +143,7 @@ class HttpWriteScheduler
                 if (end && !endSent)
                 {
                     endSent = true;
-                    target.doHttpEnd(applicationTarget, targetId);
+                    target.doHttpEnd(applicationTarget, targetId, traceId);
                 }
 
                 release();
@@ -165,8 +173,9 @@ class HttpWriteScheduler
         assert length <= 65535;
 
         applicationBudget -= length + applicationPadding;
-        target.doHttpData(applicationTarget, targetId, applicationPadding, buffer, offset, length);
+        target.doHttpData(applicationTarget, targetId, traceId, applicationPadding, buffer, offset, length);
         totalWritten += length;
+        traceId = 0;
     }
 
     void onReset()
@@ -174,9 +183,9 @@ class HttpWriteScheduler
         release();
     }
 
-    void doAbort()
+    void doAbort(long traceId)
     {
-        target.doHttpAbort(applicationTarget, targetId);
+        target.doHttpAbort(applicationTarget, targetId, traceId);
         release();
     }
 

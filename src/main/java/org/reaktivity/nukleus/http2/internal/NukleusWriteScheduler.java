@@ -28,6 +28,7 @@ class NukleusWriteScheduler
     private final MessageConsumer networkConsumer;
     private final MutableDirectBuffer writeBuffer;
 
+    private long traceId;
     private int accumulatedLength;
 
     NukleusWriteScheduler(
@@ -44,10 +45,16 @@ class NukleusWriteScheduler
     }
 
     int http2Frame(
+            long traceId,
             int lengthGuess,
             Flyweight.Builder.Visitor visitor)
     {
         int length = visitor.visit(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD + accumulatedLength, lengthGuess);
+        if (this.traceId == 0)
+        {
+            // pick one traceId as multiple reply data frames are assembled here
+            this.traceId = traceId;
+        }
         accumulatedLength += length;
 
         return length;
@@ -68,6 +75,7 @@ class NukleusWriteScheduler
             connection.networkReplyBudget -= accumulatedLength + adjustment;
             assert connection.networkReplyBudget >= 0;
 
+            traceId = 0;
             accumulatedLength = 0;
         }
 
@@ -103,7 +111,7 @@ class NukleusWriteScheduler
         while (length > 0)
         {
             int chunk = Math.min(length, 65535);     // limit by nukleus DATA frame length (2 bytes)
-            http2Writer.doData(networkConsumer, targetId, connection.networkReplyPadding, buffer, offset, chunk);
+            http2Writer.doData(networkConsumer, targetId, traceId, connection.networkReplyPadding, buffer, offset, chunk);
             offset += chunk;
             length -= chunk;
         }
