@@ -83,9 +83,9 @@ class Http2Stream
         return http2StreamId%2 == 1;
     }
 
-    void onHttpEnd()
+    void onHttpEnd(long traceId)
     {
-        connection.writeScheduler.dataEos(http2StreamId);
+        connection.writeScheduler.dataEos(traceId, http2StreamId);
         applicationReplyThrottle = null;
     }
 
@@ -94,7 +94,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(0);
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
@@ -107,7 +107,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
@@ -115,45 +115,45 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    void onData()
+    void onData(long traceId)
     {
-        boolean written = httpWriteScheduler.onData(factory.http2DataRO);
+        boolean written = httpWriteScheduler.onData(traceId, factory.http2DataRO);
         if (!written)
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
-            onAbort();
+            onAbort(0);
         }
     }
 
-    void onAbort()
+    void onAbort(long traceId)
     {
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(traceId);
         }
 
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
         close();
     }
 
-    void onReset()
+    void onReset(long networkReplyTraceId)
     {
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(0);
         }
 
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, networkReplyTraceId);
         }
 
         close();
@@ -164,12 +164,12 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort();
+            httpWriteScheduler.doAbort(0);
         }
 
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
         close();

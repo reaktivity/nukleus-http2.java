@@ -107,6 +107,7 @@ public final class ServerStreamFactory implements StreamFactory
     final BufferPool httpWriterPool;
     final BufferPool http2ReplyPool;
     final LongSupplier supplyStreamId;
+    final LongSupplier supplyTrace;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
     final Http2Writer http2Writer;
@@ -130,6 +131,7 @@ public final class ServerStreamFactory implements StreamFactory
             LongSupplier supplyCorrelationId,
             Long2ObjectHashMap<Correlation> correlations,
             LongSupplier supplyGroupId,
+            LongSupplier supplyTrace,
             LongFunction<IntUnaryOperator> groupBudgetClaimer,
             LongFunction<IntUnaryOperator> groupBudgetReleaser)
     {
@@ -145,6 +147,7 @@ public final class ServerStreamFactory implements StreamFactory
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
         this.supplyGroupId = requireNonNull(supplyGroupId);
+        this.supplyTrace = requireNonNull(supplyTrace);
         this.groupBudgetClaimer = requireNonNull(groupBudgetClaimer);
         this.groupBudgetReleaser = requireNonNull(groupBudgetReleaser);
 
@@ -270,7 +273,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(networkThrottle, networkId);
+                doReset(networkThrottle, networkId, 0);
             }
         }
 
@@ -295,7 +298,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(networkThrottle, networkId);
+                    doReset(networkThrottle, networkId, 0);
                     break;
             }
         }
@@ -313,7 +316,7 @@ public final class ServerStreamFactory implements StreamFactory
             doWindow(networkThrottle, networkId, initialWindow, 0, 0);
             window = initialWindow;
 
-            doBegin(networkReply, networkReplyId, 0L, networkCorrelationId);
+            doBegin(networkReply, networkReplyId, supplyTrace.getAsLong(), 0L, networkCorrelationId);
             router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
@@ -328,7 +331,7 @@ public final class ServerStreamFactory implements StreamFactory
             window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
-                doReset(networkThrottle, networkId);
+                doReset(networkThrottle, networkId, 0);
                 //http2Connection.handleReset();
             }
             else
@@ -359,7 +362,7 @@ public final class ServerStreamFactory implements StreamFactory
             doAbort(networkReply, networkReplyId);
 
             // aborts http request stream, resets http response stream
-            http2Connection.handleAbort();
+            http2Connection.handleAbort(abort.trace());
         }
 
         private void handleThrottle(
@@ -403,7 +406,7 @@ public final class ServerStreamFactory implements StreamFactory
         {
             http2Connection.handleReset(reset);
 
-            doReset(networkThrottle, networkId);
+            doReset(networkThrottle, networkId, 0);
         }
     }
 
@@ -449,7 +452,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId);
+                doReset(applicationReplyThrottle, applicationReplyId, 0);
             }
         }
 
@@ -474,7 +477,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(applicationReplyThrottle, applicationReplyId);
+                    doReset(applicationReplyThrottle, applicationReplyId, 0);
                     break;
             }
         }
@@ -495,7 +498,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId);
+                doReset(applicationReplyThrottle, applicationReplyId, 0);
             }
         }
 
@@ -522,11 +525,13 @@ public final class ServerStreamFactory implements StreamFactory
     private void doBegin(
             final MessageConsumer target,
             final long targetId,
+            final long traceId,
             final long targetRef,
             final long correlationId)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
+                                     .trace(traceId)
                                      .source("http2")
                                      .sourceRef(targetRef)
                                      .correlationId(correlationId)
@@ -567,10 +572,12 @@ public final class ServerStreamFactory implements StreamFactory
 
     void doReset(
             final MessageConsumer throttle,
-            final long throttleId)
+            final long throttleId,
+            final long traceId)
     {
         final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(throttleId)
+                                     .trace(traceId)
                                      .build();
 
         throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
