@@ -20,6 +20,7 @@ import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
 
+import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
@@ -63,6 +64,25 @@ public class Http2SettingsFWTest
         assertEquals(0, settings.streamId());
         assertEquals(65535L, settings.initialWindowSize());
         assertEquals(4096L, settings.maxHeaderListSize());
+    }
+
+    @Test
+    public void encodeAck()
+    {
+        byte[] bytes = new byte[10];
+        MutableDirectBuffer buf = new UnsafeBuffer(bytes);
+
+        Http2SettingsFW settings = new Http2SettingsFW.Builder()
+                .wrap(buf, 1, buf.capacity())   // non-zero offset
+                .ack()
+                .build();
+
+        assertEquals(0, settings.payloadLength());
+        assertEquals(1, settings.offset());
+        assertEquals(10, settings.limit());
+        assertEquals(SETTINGS, settings.type());
+        assertTrue(settings.ack());
+        assertEquals(0, settings.streamId());
     }
 
 }
