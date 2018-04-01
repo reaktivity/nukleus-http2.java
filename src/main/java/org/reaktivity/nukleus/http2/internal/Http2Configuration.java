@@ -20,7 +20,7 @@ import org.reaktivity.nukleus.Configuration;
 class Http2Configuration extends Configuration
 {
     private static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
-    private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = 100;
+    private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = Integer.MAX_VALUE;
 
     private static final String HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN = "nukleus.http2.server.access.control.allow.origin";
     private static final boolean HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT = false;

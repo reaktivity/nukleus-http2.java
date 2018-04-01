@@ -43,6 +43,7 @@ public class ConnectionManagementIT
             .responseBufferCapacity(1024)
             .counterValuesBufferCapacity(1024)
             .nukleus("http2"::equals)
+            .configure("nukleus.http2.server.concurrent.streams", 100)
             .clean();
 
     @Rule
