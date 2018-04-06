@@ -43,6 +43,7 @@ public class ConfigIT
             .counterValuesBufferCapacity(1024)
             .nukleus("http2"::equals)
             .configure("nukleus.http2.server.access.control.allow.origin", "true")
+            .configure("nukleus.http2.server.concurrent.streams", 100)
             .clean();
 
     @Rule

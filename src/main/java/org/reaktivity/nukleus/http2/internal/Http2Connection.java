@@ -137,6 +137,7 @@ final class Http2Connection
     MessageConsumer networkConsumer;
     RouteManager router;
     String sourceName;
+    long traceId;
 
     Http2Connection(ServerStreamFactory factory, RouteManager router, long networkReplyId, MessageConsumer networkConsumer,
                     MessageFunction<RouteFW> wrapRoute)
@@ -174,7 +175,7 @@ final class Http2Connection
     void processUnexpected(
             long streamId)
     {
-        factory.doReset(networkConsumer, streamId);
+        factory.doReset(networkConsumer, streamId, 0);
         cleanConnection();
     }
 
@@ -204,23 +205,25 @@ final class Http2Connection
     {
         OctetsFW payload = dataRO.payload();
         int limit = payload.limit();
+        traceId = dataRO.trace();
 
         int offset = payload.offset();
         while (offset < limit)
         {
             offset += decoderState.decode(dataRO.buffer(), offset, limit);
         }
+        traceId = 0;
     }
 
-    void handleAbort()
+    void handleAbort(long traceId)
     {
-        http2Streams.forEach((i, s) -> s.onAbort());
+        http2Streams.forEach((i, s) -> s.onAbort(traceId));
         cleanConnection();
     }
 
     void handleReset(ResetFW reset)
     {
-        http2Streams.forEach((i, s) -> s.onReset());
+        http2Streams.forEach((i, s) -> s.onReset(reset.trace()));
         cleanConnection();
     }
 
@@ -372,8 +375,8 @@ final class Http2Connection
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId);
-                handleAbort();
+                factory.doReset(networkConsumer, sourceId, 0);
+                handleAbort(0);
                 http2FrameAvailable = false;
                 return false;
             }
@@ -401,8 +404,8 @@ final class Http2Connection
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId);
-                handleAbort();
+                factory.doReset(networkConsumer, sourceId, 0);
+                handleAbort(0);
                 return false;
             }
         }
@@ -696,13 +699,13 @@ final class Http2Connection
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpWriter.doHttpBegin(applicationTarget, stream.targetId, targetRef, stream.correlationId,
+        httpWriter.doHttpBegin(applicationTarget, stream.targetId, traceId, targetRef, stream.correlationId,
                 beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
         router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
 
         if (factory.headersRO.endStream())
         {
-            httpWriter.doHttpEnd(applicationTarget, stream.targetId);  // TODO use HttpWriteScheduler
+            httpWriter.doHttpEnd(applicationTarget, stream.targetId, traceId);  // TODO use HttpWriteScheduler
         }
     }
 
@@ -714,7 +717,7 @@ final class Http2Connection
                                  .item(b -> b.name(":status").value("404"))
                                  .build();
 
-        writeScheduler.headers(streamId, Http2Flags.END_STREAM, headers);
+        writeScheduler.headers(0, streamId, Http2Flags.END_STREAM, headers);
     }
 
     private void doRst()
@@ -738,7 +741,7 @@ final class Http2Connection
         }
         else
         {
-            stream.onReset();
+            stream.onReset(0);
             closeStream(stream);
         }
     }
@@ -886,7 +889,7 @@ final class Http2Connection
             stream.state = State.HALF_CLOSED_REMOTE;
         }
 
-        stream.onData();
+        stream.onData(traceId);
     }
 
     private void doSettings()
@@ -1144,11 +1147,12 @@ final class Http2Connection
         long targetId = http2Stream.targetId;
         long targetRef = route.targetRef();
 
-        httpWriter.doHttpBegin(applicationTarget, targetId, targetRef, http2Stream.correlationId,
+        httpWriter.doHttpBegin(applicationTarget, targetId, factory.supplyTrace.getAsLong(),
+                targetRef, http2Stream.correlationId,
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
-        httpWriter.doHttpEnd(applicationTarget, targetId);
+        httpWriter.doHttpEnd(applicationTarget, targetId, 0L);
     }
 
     private Http2Stream newStream(int http2StreamId, State state, MessageConsumer applicationTarget, HttpWriter httpWriter)
@@ -1315,8 +1319,19 @@ final class Http2Connection
         }
     }
 
-    private void decodeHeaderField(HpackHeaderFieldFW hf,
-                                   BiConsumer<DirectBuffer, DirectBuffer> nameValue)
+    private void decodeHeaderField(
+        HpackHeaderFieldFW hf,
+        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
+    {
+        if (!headersContext.error())
+        {
+            decodeHF(hf, nameValue);
+        }
+    }
+
+    private void decodeHF(
+        HpackHeaderFieldFW hf,
+        BiConsumer<DirectBuffer, DirectBuffer> nameValue)
     {
         int index;
         DirectBuffer name = null;
@@ -1348,6 +1363,11 @@ final class Http2Connection
                     case INDEXED:
                     {
                         index = literalRO.nameIndex();
+                        if (!decodeContext.valid(index))
+                        {
+                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                            return;
+                        }
                         name = decodeContext.nameBuffer(index);
 
                         HpackStringFW valueRO = literalRO.valueLiteral();
@@ -1580,7 +1600,7 @@ final class Http2Connection
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
         if (stream == null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
         else
         {
@@ -1592,7 +1612,7 @@ final class Http2Connection
             if (extension.sizeof() > 0)
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
-                writeScheduler.headers(correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
+                writeScheduler.headers(begin.trace(), correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
             }
         }
     }
@@ -1601,6 +1621,7 @@ final class Http2Connection
     {
         OctetsFW extension = dataRO.extension();
         OctetsFW payload = dataRO.payload();
+        long traceId = dataRO.trace();
 
         if (extension.sizeof() > 0)
         {
@@ -1610,7 +1631,7 @@ final class Http2Connection
             {
                 int promisedStreamId = correlation.promisedStreamIds.getAsInt();
                 Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
-                writeScheduler.pushPromise(pushStreamId, promisedStreamId, dataEx.headers());
+                writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.headers());
                 correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
             }
         }
@@ -1627,18 +1648,18 @@ final class Http2Connection
                 }
             }
 
-            writeScheduler.data(correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
+            writeScheduler.data(traceId, correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
         }
 
     }
 
-    void handleHttpEnd(EndFW data, Correlation correlation)
+    void handleHttpEnd(EndFW end, Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
 
         if (stream != null)
         {
-            stream.onHttpEnd();
+            stream.onHttpEnd(end.trace());
         }
     }
 
@@ -1655,7 +1676,7 @@ final class Http2Connection
 
     void doRstByUs(Http2Stream stream, Http2ErrorCode errorCode)
     {
-        stream.onReset();
+        stream.onReset(0);
         writeScheduler.rst(stream.http2StreamId, errorCode);
         closeStream(stream);
     }

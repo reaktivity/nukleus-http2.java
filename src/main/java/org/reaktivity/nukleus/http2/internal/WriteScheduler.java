@@ -46,13 +46,13 @@ public interface WriteScheduler
 
     boolean settingsAck();
 
-    boolean headers(int streamId, byte flags, ListFW<HttpHeaderFW> headers);
+    boolean headers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers);
 
-    boolean pushPromise(int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers);
+    boolean pushPromise(long traceId, int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers);
 
-    boolean data(int streamId, DirectBuffer buffer, int offset, int length);
+    boolean data(long traceId, int streamId, DirectBuffer buffer, int offset, int length);
 
-    boolean dataEos(int streamId);
+    boolean dataEos(long traceId, int streamId);
 
     void doEnd();
 

@@ -42,6 +42,7 @@ public class MessageFormatIT
             .responseBufferCapacity(1024)
             .counterValuesBufferCapacity(1024)
             .nukleus("http2"::equals)
+            .configure("nukleus.http2.server.concurrent.streams", 100)
             .clean();
 
     @Rule
@@ -93,6 +94,15 @@ public class MessageFormatIT
             "${spec}/stream.id.order/client",
             "${nukleus}/stream.id.order/server" })
     public void streamIdOrder() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/invalid.hpack.index/client" })
+    public void invalidHpackIndex() throws Exception
     {
         k3po.finish();
     }
