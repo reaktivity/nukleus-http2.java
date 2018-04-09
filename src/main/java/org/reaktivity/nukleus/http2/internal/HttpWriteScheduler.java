@@ -155,8 +155,7 @@ class HttpWriteScheduler
 
     private int getPart(int remaining)
     {
-        int toHttp = Math.min(remaining, applicationBudget - applicationPadding);
-        return Math.min(toHttp, 65535);
+        return Math.min(remaining, applicationBudget - applicationPadding);
 //        int claimed = stream.connection.factory.groupBudgetClaimer.apply(applicationGroupId)
 //                                                                  .applyAsInt(toHttp + applicationWindowPadding);
 //        toHttp = claimed - applicationWindowPadding;
@@ -170,8 +169,6 @@ class HttpWriteScheduler
 
     private void toHttp(DirectBuffer buffer, int offset, int length)
     {
-        assert length <= 65535;
-
         applicationBudget -= length + applicationPadding;
         target.doHttpData(applicationTarget, targetId, traceId, applicationPadding, buffer, offset, length);
         totalWritten += length;

@@ -71,7 +71,6 @@ class Http2Writer
             int length)
     {
         assert offset >= DataFW.FIELD_OFFSET_PAYLOAD;
-        assert length < 65536;      // DATA frame length is 2 bytes
 
         DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
                             .streamId(targetId)
