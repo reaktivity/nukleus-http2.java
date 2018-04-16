@@ -1078,6 +1078,7 @@ final class Http2Connection
 
     void error(Http2ErrorCode errorCode)
     {
+System.out.printf("ERROR %s cleanup\n", errorCode);
         writeScheduler.goaway(lastStreamId, errorCode);
 
         factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
