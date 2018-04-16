@@ -538,6 +538,8 @@ final class Http2Connection
         {
             return length;
         }
+        System.out.printf("streamId=%d <- %s\n", networkId, factory.http2RO);
+
         Http2FrameType http2FrameType = factory.http2RO.type();
         // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
         if (!http2HeadersAvailable())
@@ -1078,7 +1080,7 @@ final class Http2Connection
 
     void error(Http2ErrorCode errorCode)
     {
-System.out.printf("ERROR %s cleanup\n", errorCode);
+System.out.printf("streamId=%d ERROR %s cleanup\n", networkId, errorCode);
         writeScheduler.goaway(lastStreamId, errorCode);
 
         factory.doReset(network, networkId, factory.supplyTrace.getAsLong());

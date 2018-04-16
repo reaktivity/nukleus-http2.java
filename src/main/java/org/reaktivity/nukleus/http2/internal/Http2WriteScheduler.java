@@ -552,7 +552,6 @@ public class Http2WriteScheduler implements WriteScheduler
     private void http2(Http2Stream stream, long traceId, Http2FrameType type,
                        int sizeofGuess, Flyweight.Builder.Visitor visitor, boolean flush)
     {
-        System.out.printf("<- %s\n", type);
         if (canStreamWrite(stream, type))
         {
             int sizeof = writer.http2Frame(traceId, sizeofGuess, visitor);
