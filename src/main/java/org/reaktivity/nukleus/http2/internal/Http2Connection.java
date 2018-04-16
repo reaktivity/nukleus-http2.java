@@ -94,7 +94,7 @@ final class Http2Connection
     private int headersSlotIndex = NO_SLOT;
     private int headersSlotPosition;
 
-    long sourceId;
+    final long networkId;
     long authorization;
     int lastStreamId;
     long sourceRef;
@@ -104,7 +104,8 @@ final class Http2Connection
 
     final WriteScheduler writeScheduler;
 
-    final long sourceOutputEstId;
+    final MessageConsumer network;
+    final long networkReplyId;
     private final HpackContext decodeContext;
     private final HpackContext encodeContext;
     private final MessageFunction<RouteFW> wrapRoute;
@@ -134,28 +135,31 @@ final class Http2Connection
     private final HeadersContext headersContext = new HeadersContext();
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
     final Http2Writer http2Writer;
-    MessageConsumer networkConsumer;
+    final MessageConsumer networkReply;
     RouteManager router;
     String sourceName;
     long traceId;
 
-    Http2Connection(ServerStreamFactory factory, RouteManager router, long networkReplyId, MessageConsumer networkConsumer,
+    Http2Connection(ServerStreamFactory factory, RouteManager router, MessageConsumer network, long networkId,
+                    MessageConsumer networkReply, long networkReplyId,
                     MessageFunction<RouteFW> wrapRoute)
     {
         this.factory = factory;
         this.router = router;
         this.wrapRoute = wrapRoute;
-        sourceOutputEstId = networkReplyId;
+        this.network = network;
+        this.networkId = networkId;
+        this.networkReplyId = networkReplyId;
         http2Streams = new Int2ObjectHashMap<>();
         localSettings = new Settings();
         remoteSettings = new Settings();
         decodeContext = new HpackContext(localSettings.headerTableSize, false);
         encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         http2Writer = factory.http2Writer;
-        writeScheduler = new Http2WriteScheduler(this, networkConsumer, http2Writer, sourceOutputEstId);
+        writeScheduler = new Http2WriteScheduler(this, networkReply, http2Writer, this.networkReplyId);
         http2InWindow = localSettings.initialWindowSize;
         http2OutWindow = remoteSettings.initialWindowSize;
-        this.networkConsumer = networkConsumer;
+        this.networkReply = networkReply;
         this.networkReplyGroupId = factory.supplyGroupId.getAsLong();
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
@@ -175,7 +179,7 @@ final class Http2Connection
     void processUnexpected(
             long streamId)
     {
-        factory.doReset(networkConsumer, streamId, 0);
+        factory.doReset(networkReply, streamId, 0);
         cleanConnection();
     }
 
@@ -192,7 +196,6 @@ final class Http2Connection
 
     void handleBegin(BeginFW beginRO)
     {
-        this.sourceId = beginRO.streamId();
         this.authorization = beginRO.authorization();
         this.sourceRef = beginRO.sourceRef();
         this.sourceName = beginRO.source().asString();
@@ -246,7 +249,7 @@ final class Http2Connection
         }
         if (factory.prefaceRO.error())
         {
-            processUnexpected(sourceId);
+            processUnexpected(networkId);
             return limit-offset;
         }
         this.decoderState = this::decodeHttp2Frame;
@@ -371,11 +374,11 @@ final class Http2Connection
         {
             assert frameSlotPosition == 0;
 
-            frameSlotIndex = factory.framePool.acquire(sourceId);
+            frameSlotIndex = factory.framePool.acquire(networkId);
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId, 0);
+                factory.doReset(networkReply, networkId, 0);
                 handleAbort(0);
                 http2FrameAvailable = false;
                 return false;
@@ -400,11 +403,11 @@ final class Http2Connection
         {
             assert headersSlotPosition == 0;
 
-            headersSlotIndex = factory.headersPool.acquire(sourceId);
+            headersSlotIndex = factory.headersPool.acquire(networkId);
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkConsumer, sourceId, 0);
+                factory.doReset(network, networkId, 0);
                 handleAbort(0);
                 return false;
             }
@@ -585,7 +588,7 @@ final class Http2Connection
         {
             if (streamId != 0)
             {
-                processUnexpected(sourceId);
+                processUnexpected(networkId);
             }
         }
         else
@@ -1076,7 +1079,11 @@ final class Http2Connection
     void error(Http2ErrorCode errorCode)
     {
         writeScheduler.goaway(lastStreamId, errorCode);
-        writeScheduler.doEnd();
+
+        factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
+        factory.doAbort(networkReply, networkReplyId);
+        http2Streams.forEach((i, s) -> s.onError(traceId));
+        cleanConnection();
     }
 
     void streamError(int streamId, Http2ErrorCode errorCode)
@@ -1162,7 +1169,7 @@ final class Http2Connection
         Http2Stream http2Stream = new Http2Stream(factory, this, http2StreamId, state, applicationTarget, httpWriter);
         http2Streams.put(http2StreamId, http2Stream);
 
-        Correlation correlation = new Correlation(http2Stream.correlationId, sourceOutputEstId, writeScheduler,
+        Correlation correlation = new Correlation(http2Stream.correlationId, networkReplyId, writeScheduler,
                 this::doPromisedRequest, this, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId);
 
         factory.correlations.put(http2Stream.correlationId, correlation);
