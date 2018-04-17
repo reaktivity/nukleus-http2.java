@@ -378,7 +378,7 @@ final class Http2Connection
             if (frameSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(networkReply, networkId, 0);
+                factory.doReset(network, networkId, 0);
                 handleAbort(0);
                 http2FrameAvailable = false;
                 return false;
@@ -538,7 +538,6 @@ final class Http2Connection
         {
             return length;
         }
-        System.out.printf("streamId=%d <- %s\n", networkId, factory.http2RO);
 
         Http2FrameType http2FrameType = factory.http2RO.type();
         // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
@@ -1080,7 +1079,6 @@ final class Http2Connection
 
     void error(Http2ErrorCode errorCode)
     {
-System.out.printf("streamId=%d ERROR %s cleanup\n", networkId, errorCode);
         writeScheduler.goaway(lastStreamId, errorCode);
 
         factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
