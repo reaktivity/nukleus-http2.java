@@ -25,8 +25,8 @@ class NukleusWriteScheduler
 {
     private final Http2Connection connection;
     private final Http2Writer http2Writer;
-    private final long targetId;
-    private final MessageConsumer networkConsumer;
+    private final long networkReplyId;
+    private final MessageConsumer networkReply;
     private final MutableDirectBuffer writeBuffer;
 
     private long traceId;
@@ -34,14 +34,14 @@ class NukleusWriteScheduler
 
     NukleusWriteScheduler(
         Http2Connection connection,
-        MessageConsumer networkConsumer,
+        MessageConsumer networkReply,
         Http2Writer http2Writer,
-        long targetId)
+        long networkReplyId)
     {
         this.connection = connection;
-        this.networkConsumer = networkConsumer;
+        this.networkReply = networkReply;
         this.http2Writer = http2Writer;
-        this.targetId = targetId;
+        this.networkReplyId = networkReplyId;
         this.writeBuffer = http2Writer.writeBuffer;
     }
 
@@ -75,14 +75,14 @@ class NukleusWriteScheduler
 
     void doEnd()
     {
-        http2Writer.doEnd(networkConsumer, targetId);
+        http2Writer.doEnd(networkReply, networkReplyId);
     }
 
     void flush()
     {
         if (accumulatedLength > 0)
         {
-            http2Writer.doData(networkConsumer, targetId, traceId, connection.networkReplyPadding,
+            http2Writer.doData(networkReply, networkReplyId, traceId, connection.networkReplyPadding,
                     writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD, accumulatedLength);
 
             // Every nukleus DATA frame incurs padding overhead
