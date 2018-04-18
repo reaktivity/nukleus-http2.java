@@ -125,6 +125,23 @@ class Http2Stream
         }
     }
 
+    void onError(long traceId)
+    {
+        // more request data to be sent, so send ABORT
+        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        {
+            httpWriteScheduler.doAbort(traceId);
+        }
+
+        // reset the response stream
+        if (applicationReplyThrottle != null)
+        {
+            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
+        }
+
+        close();
+    }
+
     void onAbort(long traceId)
     {
         // more request data to be sent, so send ABORT
@@ -211,7 +228,7 @@ class Http2Stream
     {
         if (replySlot == NO_SLOT)
         {
-            replySlot = factory.http2ReplyPool.acquire(connection.sourceOutputEstId);
+            replySlot = factory.http2ReplyPool.acquire(connection.networkReplyId);
             if (replySlot != NO_SLOT)
             {
                 int capacity = factory.http2ReplyPool.buffer(replySlot).capacity();
