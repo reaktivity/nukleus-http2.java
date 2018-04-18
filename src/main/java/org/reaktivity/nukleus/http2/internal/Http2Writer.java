@@ -151,6 +151,19 @@ class Http2Writer
                       .sizeof();
     }
 
+    int windowUpdate(
+            int offset,
+            int lengthGuess,
+            int streamId,
+            int update)
+    {
+        return http2WindowRW.wrap(writeBuffer, offset, offset + lengthGuess)
+                     .streamId(streamId)
+                     .size(update)
+                     .build()
+                     .sizeof();
+    }
+
     Flyweight.Builder.Visitor visitWindowUpdate(
             int streamId,
             int update)

@@ -34,6 +34,7 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
@@ -69,15 +70,18 @@ public class Http2WriteScheduler implements WriteScheduler
         int sizeof = length + 9;            // +9 for HTTP2 framing
         Http2FrameType type = WINDOW_UPDATE;
         Http2Stream stream = stream(streamId);
-        Flyweight.Builder.Visitor visitor = http2Writer.visitWindowUpdate(streamId, update);
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            http2(stream, traceId, type, sizeof, visitor);
+            int written = http2Writer.windowUpdate(DataFW.FIELD_OFFSET_PAYLOAD, sizeof, streamId, update);
+            assert written == sizeof;
+
+            writer.writtenHttp2Frame(type, written);
+            writer.flush();
         }
         else
         {
-            Entry entry = new Entry(stream, streamId, traceId, length, type, visitor);
+            WindowUpdateEntry entry = new WindowUpdateEntry(stream, streamId, traceId, length, type, update);
             addEntry(entry);
         }
         return true;
@@ -632,6 +636,27 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             super.write();
             connection.closeStream(stream);
+        }
+    }
+
+    private class WindowUpdateEntry extends Entry
+    {
+        private final int update;
+
+        WindowUpdateEntry(Http2Stream stream, int streamId, long traceId, int length, Http2FrameType type,
+                          int update)
+        {
+            super(stream, streamId, traceId, length, type, null);
+            this.update = update;
+        }
+
+        @Override
+        void write()
+        {
+            int written = http2Writer.windowUpdate(writer.offset(), sizeof, streamId, update);
+            assert written == sizeof;
+
+            writer.writtenHttp2Frame(type, written);
         }
     }
 
