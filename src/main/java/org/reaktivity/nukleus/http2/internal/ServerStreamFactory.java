@@ -320,8 +320,9 @@ public final class ServerStreamFactory implements StreamFactory
             router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
-            http2Connection = new Http2Connection(ServerStreamFactory.this, router, networkReplyId,
-                    networkReply, wrapRoute);
+            http2Connection = new Http2Connection(ServerStreamFactory.this, router,
+                    networkThrottle, networkId,
+                    networkReply, networkReplyId, wrapRoute);
             http2Connection.handleBegin(begin);
         }
 
@@ -541,7 +542,7 @@ public final class ServerStreamFactory implements StreamFactory
         target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
-    private void doAbort(
+    void doAbort(
             final MessageConsumer target,
             final long targetId)
     {
