@@ -164,26 +164,15 @@ class Http2Writer
                      .sizeof();
     }
 
-    Flyweight.Builder.Visitor visitWindowUpdate(
-            int streamId,
-            int update)
+    int data(
+        int offset,
+        int lengthGuess,
+        int streamId,
+        DirectBuffer payloadBuffer,
+        int payloadOffset,
+        int payloadLength)
     {
-        return (buffer, offset, limit) ->
-                http2WindowRW.wrap(buffer, offset, limit)
-                        .streamId(streamId)
-                        .size(update)
-                        .build()
-                        .sizeof();
-    }
-
-    Flyweight.Builder.Visitor visitData(
-            int streamId,
-            DirectBuffer payloadBuffer,
-            int payloadOffset,
-            int payloadLength)
-    {
-        return (buffer, offset, limit) ->
-                http2DataRW.wrap(buffer, offset, limit)
+        return  http2DataRW.wrap(writeBuffer, offset, offset + lengthGuess)
                            .streamId(streamId)
                            .payload(payloadBuffer, payloadOffset, payloadLength)
                            .build()

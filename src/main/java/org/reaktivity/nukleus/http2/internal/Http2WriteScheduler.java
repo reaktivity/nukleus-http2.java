@@ -34,7 +34,6 @@ import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
@@ -73,7 +72,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (!buffered() && hasNukleusBudget(length))
         {
-            int written = http2Writer.windowUpdate(DataFW.FIELD_OFFSET_PAYLOAD, sizeof, streamId, update);
+            int written = http2Writer.windowUpdate(writer.offset(), sizeof, streamId, update);
             assert written == sizeof;
 
             writer.writtenHttp2Frame(type, written);
@@ -298,8 +297,11 @@ public class Http2WriteScheduler implements WriteScheduler
             while (length > 0)
             {
                 int chunk = Math.min(length, connection.remoteSettings.maxFrameSize);
-                Flyweight.Builder.Visitor data = http2Writer.visitData(streamId, buffer, offset, chunk);
-                http2(stream, traceId, type, chunk + 9, data, false);
+                int sizeof = chunk + 9;
+                int written = http2Writer.data(writer.offset(), sizeof, streamId, buffer, offset, chunk);
+                assert written == sizeof;
+
+                writer.writtenHttp2Frame(type, written);
                 offset += chunk;
                 length -= chunk;
             }
@@ -320,8 +322,8 @@ public class Http2WriteScheduler implements WriteScheduler
             // Store as two contiguous parts (as it is circular buffer)
             int part1 = cdb.writeContiguous(replyBuffer, buffer, offset, length);
             assert part1 > 0;
-            Flyweight.Builder.Visitor data1 = http2Writer.visitData(streamId, buffer, offset, part1);
-            DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, part1, data1);
+            //Flyweight.Builder.Visitor data1 = http2Writer.visitData(streamId, buffer, offset, part1);
+            DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, part1);
             addEntry(entry1);
 
             int part2 = length - part1;
@@ -335,8 +337,7 @@ public class Http2WriteScheduler implements WriteScheduler
                             length, part1, part2, cdb.size());
                     throw new RuntimeException(msg);
                 }
-                Flyweight.Builder.Visitor data2 = http2Writer.visitData(streamId, buffer, offset + part1, part2);
-                DataEntry entry2 = new DataEntry(stream, streamId, traceId, type, part2, data2);
+                DataEntry entry2 = new DataEntry(stream, streamId, traceId, type, part2);
                 addEntry(entry2);
             }
             flush();
@@ -667,10 +668,9 @@ public class Http2WriteScheduler implements WriteScheduler
                 int streamId,
                 long traceId,
                 Http2FrameType type,
-                int length,
-                Flyweight.Builder.Visitor visitor)
+                int length)
         {
-            super(stream, streamId, traceId, length, type, visitor);
+            super(stream, streamId, traceId, length, type, null);
 
             assert streamId != 0;
         }
@@ -690,8 +690,8 @@ public class Http2WriteScheduler implements WriteScheduler
                 {
                     entryCount--;
                     stream.replyQueue.poll();
-                    DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, min, visitor);
-                    DataEntry entry2 = new DataEntry(stream, streamId, traceId, type, remaining, visitor);
+                    DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, min);
+                    DataEntry entry2 = new DataEntry(stream, streamId, traceId, type, remaining);
 
                     stream.replyQueue.addFirst(entry2);
                     stream.replyQueue.addFirst(entry1);
@@ -709,8 +709,11 @@ public class Http2WriteScheduler implements WriteScheduler
             int offset = stream.replyBuffer.readOffset();
             int readLength = stream.replyBuffer.read(length);
             assert readLength == length;
-            Flyweight.Builder.Visitor visitor = http2Writer.visitData(streamId, read, offset, readLength);
-            http2(stream, traceId, type, readLength, visitor, false);
+
+            int written = http2Writer.data(writer.offset(), sizeof, streamId, read, offset, readLength);
+            assert written == sizeof;
+
+            writer.writtenHttp2Frame(type, written);
         }
 
         public String toString()
