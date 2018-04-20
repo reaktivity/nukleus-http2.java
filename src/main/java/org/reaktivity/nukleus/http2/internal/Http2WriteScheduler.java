@@ -320,7 +320,6 @@ public class Http2WriteScheduler implements WriteScheduler
             // Store as two contiguous parts (as it is circular buffer)
             int part1 = cdb.writeContiguous(replyBuffer, buffer, offset, length);
             assert part1 > 0;
-            //Flyweight.Builder.Visitor data1 = http2Writer.visitData(streamId, buffer, offset, part1);
             DataEntry entry1 = new DataEntry(stream, streamId, traceId, type, part1);
             addEntry(entry1);
 
