@@ -20,7 +20,6 @@ import java.util.function.BiConsumer;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
@@ -95,171 +94,208 @@ class Http2Writer
         target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
-    Flyweight.Builder.Visitor visitSettings(
-            int maxConcurrentStreams,
-            int initialWindowSize)
+    int settings(
+        int offset,
+        int length,
+        int maxConcurrentStreams,
+        int initialWindowSize)
     {
-        return (buffer, offset, limit) ->
-                settingsRW.wrap(buffer, offset, limit)
-                          .maxConcurrentStreams(maxConcurrentStreams)
-                          .initialWindowSize(initialWindowSize)
-                          .build()
-                          .sizeof();
+        int written = settingsRW.wrap(writeBuffer, offset, offset + length)
+                         .maxConcurrentStreams(maxConcurrentStreams)
+                         .initialWindowSize(initialWindowSize)
+                         .build()
+                         .sizeof();
+        assert written == length;
+        return written;
     }
 
-    Flyweight.Builder.Visitor visitSettingsAck()
+    int settingsAck(
+        int offset,
+        int length)
     {
-        return (buffer, offset, limit) ->
-                settingsRW.wrap(buffer, offset, limit)
-                          .ack()
-                          .build()
-                          .sizeof();
+        int written = settingsRW.wrap(writeBuffer, offset, offset + length)
+                         .ack()
+                         .build()
+                         .sizeof();
+        assert written == length;
+        return written;
     }
 
-    Flyweight.Builder.Visitor visitRst(
-            int streamId,
-            Http2ErrorCode errorCode)
+    int rst(
+        int offset,
+        int length,
+        int streamId,
+        Http2ErrorCode errorCode)
     {
-        return (buffer, offset, limit) ->
-                http2ResetRW.wrap(buffer, offset, limit)
-                       .streamId(streamId)
+        int written = http2ResetRW.wrap(writeBuffer, offset, offset + length)
+                           .streamId(streamId)
+                           .errorCode(errorCode)
+                           .build()
+                           .sizeof();
+        assert written == length;
+        return written;
+    }
+
+    int goaway(
+        int offset,
+        int length,
+        int lastStreamId,
+        Http2ErrorCode errorCode)
+    {
+        int written = goawayRW.wrap(writeBuffer, offset, offset + length)
+                       .lastStreamId(lastStreamId)
                        .errorCode(errorCode)
                        .build()
                        .sizeof();
+        assert written == length;
+        return written;
     }
 
-    Flyweight.Builder.Visitor visitGoaway(
-            int lastStreamId,
-            Http2ErrorCode errorCode)
+    int pingAck(
+        int offset,
+        int length,
+        DirectBuffer payloadBuffer,
+        int payloadOffset,
+        int payloadLength)
     {
-        return (buffer, offset, limit) ->
-                goawayRW.wrap(buffer, offset, limit)
-                        .lastStreamId(lastStreamId)
-                        .errorCode(errorCode)
-                        .build()
-                        .sizeof();
-    }
-
-    Flyweight.Builder.Visitor visitPingAck(
-            DirectBuffer payloadBuffer, int payloadOffset, int payloadLength)
-    {
-        return (buffer, offset, limit) ->
-                pingRW.wrap(buffer, offset, limit)
+        int written = pingRW.wrap(writeBuffer, offset, offset + length)
                       .ack()
                       .payload(payloadBuffer, payloadOffset, payloadLength)
                       .build()
                       .sizeof();
+        assert written == length;
+        return written;
     }
 
     int windowUpdate(
             int offset,
-            int lengthGuess,
+            int length,
             int streamId,
             int update)
     {
-        return http2WindowRW.wrap(writeBuffer, offset, offset + lengthGuess)
-                     .streamId(streamId)
-                     .size(update)
-                     .build()
-                     .sizeof();
+        int written = http2WindowRW.wrap(writeBuffer, offset, offset + length)
+                            .streamId(streamId)
+                            .size(update)
+                            .build()
+                            .sizeof();
+        assert written == length;
+        return written;
     }
 
     int data(
         int offset,
-        int lengthGuess,
+        int length,
         int streamId,
         DirectBuffer payloadBuffer,
         int payloadOffset,
         int payloadLength)
     {
-        return  http2DataRW.wrap(writeBuffer, offset, offset + lengthGuess)
+        int written = http2DataRW.wrap(writeBuffer, offset, offset + length)
                            .streamId(streamId)
                            .payload(payloadBuffer, payloadOffset, payloadLength)
                            .build()
                            .sizeof();
+        assert written == length;
+        return written;
     }
 
-    Flyweight.Builder.Visitor visitDataEos(int streamId)
+    int dataEos(
+        int offset,
+        int length,
+        int streamId)
     {
         assert streamId != 0;
 
-        return (buffer, offset, limit) ->
-                http2DataRW.wrap(buffer, offset, limit)
+        int written = http2DataRW.wrap(writeBuffer, offset, offset + length)
                            .streamId(streamId)
                            .endStream()
                            .build()
                            .sizeof();
+        assert written == length;
+        return written;
     }
 
-    Flyweight.Builder.Visitor visitHeaders(
-            int streamId,
-            byte flags,
-            ListFW<HttpHeaderFW> headers,
-            BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
+    int headers(
+        int offset,
+        int lengthGuess,
+        int streamId,
+        byte flags,
+        ListFW<HttpHeaderFW> headers,
+        BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
         byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
 
-        return (buffer, offset, limit) ->
-                http2HeadersRW.wrap(buffer, offset, limit)
-                              .streamId(streamId)
-                              .flags(headersFlags)
-                              .headers(b -> builder.accept(headers, b))
-                              .build()
-                              .sizeof();
-    }
-
-    Flyweight.Builder.Visitor visitHeaders(
-            int streamId,
-            byte flags,
-            DirectBuffer srcBuffer,
-            int srcOffset,
-            int srcLength)
-    {
-        assert streamId != 0;
-
-        byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
-        return (buffer, offset, limit) ->
-                http2HeadersRW.wrap(buffer, offset, limit)
-                              .streamId(streamId)
-                              .flags(headersFlags)
-                              .payload(srcBuffer, srcOffset, srcLength)
-                              .build()
-                              .sizeof();
-    }
-
-    Flyweight.Builder.Visitor visitPushPromise(
-            int streamId,
-            int promisedStreamId,
-            ListFW<HttpHeaderFW> headers,
-            BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
-    {
-        return (buffer, offset, limit) ->
-                pushPromiseRW.wrap(buffer, offset, limit)
+        int written = http2HeadersRW.wrap(writeBuffer, offset, offset + lengthGuess)
                              .streamId(streamId)
-                             .promisedStreamId(promisedStreamId)
-                             .endHeaders()
+                             .flags(headersFlags)
                              .headers(b -> builder.accept(headers, b))
                              .build()
                              .sizeof();
+        assert written <= lengthGuess;
+        return written;
     }
 
-    Flyweight.Builder.Visitor visitPushPromise(
-            int streamId,
-            int promisedStreamId,
-            DirectBuffer headersBuffer,
-            int headersOffset,
-            int headersLength)
+    int headers(
+        int offset,
+        int length,
+        int streamId,
+        byte flags,
+        DirectBuffer blockBuffer,
+        int blockOffset,
+        int blockLength)
     {
         assert streamId != 0;
 
-        return (buffer, offset, limit) ->
-                pushPromiseRW.wrap(buffer, offset, limit)
+        byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
+        int written = http2HeadersRW.wrap(writeBuffer, offset, offset + length)
                              .streamId(streamId)
-                             .promisedStreamId(promisedStreamId)
-                             .endHeaders()
-                             .headers(headersBuffer, headersOffset, headersLength)
+                             .flags(headersFlags)
+                             .payload(blockBuffer, blockOffset, blockLength)
                              .build()
                              .sizeof();
+        assert written == length;
+        return written;
+    }
+
+    int pushPromise(
+        int offset,
+        int lengthGuess,
+        int streamId,
+        int promisedStreamId,
+        ListFW<HttpHeaderFW> headers,
+        BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
+    {
+        int written = pushPromiseRW.wrap(writeBuffer, offset, offset + lengthGuess)
+                            .streamId(streamId)
+                            .promisedStreamId(promisedStreamId)
+                            .endHeaders()
+                            .headers(b -> builder.accept(headers, b))
+                            .build()
+                            .sizeof();
+        assert written <= lengthGuess;
+        return written;
+    }
+
+    int pushPromise(
+        int offset,
+        int length,
+        int streamId,
+        int promisedStreamId,
+        DirectBuffer blockBuffer,
+        int blockOffset,
+        int blockLength)
+    {
+        assert streamId != 0;
+
+        int written = pushPromiseRW.wrap(writeBuffer, offset, offset + length)
+                            .streamId(streamId)
+                            .promisedStreamId(promisedStreamId)
+                            .endHeaders()
+                            .headers(blockBuffer, blockOffset, blockLength)
+                            .build()
+                            .sizeof();
+        assert written == length;
+        return written;
     }
 
 }
