@@ -106,7 +106,7 @@ class HttpWriter
                             .trace(traceId)
                             .groupId(0)
                             .padding(padding)
-                            .payload(p -> p.set(payload, offset, length))
+                            .payload(payload, offset, length)
                             .build();
 
         target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());

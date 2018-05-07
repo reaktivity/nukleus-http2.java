@@ -19,6 +19,7 @@ import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
 
 class NukleusWriteScheduler
 {
@@ -32,10 +33,10 @@ class NukleusWriteScheduler
     private int accumulatedLength;
 
     NukleusWriteScheduler(
-            Http2Connection connection,
-            MessageConsumer networkReply,
-            Http2Writer http2Writer,
-            long networkReplyId)
+        Http2Connection connection,
+        MessageConsumer networkReply,
+        Http2Writer http2Writer,
+        long networkReplyId)
     {
         this.connection = connection;
         this.networkReply = networkReply;
@@ -45,9 +46,9 @@ class NukleusWriteScheduler
     }
 
     int http2Frame(
-            long traceId,
-            int lengthGuess,
-            Flyweight.Builder.Visitor visitor)
+        long traceId,
+        int lengthGuess,
+        Flyweight.Builder.Visitor visitor)
     {
         int length = visitor.visit(writeBuffer, DataFW.FIELD_OFFSET_PAYLOAD + accumulatedLength, lengthGuess);
         if (this.traceId == 0)
@@ -58,6 +59,18 @@ class NukleusWriteScheduler
         accumulatedLength += length;
 
         return length;
+    }
+
+    int offset()
+    {
+        return DataFW.FIELD_OFFSET_PAYLOAD + accumulatedLength;
+    }
+
+    void writtenHttp2Frame(
+        Http2FrameType type,
+        int length)
+    {
+        accumulatedLength += length;
     }
 
     void doEnd()
@@ -81,7 +94,8 @@ class NukleusWriteScheduler
         }
     }
 
-    boolean fits(int sizeof)
+    boolean fits(
+        int sizeof)
     {
         int candidateSizeof = accumulatedLength + sizeof;
 
