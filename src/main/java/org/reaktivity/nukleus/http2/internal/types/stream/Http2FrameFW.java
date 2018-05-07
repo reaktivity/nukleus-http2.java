@@ -103,11 +103,30 @@ public class Http2FrameFW extends Flyweight
             throw new IllegalArgumentException("Invalid HTTP2 frame - not enough payload bytes");
         }
 
-        payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength());
+        if (payloadLength() > 0)
+        {
+            payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength());
+        }
 
         checkLimit(limit(), maxLimit);
 
         return this;
+    }
+
+    public Http2FrameFW canWrap(DirectBuffer buffer, int offset, int maxLimit)
+    {
+        if (maxLimit - offset < 9)
+        {
+            return null;            // Not enough bytes for 9-octet header
+        }
+        super.wrap(buffer, offset, maxLimit);
+
+        if (maxLimit - offset < payloadLength() + 9)
+        {
+            return null;            // Not enough payload bytes
+        }
+
+        return wrap(buffer, offset, maxLimit);
     }
 
     @Override
