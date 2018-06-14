@@ -76,6 +76,7 @@ class HttpWriter
             MessageConsumer target,
             long targetId,
             long traceId,
+            long authorization,
             long targetRef,
             long correlationId,
             Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> mutator)
@@ -83,6 +84,7 @@ class HttpWriter
         BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                .streamId(targetId)
                                .trace(traceId)
+                               .authorization(authorization)
                                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
                                .sourceRef(targetRef)
                                .correlationId(correlationId)
