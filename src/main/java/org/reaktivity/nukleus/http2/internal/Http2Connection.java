@@ -1142,7 +1142,7 @@ final class Http2Connection
         return -1;
     }
 
-    private void doPromisedRequest(int http2StreamId, ListFW<HttpHeaderFW> headers)
+    private void doPromisedRequest(int http2StreamId, long authorization, ListFW<HttpHeaderFW> headers)
     {
         Map<String, String> headersMap = new HashMap<>();
         headers.forEach(
@@ -1155,7 +1155,7 @@ final class Http2Connection
         long targetId = http2Stream.targetId;
         long targetRef = route.targetRef();
 
-        httpWriter.doHttpBegin(applicationTarget, targetId, factory.supplyTrace.getAsLong(),
+        httpWriter.doHttpBegin(applicationTarget, targetId, factory.supplyTrace.getAsLong(), authorization,
                 targetRef, http2Stream.correlationId,
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
@@ -1640,7 +1640,7 @@ final class Http2Connection
                 int promisedStreamId = correlation.promisedStreamIds.getAsInt();
                 Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
                 writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.headers());
-                correlation.pushHandler.accept(promisedStreamId, dataEx.headers());
+                correlation.pushHandler.accept(promisedStreamId, dataRO.authorization(), dataEx.headers());
             }
         }
         if (payload != null)

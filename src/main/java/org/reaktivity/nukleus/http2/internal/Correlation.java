@@ -19,14 +19,11 @@ import java.util.Objects;
 import java.util.function.IntSupplier;
 import java.util.function.IntUnaryOperator;
 
-import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
-import org.reaktivity.nukleus.http2.internal.util.function.IntObjectBiConsumer;
 
 public class Correlation
 {
-    final IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler;
+    final PromisedRequestHandler pushHandler;
     final long id;
     final int http2StreamId;
     final IntSupplier promisedStreamIds;
@@ -40,7 +37,7 @@ public class Correlation
             long id,
             long sourceOutputEstId,
             WriteScheduler writeScheduler,
-            IntObjectBiConsumer<ListFW<HttpHeaderFW>> pushHandler,
+            PromisedRequestHandler pushHandler,
             Http2Connection http2Connection,
             int http2StreamId,
             HpackContext encodeContext,
