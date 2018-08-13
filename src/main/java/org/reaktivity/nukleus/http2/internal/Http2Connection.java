@@ -681,6 +681,8 @@ final class Http2Connection
             }
         }
 
+        factory.counters.headersRead.getAsLong();
+
         RouteFW route = resolveTarget(sourceRef, sourceName, headersContext.headers);
         if (route == null)
         {
@@ -722,6 +724,8 @@ final class Http2Connection
                                  .build();
 
         writeScheduler.headers(0, streamId, Http2Flags.END_STREAM, headers);
+
+        factory.counters.headersWritten.getAsLong();
     }
 
     private void doRst()
@@ -1621,6 +1625,8 @@ final class Http2Connection
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
                 writeScheduler.headers(begin.trace(), correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
+
+                factory.counters.headersWritten.getAsLong();
             }
         }
     }
@@ -1641,8 +1647,15 @@ final class Http2Connection
                 Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
                 writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.headers());
                 correlation.pushHandler.accept(promisedStreamId, dataRO.authorization(), dataEx.headers());
+
+                factory.counters.promisesWritten.getAsLong();
+            }
+            else
+            {
+                factory.counters.promisesSkipped.getAsLong();
             }
         }
+
         if (payload != null)
         {
             Http2Stream stream = http2Streams.get(correlation.http2StreamId);

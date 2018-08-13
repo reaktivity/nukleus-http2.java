@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import static java.util.Objects.requireNonNull;
 
+import java.util.function.Function;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
@@ -56,7 +57,6 @@ import org.reaktivity.nukleus.stream.StreamFactory;
 
 public final class ServerStreamFactory implements StreamFactory
 {
-
     private static final double OUTWINDOW_LOW_THRESHOLD = 0.5;      // TODO configuration
     private static final double INWINDOW_THRESHOLD = 0.5;
 
@@ -115,25 +115,26 @@ public final class ServerStreamFactory implements StreamFactory
     // Buf to build HTTP error status code header
     final MutableDirectBuffer errorBuf = new UnsafeBuffer(new byte[64]);
 
-
     final Long2ObjectHashMap<Correlation> correlations;
     private final MessageFunction<RouteFW> wrapRoute;
     final LongSupplier supplyGroupId;
     final LongFunction<IntUnaryOperator> groupBudgetClaimer;
     final LongFunction<IntUnaryOperator> groupBudgetReleaser;
+    final Http2Counters counters;
 
     ServerStreamFactory(
-            Http2Configuration config,
-            RouteManager router,
-            MutableDirectBuffer writeBuffer,
-            BufferPool bufferPool,
-            LongSupplier supplyStreamId,
-            LongSupplier supplyCorrelationId,
-            Long2ObjectHashMap<Correlation> correlations,
-            LongSupplier supplyGroupId,
-            LongSupplier supplyTrace,
-            LongFunction<IntUnaryOperator> groupBudgetClaimer,
-            LongFunction<IntUnaryOperator> groupBudgetReleaser)
+        Http2Configuration config,
+        RouteManager router,
+        MutableDirectBuffer writeBuffer,
+        BufferPool bufferPool,
+        LongSupplier supplyStreamId,
+        LongSupplier supplyCorrelationId,
+        Long2ObjectHashMap<Correlation> correlations,
+        LongSupplier supplyGroupId,
+        LongSupplier supplyTrace,
+        LongFunction<IntUnaryOperator> groupBudgetClaimer,
+        LongFunction<IntUnaryOperator> groupBudgetReleaser,
+        Function<String, LongSupplier> supplyCounter)
     {
         this.config = config;
         this.router = requireNonNull(router);
@@ -153,6 +154,7 @@ public final class ServerStreamFactory implements StreamFactory
 
         this.httpWriter = new HttpWriter(writeBuffer);
         this.http2Writer = new Http2Writer(writeBuffer);
+        this.counters = new Http2Counters(supplyCounter);
 
         this.wrapRoute = this::wrapRoute;
     }
@@ -183,8 +185,8 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     private MessageConsumer newAcceptStream(
-            final BeginFW begin,
-            final MessageConsumer networkThrottle)
+        final BeginFW begin,
+        final MessageConsumer networkThrottle)
     {
         final long networkRef = begin.sourceRef();
         final String acceptName = begin.source().asString();
@@ -211,8 +213,8 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     private MessageConsumer newConnectReplyStream(
-            final BeginFW begin,
-            final MessageConsumer throttle)
+        final BeginFW begin,
+        final MessageConsumer throttle)
     {
         final long throttleId = begin.streamId();
 
@@ -220,10 +222,10 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     private RouteFW wrapRoute(
-            int msgTypeId,
-            DirectBuffer buffer,
-            int index,
-            int length)
+        int msgTypeId,
+        DirectBuffer buffer,
+        int index,
+        int length)
     {
         return routeRO.wrap(buffer, index, index + length);
     }
@@ -243,8 +245,8 @@ public final class ServerStreamFactory implements StreamFactory
         private int window;
 
         private ServerAcceptStream(
-                MessageConsumer networkThrottle,
-                long networkId)
+            MessageConsumer networkThrottle,
+            long networkId)
         {
             this.networkThrottle = networkThrottle;
             this.networkId = networkId;
@@ -252,19 +254,19 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleStream(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             streamState.accept(msgTypeId, buffer, index, length);
         }
 
         private void beforeBegin(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             if (msgTypeId == BeginFW.TYPE_ID)
             {
@@ -278,10 +280,10 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void afterBegin(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
@@ -304,7 +306,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleBegin(
-                BeginFW begin)
+            BeginFW begin)
         {
             final String networkReplyName = begin.source().asString();
             networkCorrelationId = begin.correlationId();
@@ -327,7 +329,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleData(
-                DataFW data)
+            DataFW data)
         {
             window -= dataRO.length() + dataRO.padding();
             if (window < 0)
@@ -349,13 +351,13 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleEnd(
-                EndFW end)
+            EndFW end)
         {
             http2Connection.handleEnd(end);
         }
 
         private void handleAbort(
-                AbortFW abort)
+            AbortFW abort)
         {
             correlations.remove(networkCorrelationId);
 
@@ -367,10 +369,10 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleThrottle(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
@@ -389,7 +391,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleWindow(
-                WindowFW window)
+            WindowFW window)
         {
             int credit = windowRO.credit();
             int padding = windowRO.padding();
@@ -403,7 +405,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleReset(
-                ResetFW reset)
+            ResetFW reset)
         {
             http2Connection.handleReset(reset);
 
@@ -423,8 +425,8 @@ public final class ServerStreamFactory implements StreamFactory
         private Correlation correlation;
 
         private ServerConnectReplyStream(
-                MessageConsumer applicationReplyThrottle,
-                long applicationReplyId)
+            MessageConsumer applicationReplyThrottle,
+            long applicationReplyId)
         {
             this.applicationReplyThrottle = applicationReplyThrottle;
             this.applicationReplyId = applicationReplyId;
@@ -441,10 +443,10 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void beforeBegin(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             if (msgTypeId == BeginFW.TYPE_ID)
             {
@@ -458,10 +460,10 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void afterBegin(
-                int msgTypeId,
-                DirectBuffer buffer,
-                int index,
-                int length)
+            int msgTypeId,
+            DirectBuffer buffer,
+            int index,
+            int length)
         {
             switch (msgTypeId)
             {
@@ -484,7 +486,7 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleBegin(
-                BeginFW begin)
+            BeginFW begin)
         {
             final long sourceRef = begin.sourceRef();
             final long correlationId = begin.correlationId();
@@ -504,19 +506,19 @@ public final class ServerStreamFactory implements StreamFactory
         }
 
         private void handleData(
-                DataFW data)
+            DataFW data)
         {
             http2Connection.handleHttpData(data, correlation);
         }
 
         private void handleEnd(
-                EndFW end)
+            EndFW end)
         {
             http2Connection.handleHttpEnd(end, correlation);
         }
 
         private void handleAbort(
-                AbortFW abort)
+            AbortFW abort)
         {
             http2Connection.handleHttpAbort(abort, correlation);
         }
@@ -524,11 +526,11 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     private void doBegin(
-            final MessageConsumer target,
-            final long targetId,
-            final long traceId,
-            final long targetRef,
-            final long correlationId)
+        final MessageConsumer target,
+        final long targetId,
+        final long traceId,
+        final long targetRef,
+        final long correlationId)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
@@ -543,8 +545,8 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     void doAbort(
-            final MessageConsumer target,
-            final long targetId)
+        final MessageConsumer target,
+        final long targetId)
     {
         final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(targetId)
@@ -555,11 +557,11 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     void doWindow(
-            final MessageConsumer throttle,
-            final long throttleId,
-            final int credit,
-            final int padding,
-            final long groupId)
+        final MessageConsumer throttle,
+        final long throttleId,
+        final int credit,
+        final int padding,
+        final long groupId)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                         .streamId(throttleId)
@@ -572,9 +574,9 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     void doReset(
-            final MessageConsumer throttle,
-            final long throttleId,
-            final long traceId)
+        final MessageConsumer throttle,
+        final long throttleId,
+        final long traceId)
     {
         final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .streamId(throttleId)
