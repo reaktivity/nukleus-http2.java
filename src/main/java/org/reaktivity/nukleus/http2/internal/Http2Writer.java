@@ -35,14 +35,11 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2PushPromiseFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 
 class Http2Writer
 {
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
-
-    private final ResetFW.Builder resetRW = new ResetFW.Builder();
 
     private final Http2SettingsFW.Builder settingsRW = new Http2SettingsFW.Builder();
     private final Http2RstStreamFW.Builder http2ResetRW = new Http2RstStreamFW.Builder();
@@ -55,19 +52,20 @@ class Http2Writer
 
     final MutableDirectBuffer writeBuffer;
 
-    Http2Writer(MutableDirectBuffer writeBuffer)
+    Http2Writer(
+        MutableDirectBuffer writeBuffer)
     {
         this.writeBuffer = writeBuffer;
     }
 
     void doData(
-            MessageConsumer target,
-            long targetId,
-            long traceId,
-            int padding,
-            MutableDirectBuffer payload,
-            int offset,
-            int length)
+        MessageConsumer target,
+        long targetId,
+        long traceId,
+        int padding,
+        MutableDirectBuffer payload,
+        int offset,
+        int length)
     {
         assert offset >= DataFW.FIELD_OFFSET_PAYLOAD;
 
@@ -83,8 +81,8 @@ class Http2Writer
     }
 
     void doEnd(
-            MessageConsumer target,
-            long targetId)
+        MessageConsumer target,
+        long targetId)
     {
         EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                          .streamId(targetId)
@@ -168,10 +166,10 @@ class Http2Writer
     }
 
     int windowUpdate(
-            int offset,
-            int length,
-            int streamId,
-            int update)
+        int offset,
+        int length,
+        int streamId,
+        int update)
     {
         int written = http2WindowRW.wrap(writeBuffer, offset, offset + length)
                             .streamId(streamId)
