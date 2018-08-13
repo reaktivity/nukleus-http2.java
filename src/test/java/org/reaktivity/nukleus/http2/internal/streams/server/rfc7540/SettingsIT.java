@@ -40,7 +40,6 @@ public class SettingsIT
             .directory("target/nukleus-itests")
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
-            .counterValuesBufferCapacity(1024)
             .nukleus("http2"::equals)
             .configure("nukleus.http2.server.concurrent.streams", 250)
             .clean();

@@ -15,17 +15,16 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
-
 class HttpWriteScheduler
 {
-    private final BufferPool httpWriterPool;
+    private final ServerStreamFactory factory;
     private final HttpWriter target;
     private final long targetId;
     private final MessageConsumer applicationTarget;
@@ -43,10 +42,10 @@ class HttpWriteScheduler
     private int totalWritten;
     private long traceId;
 
-    HttpWriteScheduler(BufferPool httpWriterPool, MessageConsumer applicationTarget, HttpWriter target, long targetId,
+    HttpWriteScheduler(ServerStreamFactory factory, MessageConsumer applicationTarget, HttpWriter target, long targetId,
                        Http2Stream stream)
     {
-        this.httpWriterPool = httpWriterPool;
+        this.factory = factory;
         this.applicationTarget = applicationTarget;
         this.target = target;
         this.targetId = targetId;
@@ -194,21 +193,21 @@ class HttpWriteScheduler
     {
         if (slot == NO_SLOT)
         {
-            slot = httpWriterPool.acquire(targetId);
+            slot = factory.httpWriterPool.acquire(targetId);
             if (slot != NO_SLOT)
             {
-                int capacity = httpWriterPool.buffer(slot).capacity();
+                int capacity = factory.httpWriterPool.buffer(slot).capacity();
                 targetBuffer = new CircularDirectBuffer(capacity);
             }
         }
-        return slot != NO_SLOT ? httpWriterPool.buffer(slot) : null;
+        return slot != NO_SLOT ? factory.httpWriterPool.buffer(slot) : null;
     }
 
     private void release()
     {
         if (slot != NO_SLOT)
         {
-            httpWriterPool.release(slot);
+            factory.httpWriterPool.release(slot);
             slot = NO_SLOT;
             targetBuffer = null;
         }
@@ -220,7 +219,7 @@ class HttpWriteScheduler
         int buffered = targetBuffer == null ? 0 : targetBuffer.size();
         long applicationCredit = Math.min(
                 applicationBudget - Math.max(stream.http2InWindow, 0),    // http2InWindow can be -ve
-                httpWriterPool.slotCapacity() - buffered);
+                factory.httpWriterPool.slotCapacity() - buffered);
         if (applicationCredit > 0)
         {
             stream.http2InWindow += applicationCredit;
@@ -229,8 +228,12 @@ class HttpWriteScheduler
             // HTTP2 connection-level flow-control
             stream.connection.writeScheduler.windowUpdate(0, (int) applicationCredit);
 
+            factory.counters.windowUpdateFramesWritten.getAsLong();
+
             // HTTP2 stream-level flow-control
             stream.connection.writeScheduler.windowUpdate(stream.http2StreamId, (int) applicationCredit);
+
+            factory.counters.windowUpdateFramesWritten.getAsLong();
         }
     }
 
