@@ -66,7 +66,7 @@ class Http2Stream
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory.httpWriterPool, applicationTarget, httpWriter, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationTarget, httpWriter, targetId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
         this.maxHeaderSize = 0;     // maxHeaderSize();
     }
@@ -87,7 +87,9 @@ class Http2Stream
     {
         connection.writeScheduler.dataEos(traceId, http2StreamId);
         applicationReplyThrottle = null;
-    }
+
+        factory.counters.dataFramesWritten.getAsLong();
+   }
 
     void onHttpAbort()
     {
@@ -98,6 +100,8 @@ class Http2Stream
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+
+        factory.counters.resetStreamFramesWritten.getAsLong();
 
         connection.closeStream(this);
     }
@@ -112,6 +116,8 @@ class Http2Stream
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
 
+        factory.counters.resetStreamFramesWritten.getAsLong();
+
         connection.closeStream(this);
     }
 
@@ -122,6 +128,8 @@ class Http2Stream
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
             onAbort(0);
+
+            factory.counters.resetStreamFramesWritten.getAsLong();
         }
     }
 
