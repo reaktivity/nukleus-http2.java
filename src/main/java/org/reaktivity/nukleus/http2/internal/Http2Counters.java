@@ -41,6 +41,7 @@ public class Http2Counters
     public final LongSupplier pingFramesWritten;
     public final LongSupplier pushPromiseFramesWritten;
     public final LongSupplier pushPromiseFramesSkipped;
+    public final LongSupplier pushHeadersFramesWritten;
 
     public Http2Counters(
         Function<String, LongSupplier> supplyCounter)
@@ -66,5 +67,6 @@ public class Http2Counters
         this.pingFramesWritten = supplyCounter.apply("frames.written.ping");
         this.pushPromiseFramesWritten = supplyCounter.apply("frames.written.push.promise");
         this.pushPromiseFramesSkipped = supplyCounter.apply("frames.skipped.push.promise");
+        this.pushHeadersFramesWritten = supplyCounter.apply("frames.written.push.headers");
     }
 }
