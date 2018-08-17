@@ -734,7 +734,14 @@ final class Http2Connection
 
         writeScheduler.headers(0, streamId, Http2Flags.END_STREAM, headers);
 
-        factory.counters.headersFramesWritten.getAsLong();
+        if ((streamId & 0x01L) == 0x00L)
+        {
+            factory.counters.pushHeadersFramesWritten.getAsLong();
+        }
+        else
+        {
+            factory.counters.headersFramesWritten.getAsLong();
+        }
     }
 
     private void doRst()
@@ -1641,7 +1648,14 @@ final class Http2Connection
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
                 writeScheduler.headers(begin.trace(), correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
 
-                factory.counters.headersFramesWritten.getAsLong();
+                if ((correlation.http2StreamId & 0x01L) == 0x00L)
+                {
+                    factory.counters.pushHeadersFramesWritten.getAsLong();
+                }
+                else
+                {
+                    factory.counters.headersFramesWritten.getAsLong();
+                }
             }
         }
     }
