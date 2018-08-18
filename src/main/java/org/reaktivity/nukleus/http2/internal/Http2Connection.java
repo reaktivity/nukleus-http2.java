@@ -784,7 +784,7 @@ final class Http2Connection
             {
                 promisedStreamCount--;
             }
-            factory.correlations.remove(stream.targetId);
+            factory.correlations.remove(stream.correlationId);
             http2Streams.remove(stream.http2StreamId);
             stream.close();
         }
