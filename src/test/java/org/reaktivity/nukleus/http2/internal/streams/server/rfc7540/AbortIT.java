@@ -41,7 +41,6 @@ public class AbortIT
             .directory("target/nukleus-itests")
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
-            .counterValuesBufferCapacity(1024)
             .nukleus("http2"::equals)
             .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100)
             .clean();

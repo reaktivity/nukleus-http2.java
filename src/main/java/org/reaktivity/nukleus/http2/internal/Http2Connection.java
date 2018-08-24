@@ -208,6 +208,7 @@ final class Http2Connection
         this.decoderState = this::decodePreface;
         this.initialSettings = new Settings(factory.config.serverConcurrentStreams(), 0);
         writeScheduler.settings(initialSettings.maxConcurrentStreams, initialSettings.initialWindowSize);
+        factory.counters.settingsFramesWritten.getAsLong();
     }
 
     void handleData(
@@ -577,34 +578,44 @@ final class Http2Connection
         switch (http2FrameType)
         {
             case DATA:
+                factory.counters.dataFramesRead.getAsLong();
                 doData();
                 break;
             case HEADERS:   // fall-through
             case CONTINUATION:
+                factory.counters.headersFramesRead.getAsLong();
                 doHeaders();
                 break;
             case PRIORITY:
+                factory.counters.priorityFramesRead.getAsLong();
                 doPriority();
                 break;
             case RST_STREAM:
+                factory.counters.resetStreamFramesRead.getAsLong();
                 doRst();
                 break;
             case SETTINGS:
+                factory.counters.settingsFramesRead.getAsLong();
                 doSettings();
                 break;
             case PUSH_PROMISE:
+                factory.counters.pushPromiseFramesRead.getAsLong();
                 doPushPromise();
                 break;
             case PING:
+                factory.counters.pingFramesRead.getAsLong();
                 doPing();
                 break;
             case GO_AWAY:
+                factory.counters.goawayFramesRead.getAsLong();
                 doGoAway();
                 break;
             case WINDOW_UPDATE:
+                factory.counters.windowUpdateFramesRead.getAsLong();
                 doWindow();
                 break;
             default:
+                factory.counters.unknownFramesRead.getAsLong();
                 // Ignore and discard unknown frame
         }
 
@@ -755,6 +766,15 @@ final class Http2Connection
                                  .build();
 
         writeScheduler.headers(0, streamId, Http2Flags.END_STREAM, headers);
+
+        if ((streamId & 0x01L) == 0x00L)
+        {
+            factory.counters.pushHeadersFramesWritten.getAsLong();
+        }
+        else
+        {
+            factory.counters.headersFramesWritten.getAsLong();
+        }
     }
 
     private void doRst()
@@ -798,7 +818,7 @@ final class Http2Connection
             {
                 promisedStreamCount--;
             }
-            factory.correlations.remove(stream.targetId);
+            factory.correlations.remove(stream.correlationId);
             http2Streams.remove(stream.http2StreamId);
             stream.close();
         }
@@ -954,6 +974,7 @@ final class Http2Connection
         {
             factory.settingsRO.accept(this::doSetting);
             writeScheduler.settingsAck();
+            factory.counters.settingsFramesWritten.getAsLong();
         }
         else
         {
@@ -1049,7 +1070,9 @@ final class Http2Connection
         if (!factory.pingRO.ack())
         {
             writeScheduler.pingAck(factory.pingRO.payload(), 0, factory.pingRO.payload().capacity());
-        }
+
+            factory.counters.pingFramesWritten.getAsLong();
+       }
     }
 
     private State state(
@@ -1119,6 +1142,8 @@ final class Http2Connection
     {
         writeScheduler.goaway(lastStreamId, errorCode);
 
+        factory.counters.goawayFramesWritten.getAsLong();
+
         factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
         factory.doAbort(networkReply, networkReplyId);
         http2Streams.forEach((i, s) -> s.onError(traceId));
@@ -1143,6 +1168,7 @@ final class Http2Connection
         else
         {
             writeScheduler.rst(streamId, errorCode);
+            factory.counters.resetStreamFramesWritten.getAsLong();
         }
     }
 
@@ -1699,6 +1725,15 @@ final class Http2Connection
             {
                 HttpBeginExFW beginEx = extension.get(factory.beginExRO::wrap);
                 writeScheduler.headers(begin.trace(), correlation.http2StreamId, Http2Flags.NONE, beginEx.headers());
+
+                if ((correlation.http2StreamId & 0x01L) == 0x00L)
+                {
+                    factory.counters.pushHeadersFramesWritten.getAsLong();
+                }
+                else
+                {
+                    factory.counters.headersFramesWritten.getAsLong();
+                }
             }
         }
     }
@@ -1721,8 +1756,15 @@ final class Http2Connection
                 Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
                 writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.headers());
                 correlation.pushHandler.accept(promisedStreamId, dataRO.authorization(), dataEx.headers());
+
+                factory.counters.pushPromiseFramesWritten.getAsLong();
+            }
+            else
+            {
+                factory.counters.pushPromiseFramesSkipped.getAsLong();
             }
         }
+
         if (payload != null)
         {
             Http2Stream stream = http2Streams.get(correlation.http2StreamId);
@@ -1737,6 +1779,8 @@ final class Http2Connection
             }
 
             writeScheduler.data(traceId, correlation.http2StreamId, payload.buffer(), payload.offset(), payload.sizeof());
+
+            factory.counters.dataFramesWritten.getAsLong();
         }
     }
 
@@ -1770,6 +1814,7 @@ final class Http2Connection
     {
         stream.onReset(0);
         writeScheduler.rst(stream.http2StreamId, errorCode);
+        factory.counters.resetStreamFramesWritten.getAsLong();
         closeStream(stream);
     }
 
