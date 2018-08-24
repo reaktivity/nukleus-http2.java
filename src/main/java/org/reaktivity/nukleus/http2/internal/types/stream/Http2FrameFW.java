@@ -113,7 +113,7 @@ public class Http2FrameFW extends Flyweight
         return this;
     }
 
-    public Http2FrameFW canWrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2FrameFW tryWrap(DirectBuffer buffer, int offset, int maxLimit)
     {
         if (maxLimit - offset < 9)
         {
