@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Properties;
 
 import org.reaktivity.nukleus.Configuration;
+import org.reaktivity.nukleus.http2.internal.Http2Configuration;
 import org.reaktivity.nukleus.http2.internal.Http2Controller;
 import org.reaktivity.nukleus.tcp.internal.TcpController;
 import org.reaktivity.reaktor.Reaktor;
@@ -34,7 +35,8 @@ public class Http2Server
         properties.setProperty(ReaktorConfiguration.DIRECTORY_PROPERTY_NAME, "target/nukleus-benchmarks");
         properties.setProperty(ReaktorConfiguration.STREAMS_BUFFER_CAPACITY_PROPERTY_NAME, Long.toString(1024L * 1024L * 128L));
         properties.setProperty(ReaktorConfiguration.BUFFER_POOL_CAPACITY_PROPERTY, Long.toString(1024L * 1024L * 128L));
-        properties.setProperty("reaktor.buffer.slot.capacity", "131072");
+        properties.setProperty(ReaktorConfiguration.BUFFER_SLOT_CAPACITY_PROPERTY, Integer.toString(32768));
+        properties.setProperty(Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS, Integer.toString(50));
 
         Configuration configuration = new Configuration(properties);
         Reaktor reaktor = Reaktor.builder()
