@@ -138,6 +138,7 @@ final class Http2Connection
     long http2InWindow;
 
     private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
+    private final Consumer<HpackHeaderFieldFW> trailerFieldConsumer;
     private final HeadersContext headersContext = new HeadersContext();
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
     final Http2Writer http2Writer;
@@ -187,6 +188,7 @@ final class Http2Connection
         Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
         consumer = consumer.andThen(this::dynamicTableSizeUpdate);
         this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, nameValue));
+        this.trailerFieldConsumer = h -> decodeHeaderField(h, this::validateTrailerFieldName);
     }
 
     void handleBegin(
@@ -647,7 +649,25 @@ final class Http2Connection
             return;
         }
 
-        // TODO: trailers
+        Http2HeadersFW http2Trailers = factory.headersRO.wrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        HpackHeaderBlockFW headerBlock = factory.blockRO.wrap(http2Trailers.buffer(), http2Trailers.dataOffset(),
+                http2Trailers.dataOffset() + http2Trailers.dataLength());
+        headerBlock.forEach(trailerFieldConsumer);
+
+        if (headersContext.error())
+        {
+            if (headersContext.streamError != null)
+            {
+                doRstStream(stream.http2StreamId, headersContext.streamError);
+                return;
+            }
+
+            if (headersContext.connectionError != null)
+            {
+                decodeError = headersContext.connectionError;
+                return;
+            }
+        }
     }
 
     private void onStreamContinuation(
@@ -868,7 +888,7 @@ final class Http2Connection
             case ENABLE_PUSH:
                 if (!(value == 0L || value == 1L))
                 {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    decodeError = Http2ErrorCode.PROTOCOL_ERROR;
                     return;
                 }
                 remoteSettings.enablePush = (value == 1L);
@@ -879,7 +899,7 @@ final class Http2Connection
             case INITIAL_WINDOW_SIZE:
                 if (value > Integer.MAX_VALUE)
                 {
-                    error(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                    decodeError = Http2ErrorCode.FLOW_CONTROL_ERROR;
                     return;
                 }
                 int old = remoteSettings.initialWindowSize;
@@ -898,7 +918,7 @@ final class Http2Connection
                         // An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
                         // causes any flow-control window to exceed the maximum size as a
                         // connection error of type FLOW_CONTROL_ERROR.
-                        error(Http2ErrorCode.FLOW_CONTROL_ERROR);
+                        decodeError = Http2ErrorCode.FLOW_CONTROL_ERROR;
                         return;
                     }
                 }
@@ -906,7 +926,7 @@ final class Http2Connection
             case MAX_FRAME_SIZE:
                 if (value < Math.pow(2, 14) || value > Math.pow(2, 24) -1)
                 {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
+                    decodeError = Http2ErrorCode.PROTOCOL_ERROR;
                     return;
                 }
                 remoteSettings.maxFrameSize = value.intValue();
@@ -1266,6 +1286,21 @@ final class Http2Connection
             }
         }
     }
+
+    private void validateTrailerFieldName(
+        DirectBuffer name,
+        DirectBuffer value)
+    {
+        if (!headersContext.error())
+        {
+            if (name.capacity() > 0 && name.getByte(0) == ':')
+            {
+                headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                return;
+            }
+        }
+    }
+
 
     private void connectionHeaders(
         DirectBuffer name,
