@@ -15,11 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.ACK;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 
 /*
 
@@ -40,15 +40,8 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.
  */
 public class Http2PingFW extends Http2FrameFW
 {
-
     private static final int FLAGS_OFFSET = 4;
     private static final int PAYLOAD_OFFSET = 9;
-
-    @Override
-    public int payloadLength()
-    {
-        return 8;
-    }
 
     @Override
     public Http2FrameType type()
@@ -56,19 +49,31 @@ public class Http2PingFW extends Http2FrameFW
         return PING;
     }
 
-    @Override
-    public int streamId()
-    {
-        return 0;
-    }
-
     public boolean ack()
     {
         return Http2Flags.ack(flags());
     }
 
+    public Http2PingFW tryWrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
+    {
+        boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
+
+        wrappable &= super.streamId() == 0;
+        wrappable &= super.type() == PING;
+        wrappable &= super.payloadLength() == 8;
+        wrappable &= limit() <= maxLimit;
+
+        return wrappable ? this : null;
+    }
+
     @Override
-    public Http2PingFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2PingFW wrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 

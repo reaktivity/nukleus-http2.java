@@ -68,13 +68,7 @@ public class Http2SettingsFW extends Http2FrameFW
         return Http2Flags.ack(flags());
     }
 
-    @Override
-    public int streamId()
-    {
-        return 0;
-    }
-
-    public void accept(BiConsumer<Http2SettingsId, Long> consumer)
+    public void forEach(BiConsumer<Http2SettingsId, Long> consumer)
     {
         listFW.forEach(s -> consumer.accept(Http2SettingsId.get(s.id()), s.value()));
     }
@@ -124,8 +118,31 @@ public class Http2SettingsFW extends Http2FrameFW
         return value[0];
     }
 
+    public Http2SettingsFW tryWrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
+    {
+        boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
+
+        wrappable &= super.streamId() == 0;
+        wrappable &= super.type() == SETTINGS;
+        wrappable &= super.payloadLength() % 6 == 0;
+        wrappable &= limit() <= maxLimit;
+
+        if (wrappable)
+        {
+            listFW.wrap(buffer, offset + PAYLOAD_OFFSET, limit());
+        }
+
+        return wrappable ? this : null;
+    }
+
     @Override
-    public Http2SettingsFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2SettingsFW wrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
@@ -142,7 +159,7 @@ public class Http2SettingsFW extends Http2FrameFW
         }
 
         int payloadLength = super.payloadLength();
-        if (payloadLength%6 != 0)
+        if (payloadLength % 6 != 0)
         {
             throw new IllegalArgumentException(String.format("Invalid SETTINGS frame length=%d", payloadLength));
         }

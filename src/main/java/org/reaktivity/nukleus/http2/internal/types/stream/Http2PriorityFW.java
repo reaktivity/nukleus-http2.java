@@ -15,11 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PRIORITY;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 
 /*
 
@@ -43,12 +43,6 @@ public class Http2PriorityFW extends Http2FrameFW
     private static final int PAYLOAD_OFFSET = 9;
 
     @Override
-    public int payloadLength()
-    {
-        return 5;
-    }
-
-    @Override
     public Http2FrameType type()
     {
         return PRIORITY;
@@ -70,8 +64,26 @@ public class Http2PriorityFW extends Http2FrameFW
         return weight + 1;      // 1 ... 256
     }
 
+    public Http2PriorityFW tryWrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
+    {
+        boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
+
+        wrappable &= super.type() == PRIORITY;
+        wrappable &= super.streamId() != 0;
+        wrappable &= super.payloadLength() == 5;
+        wrappable &= limit() <= maxLimit;
+
+        return wrappable ? this : null;
+    }
+
     @Override
-    public Http2PriorityFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2PriorityFW wrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 

@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -35,7 +36,7 @@ class Http2Stream
     final int maxHeaderSize;
     final long targetId;
     final long correlationId;
-    Http2Connection.State state;
+    Http2StreamState state;
     long http2OutWindow;
     long applicationReplyBudget;
     long http2InWindow;
@@ -54,7 +55,7 @@ class Http2Stream
     MessageConsumer applicationReplyThrottle;
     long applicationReplyId;
 
-    Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2Connection.State state,
+    Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2StreamState state,
                 MessageConsumer applicationTarget, HttpWriter httpWriter)
     {
         this.factory = factory;
@@ -94,7 +95,7 @@ class Http2Stream
     void onHttpAbort()
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort(0);
         }
@@ -121,9 +122,11 @@ class Http2Stream
         connection.closeStream(this);
     }
 
-    void onData(long traceId)
+    void onData(
+        long traceId,
+        Http2DataFW http2Data)
     {
-        boolean written = httpWriteScheduler.onData(traceId, factory.http2DataRO);
+        boolean written = httpWriteScheduler.onData(traceId, http2Data);
         if (!written)
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
@@ -136,7 +139,7 @@ class Http2Stream
     void onError(long traceId)
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort(traceId);
         }
@@ -153,7 +156,7 @@ class Http2Stream
     void onAbort(long traceId)
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort(traceId);
         }
@@ -170,7 +173,7 @@ class Http2Stream
     void onReset(long networkReplyTraceId)
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort(0);
         }
@@ -187,7 +190,7 @@ class Http2Stream
     void onEnd()
     {
         // more request data to be sent, so send ABORT
-        if (state != Http2Connection.State.HALF_CLOSED_REMOTE)
+        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
             httpWriteScheduler.doAbort(0);
         }

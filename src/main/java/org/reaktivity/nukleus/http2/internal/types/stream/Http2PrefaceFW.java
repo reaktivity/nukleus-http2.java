@@ -16,7 +16,6 @@
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
 import org.agrona.DirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
@@ -33,7 +32,7 @@ public class Http2PrefaceFW extends Flyweight
     };
     private static final DirectBuffer PREFACE = new UnsafeBuffer(PRI_REQUEST);
 
-    private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
+    private final DirectBuffer payloadRO = new UnsafeBuffer(new byte[0]);
 
     @Override
     public int limit()
@@ -46,12 +45,34 @@ public class Http2PrefaceFW extends Flyweight
         return !PREFACE.equals(payloadRO);
     }
 
+    public Http2PrefaceFW tryWrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
+    {
+        // TODO: super.tryWrap != null
+        boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
+
+        wrappable &= PRI_REQUEST.length <= maxLimit - offset;
+        if (wrappable)
+        {
+            payloadRO.wrap(buffer, offset, PRI_REQUEST.length);
+
+            checkLimit(limit(), maxLimit);
+        }
+
+        return wrappable ? this : null;
+    }
+
     @Override
-    public Http2PrefaceFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2PrefaceFW wrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
-        payloadRO.wrap(buffer, offset(), PRI_REQUEST.length);
+        payloadRO.wrap(buffer, offset, PRI_REQUEST.length);
 
         checkLimit(limit(), maxLimit);
 

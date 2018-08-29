@@ -51,12 +51,6 @@ public class Http2GoawayFW extends Http2FrameFW
         return GO_AWAY;
     }
 
-    @Override
-    public int streamId()
-    {
-        return 0;
-    }
-
     public int lastStreamId()
     {
         return buffer().getInt(offset() + LAST_STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;

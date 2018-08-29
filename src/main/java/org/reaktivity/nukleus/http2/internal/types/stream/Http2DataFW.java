@@ -85,7 +85,10 @@ public class Http2DataFW extends Http2FrameFW
     }
 
     @Override
-    public Http2DataFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2DataFW wrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
         int streamId = streamId();

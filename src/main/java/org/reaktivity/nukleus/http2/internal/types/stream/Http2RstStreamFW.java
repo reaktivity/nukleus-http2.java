@@ -15,11 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.RST_STREAM;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
 
 /*
 
@@ -41,12 +41,6 @@ public class Http2RstStreamFW extends Http2FrameFW
     private static final int PAYLOAD_OFFSET = 9;
 
     @Override
-    public int payloadLength()
-    {
-        return 4;
-    }
-
-    @Override
     public Http2FrameType type()
     {
         return RST_STREAM;
@@ -57,8 +51,26 @@ public class Http2RstStreamFW extends Http2FrameFW
         return buffer().getInt(offset() + PAYLOAD_OFFSET, BIG_ENDIAN);
     }
 
+    public Http2RstStreamFW tryWrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
+    {
+        boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
+
+        wrappable &= super.streamId() != 0;
+        wrappable &= super.type() == RST_STREAM;
+        wrappable &= super.payloadLength() == 4;
+        wrappable &= limit() <= maxLimit;
+
+        return wrappable ? this : null;
+    }
+
     @Override
-    public Http2RstStreamFW wrap(DirectBuffer buffer, int offset, int maxLimit)
+    public Http2RstStreamFW wrap(
+        DirectBuffer buffer,
+        int offset,
+        int maxLimit)
     {
         super.wrap(buffer, offset, maxLimit);
 
