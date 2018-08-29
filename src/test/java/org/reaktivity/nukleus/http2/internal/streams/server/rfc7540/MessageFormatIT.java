@@ -90,6 +90,54 @@ public class MessageFormatIT
     @Test
     @Specification({
             "${route}/server/controller",
+            "${spec}/ping.frame.size.error/client" })
+    public void pingFrameSizeError() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/connection.window.frame.size.error/client" })
+    public void connectionWindowFrameSizeError() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/window.frame.size.error/client",
+            "${nukleus}/window.frame.size.error/server" })
+    public void windowFrameSizeError() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/rst.stream.frame.size.error/client",
+            "${nukleus}/rst.stream.frame.size.error/server" })
+    public void rstStreamFrameSizeError() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
+            "${spec}/priority.frame.size.error/client",
+            "${nukleus}/priority.frame.size.error/server" })
+    public void priorityFrameSizeError() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
             "${spec}/connection.headers/client",
             "${nukleus}/connection.headers/server" })
     public void connectionHeaders() throws Exception

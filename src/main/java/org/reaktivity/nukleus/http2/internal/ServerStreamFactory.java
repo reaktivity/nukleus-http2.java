@@ -43,10 +43,12 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
@@ -76,12 +78,14 @@ public final class ServerStreamFactory implements StreamFactory
     final HttpRouteExFW httpRouteExRO = new HttpRouteExFW();
     final Http2PrefaceFW prefaceRO = new Http2PrefaceFW();
     final Http2FrameFW http2RO = new Http2FrameFW();
+    final Http2FrameHeaderFW http2HeaderRO = new Http2FrameHeaderFW();
     final Http2SettingsFW settingsRO = new Http2SettingsFW();
     final Http2DataFW http2DataRO = new Http2DataFW();
     final Http2HeadersFW headersRO = new Http2HeadersFW();
     final Http2ContinuationFW continationRO = new Http2ContinuationFW();
     final HpackHeaderBlockFW blockRO = new HpackHeaderBlockFW();
     final Http2WindowUpdateFW http2WindowRO = new Http2WindowUpdateFW();
+    final Http2RstStreamFW http2RstStreamRO = new Http2RstStreamFW();
     final Http2PriorityFW priorityRO = new Http2PriorityFW();
     final UnsafeBuffer scratch = new UnsafeBuffer(new byte[8192]);  // TODO
     final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
@@ -339,14 +343,17 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
+                http2Connection.handleData(data);
+
                 if (window < initialWindow * INWINDOW_THRESHOLD)
                 {
-                    int windowPending = initialWindow - window;
-                    window = initialWindow;
-                    doWindow(networkThrottle, networkId, windowPending, 0, 0);
+                    int windowPending = initialWindow - window - http2Connection.frameSlotLimit;
+                    if (windowPending > 0)
+                    {
+                        window += windowPending;
+                        doWindow(networkThrottle, networkId, windowPending, 0, 0);
+                    }
                 }
-
-                http2Connection.handleData(data);
             }
         }
 

@@ -573,7 +573,7 @@ public class Http2WriteScheduler implements WriteScheduler
     private static boolean canStreamWrite(Http2Stream stream, Http2FrameType type)
     {
         // After RST_STREAM is written, don't write any frame in the stream
-        return stream == null || type == RST_STREAM || stream.state != Http2Connection.State.CLOSED;
+        return stream == null || type == RST_STREAM || stream.state != Http2StreamState.CLOSED;
     }
 
     private abstract class Entry implements WriteScheduler.Entry

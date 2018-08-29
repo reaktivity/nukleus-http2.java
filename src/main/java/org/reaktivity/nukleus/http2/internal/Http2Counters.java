@@ -29,9 +29,10 @@ public class Http2Counters
     public final LongSupplier settingsFramesRead;
     public final LongSupplier pingFramesRead;
     public final LongSupplier pushPromiseFramesRead;
-    public final LongSupplier unknownFramesRead;
 
     public final LongSupplier headersFramesWritten;
+    public final LongSupplier continuationFramesWritten;
+    public final LongSupplier continuationFramesRead;
     public final LongSupplier dataFramesWritten;
     public final LongSupplier priorityFramesWritten;
     public final LongSupplier resetStreamFramesWritten;
@@ -47,6 +48,7 @@ public class Http2Counters
         Function<String, LongSupplier> supplyCounter)
     {
         this.headersFramesRead = supplyCounter.apply("frames.read.headers");
+        this.continuationFramesRead = supplyCounter.apply("frames.read.continuation");
         this.dataFramesRead = supplyCounter.apply("frames.read.data");
         this.priorityFramesRead = supplyCounter.apply("frames.read.priority");
         this.resetStreamFramesRead = supplyCounter.apply("frames.read.reset.stream");
@@ -55,9 +57,9 @@ public class Http2Counters
         this.settingsFramesRead = supplyCounter.apply("frames.read.settings");
         this.pingFramesRead = supplyCounter.apply("frames.read.ping");
         this.pushPromiseFramesRead = supplyCounter.apply("frames.read.push.promise");
-        this.unknownFramesRead = supplyCounter.apply("frames.read.unknown");
 
         this.headersFramesWritten = supplyCounter.apply("frames.written.headers");
+        this.continuationFramesWritten = supplyCounter.apply("frames.written.continuation");
         this.dataFramesWritten = supplyCounter.apply("frames.written.data");
         this.priorityFramesWritten = supplyCounter.apply("frames.written.priority");
         this.resetStreamFramesWritten = supplyCounter.apply("frames.written.reset.stream");

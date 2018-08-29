@@ -15,11 +15,10 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.CLOSED;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.HALF_CLOSED_REMOTE;
-import static org.reaktivity.nukleus.http2.internal.Http2Connection.State.OPEN;
+import static org.reaktivity.nukleus.http2.internal.Http2StreamState.CLOSED;
+import static org.reaktivity.nukleus.http2.internal.Http2StreamState.HALF_CLOSED_REMOTE;
+import static org.reaktivity.nukleus.http2.internal.Http2StreamState.OPEN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.DEFAULT_ACCESS_CONTROL_ALLOW_ORIGIN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.KEEP_ALIVE;
@@ -30,7 +29,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.UP
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW.HeaderFieldType.UNKNOWN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.INCREMENTAL_INDEXING;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW.PRI_REQUEST;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -65,12 +63,22 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
+import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -85,14 +93,14 @@ final class Http2Connection
 
     // slab to assemble a complete HTTP2 frame
     // no need for separate slab per HTTP2 stream as the frames are not fragmented
-    private int frameSlotIndex = NO_SLOT;
-    private int frameSlotPosition;
+    private int frameSlot = NO_SLOT;
+    int frameSlotLimit;
 
     // slab to assemble a complete HTTP2 headers frame(including its continuation frames)
     // no need for separate slab per HTTP2 stream as no interleaved frames of any other type
     // or from any other stream
     private int headersSlotIndex = NO_SLOT;
-    private int headersSlotPosition;
+    private int headersSlotOffset;
 
     final long networkId;
     long authorization;
@@ -129,8 +137,6 @@ final class Http2Connection
     long http2OutWindow;
     long http2InWindow;
 
-    private boolean prefaceAvailable;
-    private boolean http2FrameAvailable;
     private final Consumer<HpackHeaderFieldFW> headerFieldConsumer;
     private final HeadersContext headersContext = new HeadersContext();
     private final EncodeHeadersContext encodeHeadersContext = new EncodeHeadersContext();
@@ -139,6 +145,8 @@ final class Http2Connection
     RouteManager router;
     String sourceName;
     long traceId;
+
+    private Http2ErrorCode decodeError;
 
     Http2Connection(
         ServerStreamFactory factory,
@@ -181,24 +189,6 @@ final class Http2Connection
         this.headerFieldConsumer = consumer.andThen(h -> decodeHeaderField(h, nameValue));
     }
 
-    void processUnexpected(
-        long streamId)
-    {
-        factory.doReset(networkReply, streamId, 0);
-        cleanConnection();
-    }
-
-    void cleanConnection()
-    {
-        releaseSlot();
-        releaseHeadersSlot();
-        for(Http2Stream http2Stream : http2Streams.values())
-        {
-            closeStream(http2Stream);
-        }
-        http2Streams.clear();
-    }
-
     void handleBegin(
         BeginFW beginRO)
     {
@@ -212,32 +202,100 @@ final class Http2Connection
     }
 
     void handleData(
-        DataFW dataRO)
+        DataFW data)
     {
-        OctetsFW payload = dataRO.payload();
-        int limit = payload.limit();
-        traceId = dataRO.trace();
+        final long traceId = data.trace();
+        final OctetsFW payload = data.payload();
+        final DirectBuffer buffer = payload.buffer();
+        final int offset = payload.offset();
+        final int limit = payload.limit();
 
-        int offset = payload.offset();
-        while (offset < limit)
+        DirectBuffer decodeBuffer = buffer;
+        int decodeOffset = offset;
+        int decodeLimit = limit;
+
+        if (frameSlot != NO_SLOT)
         {
-            offset += decoderState.decode(dataRO.buffer(), offset, limit);
+            final MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlot);
+            frameBuffer.putBytes(frameSlotLimit, buffer, offset, limit - offset);
+            frameSlotLimit += limit - offset;
+            decodeBuffer = frameBuffer;
+            decodeOffset = 0;
+            decodeLimit = frameSlotLimit;
         }
-        traceId = 0;
+
+        this.traceId = traceId;
+        int decodeProgress = 0;
+        while (decodeOffset < decodeLimit && decodeError == null)
+        {
+            decodeProgress = decoderState.decode(decodeBuffer, decodeOffset, decodeLimit);
+
+            if (decodeProgress <= 0)
+            {
+                // incomplete frame
+                break;
+            }
+
+            decodeOffset += decodeProgress;
+        }
+        this.traceId = 0;
+
+        final int decodeRemaining = decodeLimit - decodeOffset;
+        if (decodeProgress >= 0 && decodeRemaining > 0)
+        {
+            if (frameSlot == NO_SLOT)
+            {
+                assert frameSlotLimit == 0;
+
+                final int newFrameSlot = factory.framePool.acquire(networkId);
+                if (newFrameSlot != NO_SLOT)
+                {
+                    frameSlot = newFrameSlot;
+                }
+                else
+                {
+                    decodeProgress = -1; // error
+                }
+            }
+
+            if (frameSlot != NO_SLOT)
+            {
+                final MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlot);
+                frameBuffer.putBytes(0, decodeBuffer, decodeOffset, decodeRemaining);
+                frameSlotLimit = decodeRemaining;
+            }
+        }
+        else
+        {
+            releaseFrameSlot();
+        }
+
+        if (decodeError != null)
+        {
+            error(decodeError);
+        }
+
+        if (decodeProgress < 0 ||
+                decodeError != null && decodeError != Http2ErrorCode.NO_ERROR)
+        {
+            // TODO: use traceId ??
+            http2Streams.forEach((i, s) -> s.onAbort(0));
+            doResetNetworkAndCleanup();
+        }
     }
 
     void handleAbort(
         long traceId)
     {
         http2Streams.forEach((i, s) -> s.onAbort(traceId));
-        cleanConnection();
+        doCleanup();
     }
 
     void handleReset(
         ResetFW reset)
     {
         http2Streams.forEach((i, s) -> s.onReset(reset.trace()));
-        cleanConnection();
+        doCleanup();
     }
 
     void handleEnd(
@@ -247,184 +305,314 @@ final class Http2Connection
 
         http2Streams.forEach((i, s) -> s.onEnd());
         writeScheduler.doEnd();
-        cleanConnection();
+        doCleanup();
     }
 
-    // Decodes client preface
     private int decodePreface(
         final DirectBuffer buffer,
         final int offset,
         final int limit)
     {
-        int length = prefaceAvailable(buffer, offset, limit);
-        if (!prefaceAvailable)
+        final Http2PrefaceFW preface = factory.prefaceRO.tryWrap(buffer, offset, limit);
+
+        int decodeProgress = 0;
+        if (preface != null)
         {
-            return length;
+            if (preface.error())
+            {
+                decodeProgress = -1;
+                this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            }
+            else
+            {
+                decodeProgress = preface.sizeof();
+                this.decoderState = this::decodeFrame;
+            }
         }
-        if (factory.prefaceRO.error())
-        {
-            processUnexpected(networkId);
-            return limit-offset;
-        }
-        this.decoderState = this::decodeHttp2Frame;
-        return length;
+
+        return decodeProgress;
     }
 
-    private int http2FrameLength(
-        DirectBuffer buffer,
+    private int decodeFrame(
+        final DirectBuffer buffer,
         final int offset,
-        int limit)
+        final int limit)
     {
-        assert limit - offset >= 3;
+        final Http2FrameFW http2Frame = factory.http2RO.tryWrap(buffer, offset, limit);
 
-        int length = (buffer.getByte(offset) & 0xFF) << 16;
-        length += (buffer.getShort(offset + 1, BIG_ENDIAN) & 0xFF_FF);
-        return length + 9;      // +3 for length, +1 type, +1 flags, +4 stream-id
+        if (http2Frame != null)
+        {
+            if (http2Frame.payloadLength() > localSettings.maxFrameSize)
+            {
+                this.decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+            }
+            else if (http2Frame.streamId() == 0)
+            {
+                onConnectionFrame(http2Frame);
+            }
+            else
+            {
+                onStreamFrame(http2Frame);
+            }
+        }
+        else
+        {
+            final Http2FrameHeaderFW http2FrameHeader = factory.http2HeaderRO.tryWrap(buffer, offset, limit);
+
+            if (http2FrameHeader != null)
+            {
+                if (http2FrameHeader.payloadLength() > localSettings.maxFrameSize)
+                {
+                    this.decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+                }
+            }
+        }
+
+        return http2Frame != null ? http2Frame.sizeof() : 0;
     }
 
-    /*
-     * Assembles a complete HTTP2 client preface and the flyweight is wrapped with the
-     * buffer (it could be given buffer or slab)
-     *
-     * @return no of bytes consumed
-     */
-    private int prefaceAvailable(
-        DirectBuffer buffer,
-        int offset,
-        int limit)
+    private void onConnectionFrame(
+        final Http2FrameFW http2Frame)
     {
-        int available = limit - offset;
-
-        if (frameSlotPosition > 0 && frameSlotPosition + available >= PRI_REQUEST.length)
+        switch (http2Frame.type())
         {
-            MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
-            int remainingLength = PRI_REQUEST.length - frameSlotPosition;
-            prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, remainingLength);
-            factory.prefaceRO.wrap(prefaceBuffer, 0, PRI_REQUEST.length);
-            releaseSlot();
-            prefaceAvailable = true;
-            return remainingLength;
-        }
-        else if (available >= PRI_REQUEST.length)
-        {
-            factory.prefaceRO.wrap(buffer, offset, offset + PRI_REQUEST.length);
-            prefaceAvailable = true;
-            return PRI_REQUEST.length;
-        }
-
-        assert frameSlotIndex == NO_SLOT;
-        if (!acquireSlot())
-        {
-            prefaceAvailable = false;
-            return available;               // assume everything is consumed
-        }
-
-        MutableDirectBuffer prefaceBuffer = factory.framePool.buffer(frameSlotIndex);
-        prefaceBuffer.putBytes(frameSlotPosition, buffer, offset, available);
-        frameSlotPosition += available;
-        prefaceAvailable = false;
-        return available;
-    }
-
-    /*
-     * Assembles a complete HTTP2 frame and the flyweight is wrapped with the
-     * buffer (it could be given buffer or slab)
-     *
-     * @return consumed octets
-     *         -1 if the frame size is more than the max frame size
-     */
-    // TODO check slab capacity
-    private int http2FrameAvailable(
-        DirectBuffer buffer,
-        int offset,
-        int limit)
-    {
-        int available = limit - offset;
-
-        if (frameSlotPosition > 0 && frameSlotPosition + available >= 3)
-        {
-            MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
-            if (frameSlotPosition < 3)
-            {
-                frameBuffer.putBytes(frameSlotPosition, buffer, offset, 3 - frameSlotPosition);
-            }
-            int frameLength = http2FrameLength(frameBuffer, 0, 3);
-            if (frameLength > localSettings.maxFrameSize + 9)
-            {
-                return -1;
-            }
-            if (frameSlotPosition + available >= frameLength)
-            {
-                int remainingFrameLength = frameLength - frameSlotPosition;
-                frameBuffer.putBytes(frameSlotPosition, buffer, offset, remainingFrameLength);
-                factory.http2RO.wrap(frameBuffer, 0, frameLength);
-                releaseSlot();
-                http2FrameAvailable = true;
-                return remainingFrameLength;
-            }
-        }
-        else if (available >= 3)
-        {
-            int frameLength = http2FrameLength(buffer, offset, limit);
-            if (frameLength > localSettings.maxFrameSize + 9)
-            {
-                return -1;
-            }
-            if (available >= frameLength)
-            {
-                factory.http2RO.wrap(buffer, offset, offset + frameLength);
-                http2FrameAvailable = true;
-                return frameLength;
-            }
-        }
-
-        if (!acquireSlot())
-        {
-            http2FrameAvailable = false;
-            return available;
-        }
-
-        MutableDirectBuffer frameBuffer = factory.framePool.buffer(frameSlotIndex);
-        frameBuffer.putBytes(frameSlotPosition, buffer, offset, available);
-        frameSlotPosition += available;
-        http2FrameAvailable = false;
-        return available;
-    }
-
-    private boolean acquireSlot()
-    {
-        if (frameSlotIndex == NO_SLOT)
-        {
-            assert frameSlotPosition == 0;
-
-            frameSlotIndex = factory.framePool.acquire(networkId);
-            if (frameSlotIndex == NO_SLOT)
-            {
-                // all slots are in use, just reset the connection
-                factory.doReset(network, networkId, 0);
-                handleAbort(0);
-                http2FrameAvailable = false;
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private void releaseSlot()
-    {
-        if (frameSlotIndex != NO_SLOT)
-        {
-            factory.framePool.release(frameSlotIndex);
-            frameSlotIndex = NO_SLOT;
-            frameSlotPosition = 0;
+        case SETTINGS:
+            factory.counters.settingsFramesRead.getAsLong();
+            onConnectionSettings(http2Frame);
+            break;
+        case PING:
+            factory.counters.pingFramesRead.getAsLong();
+            onConnectionPing(http2Frame);
+            break;
+        case GO_AWAY:
+            factory.counters.goawayFramesRead.getAsLong();
+            onConnectionGoAway(http2Frame);
+            break;
+        case WINDOW_UPDATE:
+            factory.counters.windowUpdateFramesRead.getAsLong();
+            onConnectionWindowUpdate(http2Frame);
+            break;
+        case UNKNOWN:
+            break;
+        default:
+            this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            break;
         }
     }
 
-    private boolean acquireHeadersSlot()
+    private void onStreamFrame(
+        final Http2FrameFW http2Frame)
     {
-        if (headersSlotIndex == NO_SLOT)
+        int streamId = http2Frame.streamId();
+
+        if ((streamId & 0x01) != 0x01)
         {
-            assert headersSlotPosition == 0;
+            decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        Http2FrameType type = http2Frame.type();
+        if (expectContinuation &&
+                (type != Http2FrameType.CONTINUATION || streamId != expectContinuationStreamId))
+        {
+            this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        if (streamId > maxClientStreamId &&
+                type != Http2FrameType.HEADERS &&
+                type != Http2FrameType.PRIORITY)
+        {
+            decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        Http2Stream stream = http2Streams.get(streamId);
+        if (stream == null)
+        {
+            switch (type)
+            {
+            case HEADERS:
+                factory.counters.headersFramesRead.getAsLong();
+                onStreamHeaders(http2Frame);
+                break;
+            case CONTINUATION:
+                factory.counters.continuationFramesRead.getAsLong();
+                onStreamContinuation(http2Frame);
+                break;
+            case WINDOW_UPDATE:
+                // "half-closed (remote)" or "closed" stream MUST NOT be treated as error
+                factory.counters.windowUpdateFramesRead.getAsLong();
+                onStreamWindowUpdate(stream, http2Frame);
+                break;
+            case PRIORITY:
+                // "half-closed (remote)" or "closed" stream MUST NOT be treated as error
+                factory.counters.priorityFramesRead.getAsLong();
+                onStreamPriority(stream, http2Frame);
+                break;
+            case UNKNOWN:
+                break;
+            default:
+                this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+                break;
+            }
+        }
+        else
+        {
+            switch (type)
+            {
+            case DATA:
+                factory.counters.dataFramesRead.getAsLong();
+                onStreamData(stream, http2Frame);
+                break;
+            case HEADERS:
+                factory.counters.headersFramesRead.getAsLong();
+                onStreamHeaders(stream, http2Frame);
+                break;
+            case PRIORITY:
+                factory.counters.priorityFramesRead.getAsLong();
+                onStreamPriority(stream, http2Frame);
+                break;
+            case RST_STREAM:
+                factory.counters.resetStreamFramesRead.getAsLong();
+                onStreamRst(stream, http2Frame);
+                break;
+            case WINDOW_UPDATE:
+                factory.counters.windowUpdateFramesRead.getAsLong();
+                onStreamWindowUpdate(stream, http2Frame);
+                break;
+            case UNKNOWN:
+                break;
+            default:
+                this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+                break;
+            }
+        }
+    }
+
+    private void onConnectionSettings(
+        final Http2FrameFW http2Frame)
+    {
+        final Http2SettingsFW settings =
+                factory.settingsRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+
+        if (settings == null || settings.ack() && settings.payloadLength() != 0)
+        {
+            decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+        }
+        else if (!settings.ack())
+        {
+            settings.forEach(this::applySetting);
+            writeScheduler.settingsAck();
+            factory.counters.settingsFramesWritten.getAsLong();
+        }
+        else
+        {
+            http2Streams.values().forEach(this::applyInitialWindowDelta);
+
+            // now that peer acked our initial settings, can use them as our local settings
+            localSettings = initialSettings;
+        }
+    }
+
+    private void onConnectionPing(
+        Http2FrameFW http2Frame)
+    {
+        final Http2PingFW ping = factory.pingRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        if (ping == null)
+        {
+            this.decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+            return;
+        }
+
+        if (!ping.ack())
+        {
+            writeScheduler.pingAck(ping.payload(), 0, ping.payload().capacity());
+
+            factory.counters.pingFramesWritten.getAsLong();
+        }
+    }
+
+    private void onConnectionGoAway(
+        Http2FrameFW http2Frame)
+    {
+        // TODO: ConnectionState
+        if (!goaway)
+        {
+            goaway = true;
+            remoteSettings.enablePush = false;      // no new streams
+            this.decodeError = Http2ErrorCode.NO_ERROR;
+        }
+    }
+
+    private void onConnectionWindowUpdate(
+        Http2FrameFW http2Frame)
+    {
+        final Http2WindowUpdateFW http2Window =
+                factory.http2WindowRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        if (http2Window == null)
+        {
+            decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+            return;
+        }
+
+        // 6.9 WINDOW_UPDATE - legal range for flow-control window increment is 1 to 2^31-1 octets.
+        if (http2Window.size() < 1)
+        {
+            decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        http2OutWindow += http2Window.size();
+
+        // 6.9.1 A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets.
+        if (http2OutWindow > Integer.MAX_VALUE)
+        {
+            decodeError = Http2ErrorCode.FLOW_CONTROL_ERROR;
+            return;
+        }
+
+        writeScheduler.onHttp2Window();
+    }
+
+    private void onStreamHeaders(
+        Http2FrameFW http2Frame)
+    {
+        int streamId = http2Frame.streamId();
+
+        Http2HeadersFW http2Headers = factory.headersRO.wrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        int parentStreamId = http2Headers.parentStream();
+
+        if (parentStreamId == streamId)
+        {
+            // 5.3.1 A stream cannot depend on itself
+            doRstStream(streamId, Http2ErrorCode.PROTOCOL_ERROR);
+        }
+
+        if (http2Headers.dataLength() < 0)
+        {
+            this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        if (streamId <= maxClientStreamId)
+        {
+            this.decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        maxClientStreamId = streamId;
+
+        if (clientStreamCount >= localSettings.maxConcurrentStreams)
+        {
+            doRstStream(streamId, Http2ErrorCode.REFUSED_STREAM);
+            return;
+        }
+
+        if (!http2Headers.endHeaders())
+        {
+            assert headersSlotIndex == NO_SLOT;
+            assert headersSlotOffset == 0;
 
             headersSlotIndex = factory.headersPool.acquire(networkId);
             if (headersSlotIndex == NO_SLOT)
@@ -432,291 +620,106 @@ final class Http2Connection
                 // all slots are in use, just reset the connection
                 factory.doReset(network, networkId, 0);
                 handleAbort(0);
-                return false;
+                return;
             }
-        }
-        return true;
-    }
 
-    private void releaseHeadersSlot()
-    {
-        if (headersSlotIndex != NO_SLOT)
-        {
-            factory.headersPool.release(headersSlotIndex);
-            headersSlotIndex = NO_SLOT;
-            headersSlotPosition = 0;
-        }
-    }
-
-    /*
-     * Assembles a complete HTTP2 headers (including any continuations) if any.
-     *
-     * @return true if a complete HTTP2 headers is assembled or any other frame
-     *         false otherwise
-     */
-    private boolean http2HeadersAvailable()
-    {
-        if (expectContinuation)
-        {
-            if (factory.http2RO.type() != Http2FrameType.CONTINUATION || factory.http2RO.streamId() != expectContinuationStreamId)
-            {
-                error(Http2ErrorCode.PROTOCOL_ERROR);
-                return false;
-            }
-        }
-        else if (factory.http2RO.type() == Http2FrameType.CONTINUATION)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return false;
-        }
-        switch (factory.http2RO.type())
-        {
-            case HEADERS:
-                int streamId = factory.http2RO.streamId();
-                if (streamId == 0 || streamId % 2 != 1 || streamId <= maxClientStreamId)
-                {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
-                    return false;
-                }
-
-                factory.headersRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
-                int parentStreamId = factory.headersRO.parentStream();
-                if (parentStreamId == streamId)
-                {
-                    // 5.3.1 A stream cannot depend on itself
-                    streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-                    return false;
-                }
-                if (factory.headersRO.dataLength() < 0)
-                {
-                    error(Http2ErrorCode.PROTOCOL_ERROR);
-                    return false;
-                }
-
-                return http2HeadersAvailable(factory.headersRO.buffer(), factory.headersRO.dataOffset(),
-                        factory.headersRO.dataLength(), factory.headersRO.endHeaders());
-
-            case CONTINUATION:
-                factory.continationRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
-                DirectBuffer payload = factory.continationRO.payload();
-                boolean endHeaders = factory.continationRO.endHeaders();
-
-                return http2HeadersAvailable(payload, 0, payload.capacity(), endHeaders);
-        }
-
-        return true;
-    }
-
-    /*
-     * Assembles a complete HTTP2 headers (including any continuations) and the
-     * flyweight is wrapped with the buffer (it could be given buffer or slab)
-     *
-     * @return true if a complete HTTP2 headers is assembled
-     *         false otherwise
-     */
-    private boolean http2HeadersAvailable(
-        DirectBuffer buffer,
-        int offset,
-        int length,
-        boolean endHeaders)
-    {
-        if (endHeaders)
-        {
-            if (headersSlotPosition > 0)
-            {
-                MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
-                headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
-                headersSlotPosition += length;
-                buffer = headersBuffer;
-                offset = 0;
-                length = headersSlotPosition;
-            }
-            int maxLimit = offset + length;
-            expectContinuation = false;
-            releaseHeadersSlot();           // early release, but fine
-            factory.blockRO.wrap(buffer, offset, maxLimit);
-            return true;
-        }
-        else
-        {
-            if (!acquireHeadersSlot())
-            {
-                return false;
-            }
             MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
-            headersBuffer.putBytes(headersSlotPosition, buffer, offset, length);
-            headersSlotPosition += length;
+            headersBuffer.putBytes(headersSlotOffset, http2Headers.buffer(),
+                    http2Headers.dataOffset(), http2Headers.dataLength());
+            headersSlotOffset = http2Headers.dataLength();
+
             expectContinuation = true;
-            expectContinuationStreamId = factory.headersRO.streamId();
-        }
-
-        return false;
-    }
-
-    private int decodeHttp2Frame(
-        final DirectBuffer buffer,
-        final int offset,
-        final int limit)
-    {
-        int length = http2FrameAvailable(buffer, offset, limit);
-        if (length == -1)
-        {
-            error(Http2ErrorCode.FRAME_SIZE_ERROR);
-            return limit - offset;
-        }
-        if (!http2FrameAvailable)
-        {
-            return length;
-        }
-
-        Http2FrameType http2FrameType = factory.http2RO.type();
-        // Assembles HTTP2 HEADERS and its CONTINUATIONS frames, if any
-        if (!http2HeadersAvailable())
-        {
-            return length;
-        }
-        switch (http2FrameType)
-        {
-            case DATA:
-                factory.counters.dataFramesRead.getAsLong();
-                doData();
-                break;
-            case HEADERS:   // fall-through
-            case CONTINUATION:
-                factory.counters.headersFramesRead.getAsLong();
-                doHeaders();
-                break;
-            case PRIORITY:
-                factory.counters.priorityFramesRead.getAsLong();
-                doPriority();
-                break;
-            case RST_STREAM:
-                factory.counters.resetStreamFramesRead.getAsLong();
-                doRst();
-                break;
-            case SETTINGS:
-                factory.counters.settingsFramesRead.getAsLong();
-                doSettings();
-                break;
-            case PUSH_PROMISE:
-                factory.counters.pushPromiseFramesRead.getAsLong();
-                doPushPromise();
-                break;
-            case PING:
-                factory.counters.pingFramesRead.getAsLong();
-                doPing();
-                break;
-            case GO_AWAY:
-                factory.counters.goawayFramesRead.getAsLong();
-                doGoAway();
-                break;
-            case WINDOW_UPDATE:
-                factory.counters.windowUpdateFramesRead.getAsLong();
-                doWindow();
-                break;
-            default:
-                factory.counters.unknownFramesRead.getAsLong();
-                // Ignore and discard unknown frame
-        }
-
-        return length;
-    }
-
-    private void doGoAway()
-    {
-        int streamId = factory.http2RO.streamId();
-        if (goaway)
-        {
-            if (streamId != 0)
-            {
-                processUnexpected(networkId);
-            }
-        }
-        else
-        {
-            goaway = true;
-            Http2ErrorCode errorCode = (streamId != 0) ? Http2ErrorCode.PROTOCOL_ERROR : Http2ErrorCode.NO_ERROR;
-            remoteSettings.enablePush = false;      // no new streams
-            error(errorCode);
-        }
-    }
-
-    private void doPushPromise()
-    {
-        error(Http2ErrorCode.PROTOCOL_ERROR);
-    }
-
-    private void doPriority()
-    {
-        int streamId = factory.http2RO.streamId();
-        if (streamId == 0)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-        int payloadLength = factory.http2RO.payloadLength();
-        if (payloadLength != 5)
-        {
-            streamError(streamId, Http2ErrorCode.FRAME_SIZE_ERROR);
-            return;
-        }
-        factory.priorityRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
-        int parentStreamId = factory.priorityRO.parentStream();
-        if (parentStreamId == streamId)
-        {
-            // 5.3.1 A stream cannot depend on itself
-            streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-    }
-
-    private void doHeaders()
-    {
-        int streamId = factory.http2RO.streamId();
-
-        Http2Stream stream = http2Streams.get(streamId);
-        if (stream != null)
-        {
-            // TODO trailers
-        }
-        if (streamId <= maxClientStreamId)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-        maxClientStreamId = streamId;
-
-        if (clientStreamCount + 1 > localSettings.maxConcurrentStreams)
-        {
-            streamError(streamId, stream, Http2ErrorCode.REFUSED_STREAM);
+            expectContinuationStreamId = streamId;
             return;
         }
 
-        State state = factory.http2RO.endStream() ? HALF_CLOSED_REMOTE : OPEN;
+        onStreamHeadersEnd(http2Frame, http2Headers.buffer(), http2Headers.dataOffset(),
+                http2Headers.dataOffset() + http2Headers.dataLength());
+    }
+
+    private void onStreamHeaders(
+        Http2Stream stream,
+        Http2FrameFW http2Frame)
+    {
+        if (stream.state == Http2StreamState.HALF_CLOSED_REMOTE)
+        {
+            decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        // TODO: trailers
+    }
+
+    private void onStreamContinuation(
+        Http2FrameFW http2Frame)
+    {
+        if (!expectContinuation)
+        {
+            decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+            return;
+        }
+
+        assert headersSlotIndex != NO_SLOT;
+        assert headersSlotOffset != 0;
+
+        Http2ContinuationFW http2Continuation =
+                factory.continationRO.wrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        DirectBuffer payload = http2Continuation.payload();
+
+        MutableDirectBuffer headersBuffer = factory.headersPool.buffer(headersSlotIndex);
+        headersBuffer.putBytes(headersSlotOffset, payload, 0, payload.capacity());
+        headersSlotOffset += payload.capacity();
+
+        if (!http2Continuation.endHeaders())
+        {
+            assert expectContinuation;
+            assert expectContinuationStreamId == http2Continuation.streamId();
+            return;
+        }
+
+        onStreamHeadersEnd(http2Frame, headersBuffer, 0, headersSlotOffset);
+
+        releaseHeadersSlot();
+
+        expectContinuation = false;
+        expectContinuationStreamId = 0;
+    }
+
+    private void onStreamHeadersEnd(
+        Http2FrameFW http2Frame,
+        DirectBuffer headersBuffer,
+        int headersOffset,
+        int headersLimit)
+    {
+        int streamId = http2Frame.streamId();
 
         headersContext.reset();
 
         factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity());
+        HpackHeaderBlockFW headerBlock = factory.blockRO.wrap(headersBuffer, headersOffset, headersLimit);
+        headerBlock.forEach(headerFieldConsumer);
 
-        factory.blockRO.forEach(headerFieldConsumer);
         // All HTTP/2 requests MUST include exactly one valid value for the
         // ":method", ":scheme", and ":path" pseudo-header fields, unless it is
         // a CONNECT request (Section 8.3).  An HTTP request that omits
         // mandatory pseudo-header fields is malformed
-        if (!headersContext.error() && (headersContext.method != 1 || headersContext.scheme != 1 || headersContext.path != 1))
+        if (!headersContext.error() &&
+                (headersContext.method != 1 || headersContext.scheme != 1 || headersContext.path != 1))
         {
             headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
         }
+
         if (headersContext.error())
         {
             if (headersContext.streamError != null)
             {
-                streamError(streamId, stream, headersContext.streamError);
+                doRstStream(streamId, headersContext.streamError);
                 return;
             }
+
             if (headersContext.connectionError != null)
             {
-                error(headersContext.connectionError);
+                decodeError = headersContext.connectionError;
                 return;
             }
         }
@@ -728,268 +731,132 @@ final class Http2Connection
         }
         else
         {
-            followRoute(streamId, state, route);
+            Http2StreamState nextState = http2Frame.endStream() ? HALF_CLOSED_REMOTE : OPEN;
+            followRoute(streamId, nextState, route);
         }
     }
 
-    private void followRoute(
-        int streamId,
-        State state,
-        RouteFW route)
+    private void onStreamData(
+        Http2Stream stream,
+        Http2FrameFW http2Frame)
     {
-        final String applicationName = route.target().asString();
-        final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
-        HttpWriter httpWriter = factory.httpWriter;
-        Http2Stream stream = newStream(streamId, state, applicationTarget, httpWriter);
-        final long targetRef = route.targetRef();
-
-        stream.contentLength = headersContext.contentLength;
-
-        HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpWriter.doHttpBegin(applicationTarget, stream.targetId, traceId, targetRef, stream.correlationId,
-                beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
-        router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
-
-        if (factory.headersRO.endStream())
-        {
-            httpWriter.doHttpEnd(applicationTarget, stream.targetId, traceId);  // TODO use HttpWriteScheduler
-        }
-    }
-
-    // No route for the HTTP2 request, send 404 on the corresponding HTTP2 stream
-    private void noRoute(
-        int streamId)
-    {
-        ListFW<HttpHeaderFW> headers =
-                factory.headersRW.wrap(factory.errorBuf, 0, factory.errorBuf.capacity())
-                                 .item(b -> b.name(":status").value("404"))
-                                 .build();
-
-        writeScheduler.headers(0, streamId, Http2Flags.END_STREAM, headers);
-
-        if ((streamId & 0x01L) == 0x00L)
-        {
-            factory.counters.pushHeadersFramesWritten.getAsLong();
-        }
-        else
-        {
-            factory.counters.headersFramesWritten.getAsLong();
-        }
-    }
-
-    private void doRst()
-    {
-        int streamId = factory.http2RO.streamId();
-        if (streamId == 0)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-        int payloadLength = factory.http2RO.payloadLength();
-        if (payloadLength != 4)
-        {
-            error(Http2ErrorCode.FRAME_SIZE_ERROR);
-            return;
-        }
-        Http2Stream stream = http2Streams.get(streamId);
-        if (stream == null || stream.state == State.IDLE)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-        }
-        else
-        {
-            stream.onReset(0);
-            closeStream(stream);
-        }
-    }
-
-    void closeStream(
-        Http2Stream stream)
-    {
-        if (stream.state != CLOSED)
-        {
-            stream.state = CLOSED;
-
-            if (stream.isClientInitiated())
-            {
-                clientStreamCount--;
-            }
-            else
-            {
-                promisedStreamCount--;
-            }
-            factory.correlations.remove(stream.correlationId);
-            http2Streams.remove(stream.http2StreamId);
-            stream.close();
-        }
-    }
-
-    private void doWindow()
-    {
-        int streamId = factory.http2RO.streamId();
-        if (factory.http2RO.payloadLength() != 4)
-        {
-            if (streamId == 0)
-            {
-                error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            else
-            {
-                streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-        }
-        if (streamId != 0)
-        {
-            State state = state(streamId);
-            if (state == State.IDLE)
-            {
-                error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            Http2Stream stream = http2Streams.get(streamId);
-            if (stream == null)
-            {
-                // A receiver could receive a WINDOW_UPDATE frame on a "half-closed (remote)" or "closed" stream.
-                // A receiver MUST NOT treat this as an error
-                return;
-            }
-        }
-        factory.http2WindowRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
-
-        // 6.9 WINDOW_UPDATE - legal range for flow-control window increment is 1 to 2^31-1 octets.
-        if (factory.http2WindowRO.size() < 1)
-        {
-            if (streamId == 0)
-            {
-                error(Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-            else
-            {
-                streamError(streamId, Http2ErrorCode.PROTOCOL_ERROR);
-                return;
-            }
-        }
-
-        // 6.9.1 A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets.
-        if (streamId == 0)
-        {
-            http2OutWindow += factory.http2WindowRO.size();
-            if (http2OutWindow > Integer.MAX_VALUE)
-            {
-                error(Http2ErrorCode.FLOW_CONTROL_ERROR);
-                return;
-            }
-            writeScheduler.onHttp2Window();
-        }
-        else
-        {
-            Http2Stream stream = http2Streams.get(streamId);
-            stream.http2OutWindow += factory.http2WindowRO.size();
-            if (stream.http2OutWindow > Integer.MAX_VALUE)
-            {
-                streamError(streamId, Http2ErrorCode.FLOW_CONTROL_ERROR);
-                return;
-            }
-            writeScheduler.onHttp2Window(streamId);
-        }
-
-    }
-
-    private void doData()
-    {
-        int streamId = factory.http2RO.streamId();
-        Http2Stream stream = http2Streams.get(streamId);
-
-        if (streamId == 0 || stream == null || stream.state == State.IDLE)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
         if (stream.state == HALF_CLOSED_REMOTE)
         {
-            error(Http2ErrorCode.STREAM_CLOSED);
-            closeStream(stream);
-            return;
-        }
-        Http2DataFW dataRO = factory.http2DataRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(),
-                factory.http2RO.limit());
-        if (dataRO.dataLength() < 0)        // because of invalid padding length
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
+            decodeError = Http2ErrorCode.STREAM_CLOSED;
             closeStream(stream);
             return;
         }
 
-        //
-        if (stream.http2InWindow < factory.http2RO.payloadLength() || http2InWindow < factory.http2RO.payloadLength())
+        // handle invalid padding length
+        Http2DataFW http2Data = factory.http2DataRO.wrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        if (http2Data.dataLength() < 0)
         {
-            streamError(streamId, stream, Http2ErrorCode.FLOW_CONTROL_ERROR);
+            decodeError = Http2ErrorCode.STREAM_CLOSED;
+            closeStream(stream);
             return;
         }
-        http2InWindow -= factory.http2RO.payloadLength();
-        stream.http2InWindow -= factory.http2RO.payloadLength();
 
-        stream.totalData += factory.http2RO.payloadLength();
+        final int payloadLength = http2Frame.payloadLength();
+        if (stream.http2InWindow < payloadLength || http2InWindow < payloadLength)
+        {
+            doRstByUs(stream, Http2ErrorCode.FLOW_CONTROL_ERROR);
+            return;
+        }
 
-        if (dataRO.endStream())
+        http2InWindow -= payloadLength;
+        stream.http2InWindow -= payloadLength;
+
+        stream.totalData += payloadLength;
+
+        if (http2Data.endStream())
         {
             // 8.1.2.6 A request is malformed if the value of a content-length header field does
             // not equal the sum of the DATA frame payload lengths
             if (stream.contentLength != -1 && stream.totalData != stream.contentLength)
             {
-                streamError(streamId, stream, Http2ErrorCode.PROTOCOL_ERROR);
+                doRstByUs(stream, Http2ErrorCode.PROTOCOL_ERROR);
                 //stream.httpWriteScheduler.doEnd(stream.targetId);
                 return;
             }
-            stream.state = State.HALF_CLOSED_REMOTE;
+
+            stream.state = Http2StreamState.HALF_CLOSED_REMOTE;
         }
 
-        stream.onData(traceId);
+        stream.onData(traceId, http2Data);
     }
 
-    private void doSettings()
+    private void onStreamPriority(
+        Http2Stream stream,
+        Http2FrameFW http2Frame)
     {
-        if (factory.http2RO.streamId() != 0)
+        Http2PriorityFW http2Priority = factory.priorityRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        if (http2Priority == null)
         {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-        if (factory.http2RO.payloadLength()%6 != 0)
-        {
-            error(Http2ErrorCode.FRAME_SIZE_ERROR);
+            decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
             return;
         }
 
-        factory.settingsRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
-
-        if (factory.settingsRO.ack() && factory.http2RO.payloadLength() != 0)
+        if (stream != null)
         {
-            error(Http2ErrorCode.FRAME_SIZE_ERROR);
-            return;
-        }
-        if (!factory.settingsRO.ack())
-        {
-            factory.settingsRO.accept(this::doSetting);
-            writeScheduler.settingsAck();
-            factory.counters.settingsFramesWritten.getAsLong();
-        }
-        else
-        {
-            int update =  initialSettings.initialWindowSize - localSettings.initialWindowSize;
-            for(Http2Stream http2Stream: http2Streams.values())
+            if (http2Priority.parentStream() == stream.http2StreamId)
             {
-                http2Stream.http2InWindow += update;           // http2InWindow can become negative
+                // 5.3.1 A stream cannot depend on itself
+                doRstByUs(stream, Http2ErrorCode.PROTOCOL_ERROR);
+                return;
+            }
+        }
+    }
+
+    private void onStreamWindowUpdate(
+        Http2Stream stream,
+        Http2FrameFW http2Frame)
+    {
+        Http2WindowUpdateFW http2Window =
+                factory.http2WindowRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        if (http2Window == null)
+        {
+            decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+            return;
+        }
+
+        // 6.9 WINDOW_UPDATE - legal range for flow-control window increment is 1 to 2^31-1 octets.
+        if (http2Window.size() < 1)
+        {
+            doRstByUs(stream, Http2ErrorCode.PROTOCOL_ERROR);
+            return;
+        }
+
+        if (stream != null)
+        {
+            // 6.9.1 A sender MUST NOT allow a flow-control window to exceed 2^31-1 octets.
+            stream.http2OutWindow += http2Window.size();
+            if (stream.http2OutWindow > Integer.MAX_VALUE)
+            {
+                doRstByUs(stream, Http2ErrorCode.FLOW_CONTROL_ERROR);
+                return;
             }
 
-            // now that peer acked our initial settings, can use them as our local settings
-            localSettings = initialSettings;
+            writeScheduler.onHttp2Window(stream.http2StreamId);
         }
     }
 
-    private void doSetting(
+    private void onStreamRst(
+        Http2Stream stream,
+        Http2FrameFW http2Frame)
+    {
+        Http2RstStreamFW http2RstStream =
+                factory.http2RstStreamRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
+        if (http2RstStream == null)
+        {
+            decodeError = Http2ErrorCode.FRAME_SIZE_ERROR;
+            return;
+        }
+
+        stream.onReset(0);
+        closeStream(stream);
+    }
+
+    private void applySetting(
         Http2SettingsId id,
         Long value)
     {
@@ -1053,51 +920,111 @@ final class Http2Connection
         }
     }
 
-    private void doPing()
+    private void applyInitialWindowDelta(
+        Http2Stream http2Stream)
     {
-        if (factory.http2RO.streamId() != 0)
-        {
-            error(Http2ErrorCode.PROTOCOL_ERROR);
-            return;
-        }
-        if (factory.http2RO.payloadLength() != 8)
-        {
-            error(Http2ErrorCode.FRAME_SIZE_ERROR);
-            return;
-        }
-        factory.pingRO.wrap(factory.http2RO.buffer(), factory.http2RO.offset(), factory.http2RO.limit());
-
-        if (!factory.pingRO.ack())
-        {
-            writeScheduler.pingAck(factory.pingRO.payload(), 0, factory.pingRO.payload().capacity());
-
-            factory.counters.pingFramesWritten.getAsLong();
-       }
+        final int initialWindowDelta = initialSettings.initialWindowSize - localSettings.initialWindowSize;
+        http2Stream.http2InWindow += initialWindowDelta;           // http2InWindow can become negative
     }
 
-    private State state(
+    private void releaseFrameSlot()
+    {
+        if (frameSlot != NO_SLOT)
+        {
+            factory.framePool.release(frameSlot);
+            frameSlot = NO_SLOT;
+            frameSlotLimit = 0;
+        }
+    }
+
+    private void releaseHeadersSlot()
+    {
+        if (headersSlotIndex != NO_SLOT)
+        {
+            factory.headersPool.release(headersSlotIndex);
+            headersSlotIndex = NO_SLOT;
+            headersSlotOffset = 0;
+        }
+    }
+
+    private void doResetNetworkAndCleanup()
+    {
+        factory.doReset(networkReply, networkId, 0);
+        doCleanup();
+    }
+
+    private void doCleanup()
+    {
+        releaseFrameSlot();
+        releaseHeadersSlot();
+        http2Streams.values().forEach(this::closeStream);
+        http2Streams.clear();
+    }
+
+    private void followRoute(
+        int streamId,
+        Http2StreamState state,
+        RouteFW route)
+    {
+        final String applicationName = route.target().asString();
+        final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
+        HttpWriter httpWriter = factory.httpWriter;
+        Http2Stream stream = newStream(streamId, state, applicationTarget, httpWriter);
+        final long targetRef = route.targetRef();
+
+        stream.contentLength = headersContext.contentLength;
+
+        HttpBeginExFW beginEx = factory.httpBeginExRW.build();
+        httpWriter.doHttpBegin(applicationTarget, stream.targetId, traceId, targetRef, stream.correlationId,
+                beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
+        router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
+
+        if (state == HALF_CLOSED_REMOTE)
+        {
+            httpWriter.doHttpEnd(applicationTarget, stream.targetId, traceId);  // TODO use HttpWriteScheduler
+        }
+    }
+
+    // No route for the HTTP2 request, send 404 on the corresponding HTTP2 stream
+    private void noRoute(
         int streamId)
     {
-        Http2Stream stream = http2Streams.get(streamId);
-        if (stream != null)
+        ListFW<HttpHeaderFW> headers =
+                factory.headersRW.wrap(factory.errorBuf, 0, factory.errorBuf.capacity())
+                                 .item(b -> b.name(":status").value("404"))
+                                 .build();
+
+        writeScheduler.headers(0, streamId, Http2Flags.END_STREAM, headers);
+
+        if ((streamId & 0x01L) == 0x00L)
         {
-            return stream.state;
-        }
-        if (streamId%2 == 1)
-        {
-            if (streamId <= maxClientStreamId)
-            {
-                return State.CLOSED;
-            }
+            factory.counters.pushHeadersFramesWritten.getAsLong();
         }
         else
         {
-            if (streamId <= maxPushPromiseStreamId)
-            {
-                return State.CLOSED;
-            }
+            factory.counters.headersFramesWritten.getAsLong();
         }
-        return State.IDLE;
+    }
+
+    void closeStream(
+        Http2Stream stream)
+    {
+        if (stream.state != CLOSED)
+        {
+            stream.state = CLOSED;
+
+            if (stream.isClientInitiated())
+            {
+                clientStreamCount--;
+            }
+            else
+            {
+                promisedStreamCount--;
+            }
+            factory.correlations.remove(stream.correlationId);
+            http2Streams.remove(stream.http2StreamId);
+            stream.close();
+        }
     }
 
     RouteFW resolveTarget(
@@ -1147,29 +1074,24 @@ final class Http2Connection
         factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
         factory.doAbort(networkReply, networkReplyId);
         http2Streams.forEach((i, s) -> s.onError(traceId));
-        cleanConnection();
+        doCleanup();
     }
 
-    void streamError(int streamId, Http2ErrorCode errorCode)
-    {
-        Http2Stream stream = http2Streams.get(streamId);
-        streamError(streamId, stream, errorCode);
-    }
-
-    void streamError(
-        int streamId,
+    void doRstByUs(
         Http2Stream stream,
         Http2ErrorCode errorCode)
     {
-        if (stream != null)
-        {
-            doRstByUs(stream, errorCode);
-        }
-        else
-        {
-            writeScheduler.rst(streamId, errorCode);
-            factory.counters.resetStreamFramesWritten.getAsLong();
-        }
+        stream.onReset(0);
+        doRstStream(stream.http2StreamId, errorCode);
+        closeStream(stream);
+    }
+
+    private void doRstStream(
+        int streamId,
+        Http2ErrorCode errorCode)
+    {
+        writeScheduler.rst(streamId, errorCode);
+        factory.counters.resetStreamFramesWritten.getAsLong();
     }
 
     private int nextPromisedId()
@@ -1236,7 +1158,7 @@ final class Http2Connection
 
     private Http2Stream newStream(
         int http2StreamId,
-        State state,
+        Http2StreamState state,
         MessageConsumer applicationTarget,
         HttpWriter httpWriter)
     {
@@ -1294,6 +1216,8 @@ final class Http2Connection
                         return;
                     }
                     decodeContext.updateSize(hf.tableSize());
+                    break;
+                default:
                     break;
             }
         }
@@ -1527,6 +1451,8 @@ final class Http2Connection
                     valueCopy.putBytes(0, value, 0, value.capacity());
                     decodeContext.add(nameCopy, valueCopy);
                 }
+                break;
+            default:
                 break;
         }
     }
@@ -1806,27 +1732,6 @@ final class Http2Connection
         {
             stream.onHttpAbort();
         }
-    }
-
-    void doRstByUs(
-        Http2Stream stream,
-        Http2ErrorCode errorCode)
-    {
-        stream.onReset(0);
-        writeScheduler.rst(stream.http2StreamId, errorCode);
-        factory.counters.resetStreamFramesWritten.getAsLong();
-        closeStream(stream);
-    }
-
-    enum State
-    {
-        IDLE,
-        RESERVED_LOCAL,
-        RESERVED_REMOTE,
-        OPEN,
-        HALF_CLOSED_LOCAL,
-        HALF_CLOSED_REMOTE,
-        CLOSED
     }
 
     private static final class HeadersContext

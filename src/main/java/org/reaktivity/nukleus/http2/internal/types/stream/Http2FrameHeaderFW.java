@@ -15,16 +15,14 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.AtomicBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
 import static java.nio.ByteOrder.BIG_ENDIAN;
 
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+
 /*
-    Flyweight for for all HTTP2 frames
+    HTTP2 frame header flyweight
 
     +-----------------------------------------------+
     |                 Length (24)                   |
@@ -32,19 +30,16 @@ import static java.nio.ByteOrder.BIG_ENDIAN;
     |   Type (8)    |   Flags (8)   |
     +-+-------------+---------------+-------------------------------+
     |R|                 Stream Identifier (31)                      |
-    +=+=============================================================+
-    |                   Frame Payload (0...)                      ...
-    +---------------------------------------------------------------+
+    +-+-------------------------------------------------------------+
  */
-public class Http2FrameFW extends Flyweight
+public class Http2FrameHeaderFW extends Flyweight
 {
     private static final int LENGTH_OFFSET = 0;
     private static final int TYPE_OFFSET = 3;
     private static final int FLAGS_OFFSET = 4;
     private static final int STREAM_ID_OFFSET = 5;
-    private static final int PAYLOAD_OFFSET = 9;
 
-    private final AtomicBuffer payloadRO = new UnsafeBuffer(new byte[0]);
+    private static final int SIZE_OF_FRAME = STREAM_ID_OFFSET + 4;
 
     public int payloadLength()
     {
@@ -73,23 +68,13 @@ public class Http2FrameFW extends Flyweight
         return buffer().getInt(offset() + STREAM_ID_OFFSET, BIG_ENDIAN) & 0x7F_FF_FF_FF;
     }
 
-    public final int payloadOffset()
-    {
-        return offset() + PAYLOAD_OFFSET;
-    }
-
-    public final DirectBuffer payload()
-    {
-        return payloadRO;
-    }
-
     @Override
     public final int limit()
     {
-        return offset() + PAYLOAD_OFFSET + payloadLength();
+        return offset() + SIZE_OF_FRAME;
     }
 
-    public Http2FrameFW tryWrap(
+    public Http2FrameHeaderFW tryWrap(
         DirectBuffer buffer,
         int offset,
         int maxLimit)
@@ -97,34 +82,22 @@ public class Http2FrameFW extends Flyweight
         // TODO: super.tryWrap != null
         boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
 
-        wrappable &= (maxLimit - offset >= 9);
-        wrappable &= (maxLimit - offset >= 9 + payloadLength());
+        wrappable &= (maxLimit - offset >= SIZE_OF_FRAME);
 
         return wrappable ? wrap(buffer, offset, maxLimit) : null;
     }
 
     @Override
-    public Http2FrameFW wrap(
+    public Http2FrameHeaderFW wrap(
         DirectBuffer buffer,
         int offset,
         int maxLimit)
     {
-        if (maxLimit - offset < 9)
+        if (maxLimit - offset < SIZE_OF_FRAME)
         {
             throw new IllegalArgumentException("Invalid HTTP2 frame - not enough bytes for 9-octet header");
         }
         super.wrap(buffer, offset, maxLimit);
-
-        final int payloadLength = payloadLength();
-        if (maxLimit - offset < 9 + payloadLength)
-        {
-            throw new IllegalArgumentException("Invalid HTTP2 frame - not enough payload bytes");
-        }
-
-        if (payloadLength > 0)
-        {
-            payloadRO.wrap(buffer, offset() + PAYLOAD_OFFSET, payloadLength);
-        }
 
         checkLimit(limit(), maxLimit);
 
@@ -138,9 +111,9 @@ public class Http2FrameFW extends Flyweight
                 type(), payloadLength(), flags(), streamId());
     }
 
-    protected static class Builder<B extends Builder, T extends Http2FrameFW> extends Flyweight.Builder<T>
+    protected static class Builder<B extends Builder<?, T>, T extends Http2FrameHeaderFW> extends Flyweight.Builder<T>
     {
-        private final Http2FrameFW frame;
+        private final Http2FrameHeaderFW frame;
 
         public Builder(T frame)
         {
@@ -175,24 +148,10 @@ public class Http2FrameFW extends Flyweight
             return (B) this;
         }
 
-        public final B payload(DirectBuffer buffer)
-        {
-            return payload(buffer, 0, buffer.capacity());
-        }
-
-        public B payload(DirectBuffer payload, int offset, int length)
-        {
-            buffer().putBytes(offset() + PAYLOAD_OFFSET, payload, offset, length);
-            payloadLength(length);
-            return (B) this;
-        }
-
         protected final B payloadLength(int length)
         {
             buffer().putShort(offset() + LENGTH_OFFSET, (short) ((length & 0x00_FF_FF_00) >>> 8), BIG_ENDIAN);
             buffer().putByte(offset() + LENGTH_OFFSET + 2, (byte) (length & 0x00_00_00_FF));
-
-            limit(offset() + PAYLOAD_OFFSET + length);
             return (B) this;
         }
 
