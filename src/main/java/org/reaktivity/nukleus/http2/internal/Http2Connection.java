@@ -406,14 +406,17 @@ final class Http2Connection
         final Http2FrameFW http2Frame)
     {
         int streamId = http2Frame.streamId();
+        Http2FrameType type = http2Frame.type();
 
-        if ((streamId & 0x01) != 0x01)
+        if ((streamId & 0x01) != 0x01 &&
+            type != Http2FrameType.WINDOW_UPDATE &&
+            type != Http2FrameType.RST_STREAM &&
+            type != Http2FrameType.PRIORITY)
         {
             decodeError = Http2ErrorCode.PROTOCOL_ERROR;
             return;
         }
 
-        Http2FrameType type = http2Frame.type();
         if (expectContinuation &&
                 (type != Http2FrameType.CONTINUATION || streamId != expectContinuationStreamId))
         {
