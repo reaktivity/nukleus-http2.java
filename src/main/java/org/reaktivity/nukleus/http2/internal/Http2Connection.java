@@ -424,9 +424,10 @@ final class Http2Connection
             return;
         }
 
-        if (streamId > maxClientStreamId &&
-                type != Http2FrameType.HEADERS &&
-                type != Http2FrameType.PRIORITY)
+        if ((streamId & 0x01) == 0x01 &&
+            streamId > maxClientStreamId &&
+            type != Http2FrameType.HEADERS &&
+            type != Http2FrameType.PRIORITY)
         {
             decodeError = Http2ErrorCode.PROTOCOL_ERROR;
             return;
