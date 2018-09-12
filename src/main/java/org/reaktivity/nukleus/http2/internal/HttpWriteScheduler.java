@@ -119,6 +119,19 @@ class HttpWriteScheduler
 
     void onWindow(int credit, int padding, long groupId)
     {
+        if (stream.endDeferred && !endSent)
+        {
+            endSent = true;
+            target.doHttpEnd(applicationTarget, targetId, traceId);
+            return;
+        }
+
+        if (!stream.isClientInitiated())
+        {
+            // promised request doesn't have any data
+            return;
+        }
+
         applicationBudget += credit;
         applicationPadding = padding;
         applicationGroupId = groupId;
