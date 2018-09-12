@@ -207,6 +207,17 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/server/controller",
+            "${spec}/server.sent.read.abort.before.correlated/client",
+            "${nukleus}/server.sent.read.abort.before.correlated/server"
+    })
+    public void serverSentReadAbortBeforeCorrelated() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
             "${spec}/rst.stream.last.frame/client",
             "${nukleus}/rst.stream.last.frame/server"
     })

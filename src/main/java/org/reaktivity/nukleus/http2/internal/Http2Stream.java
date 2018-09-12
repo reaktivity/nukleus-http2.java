@@ -36,6 +36,7 @@ class Http2Stream
     final int maxHeaderSize;
     final long targetId;
     final long correlationId;
+    boolean endDeferred;
     Http2StreamState state;
     long http2OutWindow;
     long applicationReplyBudget;
@@ -115,9 +116,15 @@ class Http2Stream
             factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
         }
 
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
-
-        factory.counters.resetStreamFramesWritten.getAsLong();
+        if (factory.correlations.containsKey(correlationId))
+        {
+            connection.send404(http2StreamId);
+        }
+        else
+        {
+            connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
+            factory.counters.resetStreamFramesWritten.getAsLong();
+        }
 
         connection.closeStream(this);
     }
@@ -212,15 +219,11 @@ class Http2Stream
         switch (msgTypeId)
         {
             case WindowFW.TYPE_ID:
-                if (isClientInitiated())
-                {
-                    factory.windowRO.wrap(buffer, index, index + length);
-                    int credit = factory.windowRO.credit();
-                    int padding = factory.windowRO.padding();
-                    long groupId = factory.windowRO.groupId();
-
-                    httpWriteScheduler.onWindow(credit, padding, groupId);
-                }
+                factory.windowRO.wrap(buffer, index, index + length);
+                int credit = factory.windowRO.credit();
+                int padding = factory.windowRO.padding();
+                long groupId = factory.windowRO.groupId();
+                httpWriteScheduler.onWindow(credit, padding, groupId);
                 break;
             case ResetFW.TYPE_ID:
                 onHttpReset();

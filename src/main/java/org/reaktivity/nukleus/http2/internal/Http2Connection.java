@@ -1005,12 +1005,20 @@ final class Http2Connection
 
         if (state == HALF_CLOSED_REMOTE)
         {
-            httpWriter.doHttpEnd(applicationTarget, stream.targetId, traceId);  // TODO use HttpWriteScheduler
+            // Deferring until WINDOW is received
+            stream.endDeferred = true;
         }
     }
 
     // No route for the HTTP2 request, send 404 on the corresponding HTTP2 stream
     private void noRoute(
+        int streamId)
+    {
+        send404(streamId);
+    }
+
+    // No route for the HTTP2 request, send 404 on the corresponding HTTP2 stream
+    void send404(
         int streamId)
     {
         ListFW<HttpHeaderFW> headers =
@@ -1177,7 +1185,7 @@ final class Http2Connection
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
         router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
-        httpWriter.doHttpEnd(applicationTarget, targetId, 0L);
+        http2Stream.endDeferred = true;
     }
 
     private Http2Stream newStream(
