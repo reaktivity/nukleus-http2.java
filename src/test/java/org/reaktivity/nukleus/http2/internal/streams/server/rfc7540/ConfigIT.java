@@ -22,7 +22,9 @@ import org.junit.rules.TestRule;
 import org.junit.rules.Timeout;
 import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
+import org.reaktivity.nukleus.http2.internal.Http2Configuration;
 import org.reaktivity.reaktor.test.ReaktorRule;
+import org.reaktivity.reaktor.test.annotation.Configure;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
@@ -41,7 +43,6 @@ public class ConfigIT
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
             .nukleus("http2"::equals)
-            .configure("nukleus.http2.server.access.control.allow.origin", "true")
             .configure("nukleus.http2.server.concurrent.streams", 100)
             .clean();
 
@@ -49,11 +50,23 @@ public class ConfigIT
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
     @Test
+    @Configure(name = Http2Configuration.HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN, value = "true")
     @Specification({
             "${route}/server/controller",
             "${spec}/access.control.allow.origin/client",
             "${nukleus}/access.control.allow.origin/server" })
     public void accessControlAllowOrigin() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Configure(name = Http2Configuration.HTTP2_SERVER_HEADER, value = "www.example.com")
+    @Specification({
+        "${route}/server/controller",
+        "${spec}/server.header/client",
+        "${nukleus}/server.header/server" })
+    public void server() throws Exception
     {
         k3po.finish();
     }

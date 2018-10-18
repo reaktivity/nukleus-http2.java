@@ -21,9 +21,11 @@ public class Http2Configuration extends Configuration
 {
     public static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
     public static final String HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN = "nukleus.http2.server.access.control.allow.origin";
+    public static final String HTTP2_SERVER_HEADER = "nukleus.http2.server.header";
 
     private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = Integer.MAX_VALUE;
     private static final boolean HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT = false;
+    private static final String HTTP2_SERVER_HEADER_DEFAULT = null;
 
     public Http2Configuration(
         Configuration config)
@@ -39,6 +41,11 @@ public class Http2Configuration extends Configuration
     public boolean accessControlAllowOrigin()
     {
         return getBoolean(HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN, HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT);
+    }
+
+    public String serverHeader()
+    {
+        return getProperty(HTTP2_SERVER_HEADER, HTTP2_SERVER_HEADER_DEFAULT);
     }
 
 }
