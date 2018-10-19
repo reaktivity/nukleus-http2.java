@@ -61,7 +61,7 @@ public class ConfigIT
     }
 
     @Test
-    @Configure(name = Http2Configuration.HTTP2_SERVER_HEADER, value = "www.example.com")
+    @Configure(name = Http2Configuration.HTTP2_SERVER_HEADER, value = "reaktivity")
     @Specification({
         "${route}/server/controller",
         "${spec}/server.header/client",
