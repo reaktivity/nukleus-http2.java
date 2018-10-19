@@ -15,20 +15,30 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.Configuration;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Http2Configuration extends Configuration
 {
     public static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
     public static final String HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN = "nukleus.http2.server.access.control.allow.origin";
+    public static final String HTTP2_SERVER_HEADER = "nukleus.http2.server.header";
 
     private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = Integer.MAX_VALUE;
     private static final boolean HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT = false;
+    private static final String HTTP2_SERVER_HEADER_DEFAULT = null;
+
+    private final DirectBuffer serverHeader;
 
     public Http2Configuration(
         Configuration config)
     {
         super(config);
+        String server = getProperty(HTTP2_SERVER_HEADER, HTTP2_SERVER_HEADER_DEFAULT);
+        serverHeader = server != null ? new UnsafeBuffer(server.getBytes(UTF_8)) : null;
     }
 
     public int serverConcurrentStreams()
@@ -39,6 +49,11 @@ public class Http2Configuration extends Configuration
     public boolean accessControlAllowOrigin()
     {
         return getBoolean(HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN, HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT);
+    }
+
+    public DirectBuffer serverHeader()
+    {
+        return serverHeader;
     }
 
 }

@@ -1520,6 +1520,7 @@ final class Http2Connection
 
         httpHeaders.forEach(this::status)                       // checks if there is :status
                    .forEach(this::accessControlAllowOrigin)     // checks if there is access-control-allow-origin
+                   .forEach(this::serverHeader)                 // checks if there is server
                    .forEach(this::connectionHeaders);           // collects all connection headers
         if (!encodeHeadersContext.status)
         {
@@ -1537,6 +1538,13 @@ final class Http2Connection
         if (factory.config.accessControlAllowOrigin() && !encodeHeadersContext.accessControlAllowOrigin)
         {
             builder.header(b -> b.literal(l -> l.type(WITHOUT_INDEXING).name(20).value(DEFAULT_ACCESS_CONTROL_ALLOW_ORIGIN)));
+        }
+
+        // add configured Server header if there is no Server header in response
+        if (factory.config.serverHeader() != null && !encodeHeadersContext.serverHeader)
+        {
+            DirectBuffer server = factory.config.serverHeader();
+            builder.header(b -> b.literal(l -> l.type(WITHOUT_INDEXING).name(54).value(server)));
         }
     }
 
@@ -1571,6 +1579,24 @@ final class Http2Connection
             if (factory.nameRO.equals(encodeContext.nameBuffer(20)))
             {
                 encodeHeadersContext.accessControlAllowOrigin = true;
+            }
+        }
+    }
+
+    // Checks if response has server header
+    private void serverHeader(
+        HttpHeaderFW httpHeader)
+    {
+        if (factory.config.serverHeader() != null && !encodeHeadersContext.serverHeader)
+        {
+            StringFW name = httpHeader.name();
+            String16FW value = httpHeader.value();
+            factory.nameRO.wrap(name.buffer(), name.offset() + 1, name.sizeof() - 1); // +1, -1 for length-prefixed buffer
+            factory.valueRO.wrap(value.buffer(), value.offset() + 2, value.sizeof() - 2);
+
+            if (factory.nameRO.equals(encodeContext.nameBuffer(54)))
+            {
+                encodeHeadersContext.serverHeader = true;
             }
         }
     }
@@ -1814,12 +1840,14 @@ final class Http2Connection
     {
         boolean status;
         boolean accessControlAllowOrigin;
+        boolean serverHeader;
         final List<String> connectionHeaders = new ArrayList<>();
 
         void reset()
         {
             status = false;
             accessControlAllowOrigin = false;
+            serverHeader = false;
             connectionHeaders.clear();
         }
 
