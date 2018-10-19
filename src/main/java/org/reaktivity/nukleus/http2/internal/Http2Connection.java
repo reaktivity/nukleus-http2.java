@@ -1543,7 +1543,7 @@ final class Http2Connection
         // add configured Server header if there is no Server header in response
         if (factory.config.serverHeader() != null && !encodeHeadersContext.serverHeader)
         {
-            String server = factory.config.serverHeader();
+            DirectBuffer server = factory.config.serverHeader();
             builder.header(b -> b.literal(l -> l.type(WITHOUT_INDEXING).name(54).value(server)));
         }
     }
