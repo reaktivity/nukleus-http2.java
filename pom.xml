@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
-  <version>0.73</version>
+  <version>0.74</version>
   <name>HTTP/2 Nukleus Implementation</name>
   <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
@@ -55,7 +55,7 @@
     <nukleus.plugin.version>0.28</nukleus.plugin.version>
     <nukleus.version>0.22</nukleus.version>
 
-    <nukleus.http2.spec.version>0.51</nukleus.http2.spec.version>
+    <nukleus.http2.spec.version>0.52</nukleus.http2.spec.version>
     <nukleus.tcp.version>0.56</nukleus.tcp.version>
     <reaktor.version>0.59</reaktor.version>
   </properties>
@@ -161,7 +161,7 @@
         <configuration>
           <header>COPYRIGHT</header>
           <properties>
-            <copyrightYears>2016-2017</copyrightYears>
+            <copyrightYears>2016-2018</copyrightYears>
           </properties>
           <includes>
             <include>src/**</include>
@@ -182,7 +182,7 @@
       </plugin>
       <plugin>
         <artifactId>maven-checkstyle-plugin</artifactId>
-        <version>2.17</version>
+        <version>3.0.0</version>
         <configuration>
           <includeTestSourceDirectory>true</includeTestSourceDirectory>
         </configuration>
@@ -194,6 +194,13 @@
             </goals>
           </execution>
         </executions>
+        <dependencies>
+          <dependency>
+            <groupId>com.puppycrawl.tools</groupId>
+            <artifactId>checkstyle</artifactId>
+            <version>8.3</version>
+          </dependency>
+        </dependencies>
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
