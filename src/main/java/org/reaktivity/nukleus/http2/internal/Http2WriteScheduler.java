@@ -402,6 +402,14 @@ public class Http2WriteScheduler implements WriteScheduler
     {
         int[] length = new int[1];
         headers.forEach(x -> length[0] += x.name().sizeof() + x.value().sizeof() + 4);
+
+        // may inject server header, so add it into calculations
+        DirectBuffer serverHeader = connection.factory.config.serverHeader();
+        length[0] += serverHeader == null ? 0 : serverHeader.capacity() + 4;
+
+        // may inject access-control-allow-origin: *, so add it into calculations
+        length[0] += 4;
+
         return length[0];
     }
 
