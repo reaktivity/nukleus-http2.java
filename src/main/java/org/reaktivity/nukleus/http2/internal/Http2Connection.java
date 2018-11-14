@@ -456,6 +456,9 @@ final class Http2Connection
                 factory.counters.priorityFramesRead.getAsLong();
                 onStreamPriority(stream, http2Frame);
                 break;
+            case RST_STREAM:
+                onStreamRst(stream, http2Frame);
+                break;
             case UNKNOWN:
                 break;
             default:
@@ -876,8 +879,11 @@ final class Http2Connection
             return;
         }
 
-        stream.onReset(0);
-        closeStream(stream);
+        if (stream != null)
+        {
+            stream.onReset(0);
+            closeStream(stream);
+        }
     }
 
     private void applySetting(
