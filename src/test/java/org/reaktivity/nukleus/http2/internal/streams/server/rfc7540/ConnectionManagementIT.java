@@ -140,6 +140,16 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/server/controller",
+            "${spec}/ignore.rst.stream/client",
+            "${nukleus}/ignore.rst.stream/server" })
+    public void ignoreRsttStream() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
             "${spec}/client.sent.read.abort.on.open.request/client",
             "${nukleus}/client.sent.read.abort.on.open.request/server"
     })
