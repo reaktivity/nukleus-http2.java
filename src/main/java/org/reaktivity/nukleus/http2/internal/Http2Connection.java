@@ -457,7 +457,7 @@ final class Http2Connection
                 onStreamPriority(stream, http2Frame);
                 break;
             case RST_STREAM:
-                onStreamRst(stream, http2Frame, true);
+                onStreamRst(stream, http2Frame);
                 break;
             case UNKNOWN:
                 break;
@@ -484,7 +484,7 @@ final class Http2Connection
                 break;
             case RST_STREAM:
                 factory.counters.resetStreamFramesRead.getAsLong();
-                onStreamRst(stream, http2Frame, false);
+                onStreamRst(stream, http2Frame);
                 break;
             case WINDOW_UPDATE:
                 factory.counters.windowUpdateFramesRead.getAsLong();
@@ -869,8 +869,7 @@ final class Http2Connection
 
     private void onStreamRst(
         Http2Stream stream,
-        Http2FrameFW http2Frame,
-        boolean ignore)
+        Http2FrameFW http2Frame)
     {
         Http2RstStreamFW http2RstStream =
                 factory.http2RstStreamRO.tryWrap(http2Frame.buffer(), http2Frame.offset(), http2Frame.limit());
@@ -880,7 +879,7 @@ final class Http2Connection
             return;
         }
 
-        if (!ignore)
+        if (stream != null)
         {
             stream.onReset(0);
             closeStream(stream);
