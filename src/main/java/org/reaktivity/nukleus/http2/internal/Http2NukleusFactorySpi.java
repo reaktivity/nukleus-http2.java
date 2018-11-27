@@ -32,12 +32,13 @@ public final class Http2NukleusFactorySpi implements NukleusFactorySpi
 
     @Override
     public Nukleus create(
-            Configuration config,
-            NukleusBuilder builder)
+        Configuration config,
+        NukleusBuilder builder)
     {
         Http2Configuration http2Config = new Http2Configuration(config);
         ServerStreamFactoryBuilder streamFactoryBuilder = new ServerStreamFactoryBuilder(http2Config);
-        return builder.streamFactory(SERVER, streamFactoryBuilder)
+        return builder.configure(http2Config)
+                      .streamFactory(SERVER, streamFactoryBuilder)
                       .build();
     }
 }

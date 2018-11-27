@@ -15,40 +15,47 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import org.agrona.DirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.Configuration;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 public class Http2Configuration extends Configuration
 {
-    public static final String HTTP2_SERVER_CONCURRENT_STREAMS = "nukleus.http2.server.concurrent.streams";
-    public static final String HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN = "nukleus.http2.server.access.control.allow.origin";
-    public static final String HTTP2_SERVER_HEADER = "nukleus.http2.server.header";
+    public static final IntPropertyDef HTTP2_SERVER_CONCURRENT_STREAMS;
+    public static final BooleanPropertyDef HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN;
+    public static final PropertyDef<String> HTTP2_SERVER_HEADER;
 
-    private static final int HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT = Integer.MAX_VALUE;
-    private static final boolean HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT = false;
-    private static final String HTTP2_SERVER_HEADER_DEFAULT = null;
+    private static final ConfigurationDef HTTP2_CONFIG;
+
+    static
+    {
+        final ConfigurationDef config = new ConfigurationDef("nukleus.http2");
+        HTTP2_SERVER_CONCURRENT_STREAMS = config.property("server.concurrent.streams", Integer.MAX_VALUE);
+        HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN = config.property("server.access.control.allow.origin", false);
+        HTTP2_SERVER_HEADER = config.property("server.header");
+        HTTP2_CONFIG = config;
+    }
 
     private final DirectBuffer serverHeader;
 
     public Http2Configuration(
         Configuration config)
     {
-        super(config);
-        String server = getProperty(HTTP2_SERVER_HEADER, HTTP2_SERVER_HEADER_DEFAULT);
+        super(HTTP2_CONFIG, config);
+        String server = HTTP2_SERVER_HEADER.get(this);
         serverHeader = server != null ? new UnsafeBuffer(server.getBytes(UTF_8)) : null;
     }
 
     public int serverConcurrentStreams()
     {
-        return getInteger(HTTP2_SERVER_CONCURRENT_STREAMS, HTTP2_SERVER_CONCURRENT_STREAMS_DEFAULT);
+        return HTTP2_SERVER_CONCURRENT_STREAMS.getAsInt(this);
     }
 
     public boolean accessControlAllowOrigin()
     {
-        return getBoolean(HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN, HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_DEFALUT);
+        return HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN.get(this);
     }
 
     public DirectBuffer serverHeader()

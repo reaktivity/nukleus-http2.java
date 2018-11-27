@@ -26,6 +26,7 @@ import org.reaktivity.reaktor.test.ReaktorRule;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
+import static org.reaktivity.nukleus.http2.internal.Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS;
 
 public class SettingsIT
 {
@@ -41,7 +42,7 @@ public class SettingsIT
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
             .nukleus("http2"::equals)
-            .configure("nukleus.http2.server.concurrent.streams", 250)
+            .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 250)
             .clean();
 
     @Rule
