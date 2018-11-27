@@ -32,11 +32,11 @@ public class Http2Server
     public static void main(String... args) throws Exception
     {
         Properties properties = new Properties();
-        properties.setProperty(ReaktorConfiguration.DIRECTORY_PROPERTY_NAME, "target/nukleus-benchmarks");
-        properties.setProperty(ReaktorConfiguration.STREAMS_BUFFER_CAPACITY_PROPERTY_NAME, Long.toString(1024L * 1024L * 128L));
-        properties.setProperty(ReaktorConfiguration.BUFFER_POOL_CAPACITY_PROPERTY, Long.toString(1024L * 1024L * 128L));
-        properties.setProperty(ReaktorConfiguration.BUFFER_SLOT_CAPACITY_PROPERTY, Integer.toString(32768));
-        properties.setProperty(Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS, Integer.toString(50));
+        properties.setProperty(ReaktorConfiguration.REAKTOR_DIRECTORY.name(), "target/nukleus-benchmarks");
+        properties.setProperty(ReaktorConfiguration.REAKTOR_STREAMS_BUFFER_CAPACITY.name(), Long.toString(1024L * 1024L * 128L));
+        properties.setProperty(ReaktorConfiguration.REAKTOR_BUFFER_POOL_CAPACITY.name(), Long.toString(1024L * 1024L * 128L));
+        properties.setProperty(ReaktorConfiguration.REAKTOR_BUFFER_SLOT_CAPACITY.name(), Integer.toString(32768));
+        properties.setProperty(Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS.name(), Integer.toString(50));
 
         Configuration configuration = new Configuration(properties);
         Reaktor reaktor = Reaktor.builder()
