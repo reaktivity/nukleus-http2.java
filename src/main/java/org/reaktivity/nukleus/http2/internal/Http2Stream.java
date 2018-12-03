@@ -62,7 +62,7 @@ class Http2Stream
         this.factory = factory;
         this.connection = connection;
         this.http2StreamId = http2StreamId;
-        this.targetId = factory.supplyStreamId.getAsLong();
+        this.targetId = factory.supplyInitialId.getAsLong();
         this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
 
