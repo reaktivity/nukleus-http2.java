@@ -21,6 +21,7 @@ import java.util.function.Function;
 import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
+import java.util.function.LongUnaryOperator;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
@@ -110,7 +111,8 @@ public final class ServerStreamFactory implements StreamFactory
     final BufferPool headersPool;
     final BufferPool httpWriterPool;
     final BufferPool http2ReplyPool;
-    final LongSupplier supplyStreamId;
+    final LongSupplier supplyInitialId;
+    final LongUnaryOperator supplyReplyId;
     final LongSupplier supplyTrace;
     final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
@@ -131,7 +133,8 @@ public final class ServerStreamFactory implements StreamFactory
         RouteManager router,
         MutableDirectBuffer writeBuffer,
         BufferPool bufferPool,
-        LongSupplier supplyStreamId,
+        LongSupplier supplyInitialId,
+        LongUnaryOperator supplyReplyId,
         LongSupplier supplyCorrelationId,
         Long2ObjectHashMap<Correlation> correlations,
         LongSupplier supplyGroupId,
@@ -148,7 +151,8 @@ public final class ServerStreamFactory implements StreamFactory
         this.headersPool = bufferPool.duplicate();
         this.httpWriterPool = bufferPool.duplicate();
         this.http2ReplyPool = bufferPool.duplicate();
-        this.supplyStreamId = requireNonNull(supplyStreamId);
+        this.supplyInitialId = requireNonNull(supplyInitialId);
+        this.supplyReplyId = requireNonNull(supplyReplyId);
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
         this.supplyGroupId = requireNonNull(supplyGroupId);
@@ -316,7 +320,7 @@ public final class ServerStreamFactory implements StreamFactory
             networkCorrelationId = begin.correlationId();
 
             networkReply = router.supplyTarget(networkReplyName);
-            networkReplyId = supplyStreamId.getAsLong();
+            networkReplyId = supplyReplyId.applyAsLong(networkId);
 
             initialWindow = bufferPool.slotCapacity();
             doWindow(networkThrottle, networkId, initialWindow, 0, 0);
