@@ -19,7 +19,6 @@ import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 import static org.reaktivity.nukleus.http2.internal.Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS;
 
-import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.DisableOnDebug;
@@ -49,7 +48,6 @@ public class ConnectionManagementIT
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
-    @Ignore("TODO: transport stream->nukleus->http stream")
     @Test
     @Specification({
             "${route}/server/controller",
@@ -203,7 +201,6 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
-    @Ignore("BEGIN vs RESET read order not yet guaranteed to match write order")
     @Test
     @Specification({
             "${route}/server/controller",

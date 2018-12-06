@@ -179,16 +179,16 @@ class Http2Stream
 
     void onReset(long networkReplyTraceId)
     {
-        // more request data to be sent, so send ABORT
-        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
-        {
-            httpWriteScheduler.doAbort(0);
-        }
-
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
             factory.doReset(applicationReplyThrottle, applicationReplyId, networkReplyTraceId);
+        }
+
+        // more request data to be sent, so send ABORT
+        if (state != Http2StreamState.HALF_CLOSED_REMOTE)
+        {
+            httpWriteScheduler.doAbort(0);
         }
 
         close();
