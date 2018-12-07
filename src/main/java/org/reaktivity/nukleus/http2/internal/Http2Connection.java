@@ -1072,7 +1072,7 @@ final class Http2Connection
     {
         MessagePredicate filter = (t, b, o, l) ->
         {
-            RouteFW route = factory.routeRO.wrap(b, o, l);
+            RouteFW route = factory.routeRO.wrap(b, o, o + l);
             OctetsFW extension = route.extension();
             if (sourceRef == route.sourceRef() && sourceName.equals(route.source().asString()))
             {
