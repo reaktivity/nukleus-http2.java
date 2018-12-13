@@ -49,14 +49,15 @@ public class Http2WriteScheduler implements WriteScheduler
     private int entryCount;
 
     Http2WriteScheduler(
-            Http2Connection connection,
-            MessageConsumer networkReply,
-            Http2Writer http2Writer,
-            long networkReplyId)
+        Http2Connection connection,
+        MessageConsumer networkReply,
+        Http2Writer http2Writer,
+        long networkRouteId,
+        long networkReplyId)
     {
         this.connection = connection;
         this.http2Writer = http2Writer;
-        this.writer = new NukleusWriteScheduler(connection, networkReply, http2Writer, networkReplyId);
+        this.writer = new NukleusWriteScheduler(connection, networkReply, http2Writer, networkRouteId, networkReplyId);
         this.replyQueue = new LinkedList<>();
     }
 

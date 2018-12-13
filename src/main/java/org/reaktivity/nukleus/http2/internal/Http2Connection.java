@@ -102,6 +102,7 @@ final class Http2Connection
     private int headersSlotIndex = NO_SLOT;
     private int headersSlotOffset;
 
+    final long networkRouteId;
     final long networkId;
     long authorization;
     int lastStreamId;
@@ -153,6 +154,7 @@ final class Http2Connection
         ServerStreamFactory factory,
         RouteManager router,
         MessageConsumer network,
+        long networkRouteId,
         long networkId,
         MessageConsumer networkReply,
         long networkReplyId,
@@ -163,6 +165,7 @@ final class Http2Connection
         this.wrapRoute = wrapRoute;
         this.network = network;
         this.networkId = networkId;
+        this.networkRouteId = networkRouteId;
         this.networkReplyId = networkReplyId;
         this.http2Streams = new Int2ObjectHashMap<>();
         this.localSettings = new Settings();
@@ -170,7 +173,7 @@ final class Http2Connection
         this.decodeContext = new HpackContext(localSettings.headerTableSize, false);
         this.encodeContext = new HpackContext(remoteSettings.headerTableSize, true);
         this.http2Writer = factory.http2Writer;
-        this.writeScheduler = new Http2WriteScheduler(this, networkReply, http2Writer, this.networkReplyId);
+        this.writeScheduler = new Http2WriteScheduler(this, networkReply, http2Writer, networkRouteId, networkReplyId);
         this.http2InWindow = localSettings.initialWindowSize;
         this.http2OutWindow = remoteSettings.initialWindowSize;
         this.networkReply = networkReply;
@@ -627,7 +630,7 @@ final class Http2Connection
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(network, networkId, 0);
+                factory.doReset(network, networkRouteId, networkId, 0);
                 handleAbort(0);
                 return;
             }
@@ -979,7 +982,7 @@ final class Http2Connection
 
     private void doResetNetworkAndCleanup()
     {
-        factory.doReset(networkReply, networkId, 0);
+        factory.doReset(networkReply, networkRouteId, networkId, 0);
         doCleanup();
     }
 
@@ -996,16 +999,17 @@ final class Http2Connection
         Http2StreamState state,
         RouteFW route)
     {
+        final long applicationRouteId = route.correlationId();
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         HttpWriter httpWriter = factory.httpWriter;
-        Http2Stream stream = newStream(streamId, state, applicationTarget, httpWriter);
+        Http2Stream stream = newStream(streamId, state, applicationRouteId, applicationTarget, httpWriter);
         final long targetRef = route.targetRef();
 
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpWriter.doHttpBegin(applicationTarget, stream.targetId, traceId, targetRef, stream.correlationId,
+        httpWriter.doHttpBegin(applicationTarget, applicationRouteId, stream.targetId, traceId, targetRef, stream.correlationId,
                 beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
         router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
 
@@ -1109,8 +1113,8 @@ final class Http2Connection
 
         factory.counters.goawayFramesWritten.getAsLong();
 
-        factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
-        factory.doAbort(networkReply, networkReplyId);
+        factory.doReset(network, networkRouteId, networkId, factory.supplyTrace.getAsLong());
+        factory.doAbort(networkReply, networkRouteId, networkReplyId);
         http2Streams.forEach((i, s) -> s.onError(traceId));
         doCleanup();
     }
@@ -1179,14 +1183,15 @@ final class Http2Connection
         headers.forEach(
                 httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
         RouteFW route = resolveTarget(sourceRef, sourceName, headersMap);
+        final long applicationRouteId = route.correlationId();
         final String applicationName = route.target().asString();
         final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
         HttpWriter httpWriter = factory.httpWriter;
-        Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, applicationTarget, httpWriter);
+        Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, applicationRouteId, applicationTarget, httpWriter);
         long targetId = http2Stream.targetId;
         long targetRef = route.targetRef();
 
-        httpWriter.doHttpBegin(applicationTarget, targetId, factory.supplyTrace.getAsLong(), authorization,
+        httpWriter.doHttpBegin(applicationTarget, applicationRouteId, targetId, factory.supplyTrace.getAsLong(), authorization,
                 targetRef, http2Stream.correlationId,
                 hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
@@ -1197,12 +1202,14 @@ final class Http2Connection
     private Http2Stream newStream(
         int http2StreamId,
         Http2StreamState state,
+        long applicationRouteId,
         MessageConsumer applicationTarget,
         HttpWriter httpWriter)
     {
         assert http2StreamId != 0;
 
-        Http2Stream http2Stream = new Http2Stream(factory, this, http2StreamId, state, applicationTarget, httpWriter);
+        Http2Stream http2Stream = new Http2Stream(factory, this, http2StreamId, state,
+                applicationTarget, applicationRouteId, httpWriter);
         http2Streams.put(http2StreamId, http2Stream);
 
         Correlation correlation = new Correlation(http2Stream.correlationId, networkReplyId, writeScheduler,
@@ -1710,6 +1717,7 @@ final class Http2Connection
     void handleHttpBegin(
         BeginFW begin,
         MessageConsumer applicationReplyThrottle,
+        long applicationRouteId,
         long applicationReplyId,
         Correlation correlation)
     {
@@ -1717,7 +1725,7 @@ final class Http2Connection
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
         if (stream == null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, 0);
         }
         else
         {
