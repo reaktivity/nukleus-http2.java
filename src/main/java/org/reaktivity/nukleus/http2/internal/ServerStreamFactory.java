@@ -283,7 +283,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(networkThrottle, networkId, 0);
+                doReset(networkThrottle, networkId, supplyTrace.getAsLong());
             }
         }
 
@@ -308,7 +308,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(networkThrottle, networkId, 0);
+                    doReset(networkThrottle, networkId, supplyTrace.getAsLong());
                     break;
             }
         }
@@ -342,7 +342,7 @@ public final class ServerStreamFactory implements StreamFactory
             window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
-                doReset(networkThrottle, networkId, 0);
+                doReset(networkThrottle, networkId, supplyTrace.getAsLong());
                 //http2Connection.handleReset();
             }
             else
@@ -419,8 +419,7 @@ public final class ServerStreamFactory implements StreamFactory
             ResetFW reset)
         {
             http2Connection.handleReset(reset);
-
-            doReset(networkThrottle, networkId, 0);
+            doReset(networkThrottle, networkId, reset.typeId());
         }
     }
 
@@ -466,7 +465,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId, 0);
+                doReset(applicationReplyThrottle, applicationReplyId, supplyTrace.getAsLong());
             }
         }
 
@@ -491,7 +490,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(applicationReplyThrottle, applicationReplyId, 0);
+                    doReset(applicationReplyThrottle, applicationReplyId, supplyTrace.getAsLong());
                     break;
             }
         }
@@ -512,7 +511,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId, 0);
+                doReset(applicationReplyThrottle, applicationReplyId, supplyTrace.getAsLong());
             }
         }
 

@@ -281,7 +281,7 @@ final class Http2Connection
                 decodeError != null && decodeError != Http2ErrorCode.NO_ERROR)
         {
             // TODO: use traceId ??
-            http2Streams.forEach((i, s) -> s.onAbort(0));
+            http2Streams.forEach((i, s) -> s.onAbort(factory.supplyTrace.getAsLong()));
             doResetNetworkAndCleanup();
         }
     }
@@ -627,8 +627,8 @@ final class Http2Connection
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(network, networkId, 0);
-                handleAbort(0);
+                factory.doReset(network, networkId, factory.supplyTrace.getAsLong());
+                handleAbort(factory.supplyTrace.getAsLong());
                 return;
             }
 
@@ -881,7 +881,7 @@ final class Http2Connection
 
         if (stream != null)
         {
-            stream.onReset(0);
+            stream.onReset(factory.supplyTrace.getAsLong());
             closeStream(stream);
         }
     }
@@ -979,7 +979,7 @@ final class Http2Connection
 
     private void doResetNetworkAndCleanup()
     {
-        factory.doReset(networkReply, networkId, 0);
+        factory.doReset(networkReply, networkId, factory.supplyTrace.getAsLong());
         doCleanup();
     }
 
@@ -1119,7 +1119,7 @@ final class Http2Connection
         Http2Stream stream,
         Http2ErrorCode errorCode)
     {
-        stream.onReset(0);
+        stream.onReset(factory.supplyTrace.getAsLong());
         doRstStream(stream.http2StreamId, errorCode);
         closeStream(stream);
     }
@@ -1717,7 +1717,7 @@ final class Http2Connection
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
         if (stream == null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationReplyId, factory.supplyTrace.getAsLong());
         }
         else
         {
