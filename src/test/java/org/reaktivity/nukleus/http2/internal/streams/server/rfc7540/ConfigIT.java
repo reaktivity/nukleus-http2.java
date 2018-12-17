@@ -44,9 +44,9 @@ public class ConfigIT
             .directory("target/nukleus-itests")
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
+            .counterValuesBufferCapacity(4096)
             .nukleus("http2"::equals)
-            .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100)
-            .clean();
+            .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100);
 
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);

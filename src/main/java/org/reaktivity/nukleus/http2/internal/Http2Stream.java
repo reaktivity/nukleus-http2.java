@@ -36,6 +36,8 @@ class Http2Stream
     final int maxHeaderSize;
     final long targetId;
     final long correlationId;
+    final long applicationRouteId;
+
     boolean endDeferred;
     Http2StreamState state;
     long http2OutWindow;
@@ -56,19 +58,27 @@ class Http2Stream
     MessageConsumer applicationReplyThrottle;
     long applicationReplyId;
 
-    Http2Stream(ServerStreamFactory factory, Http2Connection connection, int http2StreamId, Http2StreamState state,
-                MessageConsumer applicationTarget, HttpWriter httpWriter)
+    Http2Stream(
+        ServerStreamFactory factory,
+        Http2Connection connection,
+        int http2StreamId,
+        Http2StreamState state,
+        MessageConsumer applicationTarget,
+        long applicationRouteId,
+        HttpWriter httpWriter)
     {
         this.factory = factory;
         this.connection = connection;
         this.http2StreamId = http2StreamId;
         this.targetId = factory.supplyInitialId.getAsLong();
+        this.applicationRouteId = applicationRouteId;
         this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationTarget, httpWriter, targetId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationTarget, httpWriter,
+                applicationRouteId, targetId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
         this.maxHeaderSize = 0;     // maxHeaderSize();
     }
@@ -113,7 +123,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, factory.supplyTrace.getAsLong());
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         if (factory.correlations.containsKey(correlationId))
@@ -154,7 +164,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, factory.supplyTrace.getAsLong());
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         close();
@@ -171,7 +181,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, factory.supplyTrace.getAsLong());
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         close();
@@ -182,7 +192,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, networkReplyTraceId);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, networkReplyTraceId);
         }
 
         // more request data to be sent, so send ABORT
@@ -204,7 +214,7 @@ class Http2Stream
 
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationReplyId, factory.supplyTrace.getAsLong());
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         close();
@@ -278,7 +288,7 @@ class Http2Stream
         {
             applicationReplyBudget += applicationReplyCredit;
             int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
-            connection.factory.doWindow(applicationReplyThrottle, applicationReplyId,
+            connection.factory.doWindow(applicationReplyThrottle, applicationRouteId, applicationReplyId,
                     (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
         }
     }

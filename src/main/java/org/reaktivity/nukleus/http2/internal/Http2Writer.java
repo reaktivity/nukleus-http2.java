@@ -59,8 +59,9 @@ class Http2Writer
     }
 
     void doData(
-        MessageConsumer target,
-        long targetId,
+        MessageConsumer receiver,
+        long routeId,
+        long streamId,
         long traceId,
         int padding,
         MutableDirectBuffer payload,
@@ -69,27 +70,29 @@ class Http2Writer
     {
         assert offset >= DataFW.FIELD_OFFSET_PAYLOAD;
 
-        DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
-                            .streamId(targetId)
-                            .trace(traceId)
-                            .groupId(0)
-                            .padding(padding)
-                            .payload(p -> p.set((b, o, l) -> length))
-                            .build();
+        final DataFW data = dataRW.wrap(payload, offset - DataFW.FIELD_OFFSET_PAYLOAD, offset + length)
+                .routeId(routeId)
+                .streamId(streamId)
+                .trace(traceId)
+                .groupId(0)
+                .padding(padding)
+                .payload(p -> p.set((b, o, l) -> length))
+                .build();
 
-        target.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+        receiver.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
     }
 
     void doEnd(
-        MessageConsumer target,
-        long targetId)
+        MessageConsumer receiver,
+        long routeId,
+        long streamId)
     {
-        EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                         .streamId(targetId)
-                         .extension(e -> e.reset())
-                         .build();
+        final EndFW end = endRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .routeId(routeId)
+                .streamId(streamId)
+                .build();
 
-        target.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
+        receiver.accept(end.typeId(), end.buffer(), end.offset(), end.sizeof());
     }
 
     int settings(

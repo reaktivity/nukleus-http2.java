@@ -26,6 +26,7 @@ class HttpWriteScheduler
 {
     private final ServerStreamFactory factory;
     private final HttpWriter target;
+    private final long applicationRouteId;
     private final long targetId;
     private final MessageConsumer applicationTarget;
 
@@ -42,12 +43,18 @@ class HttpWriteScheduler
     private int totalWritten;
     private long traceId;
 
-    HttpWriteScheduler(ServerStreamFactory factory, MessageConsumer applicationTarget, HttpWriter target, long targetId,
-                       Http2Stream stream)
+    HttpWriteScheduler(
+        ServerStreamFactory factory,
+        MessageConsumer applicationTarget,
+        HttpWriter target,
+        long applicationRouteId,
+        long targetId,
+        Http2Stream stream)
     {
         this.factory = factory;
         this.applicationTarget = applicationTarget;
         this.target = target;
+        this.applicationRouteId = applicationRouteId;
         this.targetId = targetId;
         this.stream = stream;
     }
@@ -99,7 +106,7 @@ class HttpWriteScheduler
             if (end && !endSent)
             {
                 endSent = true;
-                target.doHttpEnd(applicationTarget, targetId, traceId);
+                target.doHttpEnd(applicationTarget, applicationRouteId, targetId, traceId);
             }
 
             return true;
@@ -122,7 +129,7 @@ class HttpWriteScheduler
         if (stream.endDeferred && !endSent)
         {
             endSent = true;
-            target.doHttpEnd(applicationTarget, targetId, traceId);
+            target.doHttpEnd(applicationTarget, applicationRouteId, targetId, traceId);
             return;
         }
 
@@ -155,7 +162,7 @@ class HttpWriteScheduler
                 if (end && !endSent)
                 {
                     endSent = true;
-                    target.doHttpEnd(applicationTarget, targetId, traceId);
+                    target.doHttpEnd(applicationTarget, applicationRouteId, targetId, traceId);
                 }
 
                 release();
@@ -182,7 +189,7 @@ class HttpWriteScheduler
     private void toHttp(DirectBuffer buffer, int offset, int length)
     {
         applicationBudget -= length + applicationPadding;
-        target.doHttpData(applicationTarget, targetId, traceId, applicationPadding, buffer, offset, length);
+        target.doHttpData(applicationTarget, applicationRouteId, targetId, traceId, applicationPadding, buffer, offset, length);
         totalWritten += length;
         traceId = 0;
     }
@@ -194,7 +201,7 @@ class HttpWriteScheduler
 
     void doAbort(long traceId)
     {
-        target.doHttpAbort(applicationTarget, targetId, traceId);
+        target.doHttpAbort(applicationTarget, applicationRouteId, targetId, traceId);
         release();
     }
 

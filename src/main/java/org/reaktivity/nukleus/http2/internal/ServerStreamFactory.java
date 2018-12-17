@@ -212,9 +212,10 @@ public final class ServerStreamFactory implements StreamFactory
 
         if (route != null)
         {
+            final long networkRouteId = begin.routeId();
             final long networkId = begin.streamId();
 
-            newStream = new ServerAcceptStream(networkThrottle, networkId)::handleStream;
+            newStream = new ServerAcceptStream(networkThrottle, networkRouteId, networkId)::handleStream;
         }
 
         return newStream;
@@ -222,11 +223,12 @@ public final class ServerStreamFactory implements StreamFactory
 
     private MessageConsumer newConnectReplyStream(
         final BeginFW begin,
-        final MessageConsumer throttle)
+        final MessageConsumer sender)
     {
-        final long throttleId = begin.streamId();
+        final long routeId = begin.routeId();
+        final long streamId = begin.streamId();
 
-        return new ServerConnectReplyStream(throttle, throttleId)::handleStream;
+        return new ServerConnectReplyStream(sender, routeId, streamId)::handleStream;
     }
 
     private RouteFW wrapRoute(
@@ -241,6 +243,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final class ServerAcceptStream
     {
         private final MessageConsumer networkThrottle;
+        private final long networkRouteId;
         private final long networkId;
 
         private long networkCorrelationId;
@@ -254,9 +257,11 @@ public final class ServerStreamFactory implements StreamFactory
 
         private ServerAcceptStream(
             MessageConsumer networkThrottle,
+            long networkRouteId,
             long networkId)
         {
             this.networkThrottle = networkThrottle;
+            this.networkRouteId = networkRouteId;
             this.networkId = networkId;
             this.streamState = this::beforeBegin;
         }
@@ -283,7 +288,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(networkThrottle, networkId, supplyTrace.getAsLong());
+                doReset(networkThrottle, networkRouteId, networkId, supplyTrace.getAsLong());
             }
         }
 
@@ -308,7 +313,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(networkThrottle, networkId, supplyTrace.getAsLong());
+                    doReset(networkThrottle, networkRouteId, networkId, supplyTrace.getAsLong());
                     break;
             }
         }
@@ -323,15 +328,15 @@ public final class ServerStreamFactory implements StreamFactory
             networkReplyId = supplyReplyId.applyAsLong(networkId);
 
             initialWindow = bufferPool.slotCapacity();
-            doWindow(networkThrottle, networkId, initialWindow, 0, 0);
+            doWindow(networkThrottle, networkRouteId, networkId, initialWindow, 0, 0);
             window = initialWindow;
 
-            doBegin(networkReply, networkReplyId, supplyTrace.getAsLong(), 0L, networkCorrelationId);
+            doBegin(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong(), 0L, networkCorrelationId);
             router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
             http2Connection = new Http2Connection(ServerStreamFactory.this, router,
-                    networkThrottle, networkId,
+                    networkThrottle, networkRouteId, networkId,
                     networkReply, networkReplyId, wrapRoute);
             http2Connection.handleBegin(begin);
         }
@@ -342,7 +347,7 @@ public final class ServerStreamFactory implements StreamFactory
             window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
-                doReset(networkThrottle, networkId, supplyTrace.getAsLong());
+                doReset(networkThrottle, networkRouteId, networkId, supplyTrace.getAsLong());
                 //http2Connection.handleReset();
             }
             else
@@ -355,7 +360,7 @@ public final class ServerStreamFactory implements StreamFactory
                     if (windowPending > 0)
                     {
                         window += windowPending;
-                        doWindow(networkThrottle, networkId, windowPending, 0, 0);
+                        doWindow(networkThrottle, networkRouteId, networkId, windowPending, 0, 0);
                     }
                 }
             }
@@ -373,7 +378,7 @@ public final class ServerStreamFactory implements StreamFactory
             correlations.remove(networkCorrelationId);
 
             // aborts reply stream
-            doAbort(networkReply, networkReplyId);
+            doAbort(networkReply, networkRouteId, networkReplyId);
 
             // aborts http request stream, resets http response stream
             http2Connection.handleAbort(abort.trace());
@@ -419,7 +424,7 @@ public final class ServerStreamFactory implements StreamFactory
             ResetFW reset)
         {
             http2Connection.handleReset(reset);
-            doReset(networkThrottle, networkId, reset.typeId());
+            doReset(networkThrottle, networkRouteId, networkId, supplyTrace.getAsLong());
         }
     }
 
@@ -427,6 +432,7 @@ public final class ServerStreamFactory implements StreamFactory
     private final class ServerConnectReplyStream
     {
         private final MessageConsumer applicationReplyThrottle;
+        private final long applicationRouteId;
         private final long applicationReplyId;
 
         private MessageConsumer streamState;
@@ -436,9 +442,11 @@ public final class ServerStreamFactory implements StreamFactory
 
         private ServerConnectReplyStream(
             MessageConsumer applicationReplyThrottle,
+            long applicationRouteId,
             long applicationReplyId)
         {
             this.applicationReplyThrottle = applicationReplyThrottle;
+            this.applicationRouteId = applicationRouteId;
             this.applicationReplyId = applicationReplyId;
             this.streamState = this::beforeBegin;
         }
@@ -465,7 +473,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId, supplyTrace.getAsLong());
+                doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, supplyTrace.getAsLong());
             }
         }
 
@@ -490,7 +498,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(applicationReplyThrottle, applicationReplyId, supplyTrace.getAsLong());
+                    doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, supplyTrace.getAsLong());
                     break;
             }
         }
@@ -505,13 +513,14 @@ public final class ServerStreamFactory implements StreamFactory
             {
                 http2Connection = correlation.http2Connection;
 
-                http2Connection.handleHttpBegin(begin, applicationReplyThrottle, applicationReplyId, correlation);
+                http2Connection.handleHttpBegin(begin, applicationReplyThrottle, applicationRouteId,
+                        applicationReplyId, correlation);
 
                 this.streamState = this::afterBegin;
             }
             else
             {
-                doReset(applicationReplyThrottle, applicationReplyId, supplyTrace.getAsLong());
+                doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, supplyTrace.getAsLong());
             }
         }
 
@@ -536,63 +545,69 @@ public final class ServerStreamFactory implements StreamFactory
     }
 
     private void doBegin(
-        final MessageConsumer target,
-        final long targetId,
+        final MessageConsumer receiver,
+        final long routeId,
+        final long streamId,
         final long traceId,
         final long targetRef,
         final long correlationId)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .streamId(targetId)
-                                     .trace(traceId)
-                                     .source("http2")
-                                     .sourceRef(targetRef)
-                                     .correlationId(correlationId)
-                                     .extension(e -> e.reset())
-                                     .build();
+                .routeId(routeId)
+                .streamId(streamId)
+                .trace(traceId)
+                .source("http2")
+                .sourceRef(targetRef)
+                .correlationId(correlationId)
+                .build();
 
-        target.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
+        receiver.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());
     }
 
     void doAbort(
-        final MessageConsumer target,
-        final long targetId)
+        final MessageConsumer receiver,
+        final long routeId,
+        final long streamId)
     {
         final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .streamId(targetId)
-                                     .extension(e -> e.reset())
-                                     .build();
+                .routeId(routeId)
+                .streamId(streamId)
+                .build();
 
-        target.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
+        receiver.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
     }
 
     void doWindow(
-        final MessageConsumer throttle,
-        final long throttleId,
+        final MessageConsumer sender,
+        final long routeId,
+        final long streamId,
         final int credit,
         final int padding,
         final long groupId)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                        .streamId(throttleId)
-                                        .credit(credit)
-                                        .padding(padding)
-                                        .groupId(groupId)
-                                        .build();
+                .routeId(routeId)
+                .streamId(streamId)
+                .credit(credit)
+                .padding(padding)
+                .groupId(groupId)
+                .build();
 
-        throttle.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
+        sender.accept(window.typeId(), window.buffer(), window.offset(), window.sizeof());
     }
 
     void doReset(
-        final MessageConsumer throttle,
-        final long throttleId,
+        final MessageConsumer sender,
+        final long routeId,
+        final long streamId,
         final long traceId)
     {
         final ResetFW reset = resetRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .streamId(throttleId)
-                                     .trace(traceId)
-                                     .build();
+                .routeId(routeId)
+                .streamId(streamId)
+                .trace(traceId)
+                .build();
 
-        throttle.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+        sender.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
     }
 }
