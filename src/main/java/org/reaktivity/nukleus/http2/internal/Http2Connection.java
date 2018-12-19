@@ -284,7 +284,7 @@ final class Http2Connection
                 decodeError != null && decodeError != Http2ErrorCode.NO_ERROR)
         {
             // TODO: use traceId ??
-            http2Streams.forEach((i, s) -> s.onAbort(factory.supplyTrace.getAsLong()));
+            http2Streams.forEach((i, s) -> s.onAbort(traceId));
             doResetNetworkAndCleanup();
         }
     }

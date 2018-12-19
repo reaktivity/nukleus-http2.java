@@ -108,7 +108,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort(0);
+            httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
@@ -147,7 +147,7 @@ class Http2Stream
         if (!written)
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
-            onAbort(factory.supplyTrace.getAsLong());
+            onAbort(traceId);
 
             factory.counters.resetStreamFramesWritten.getAsLong();
         }
