@@ -108,7 +108,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort(0);
+            httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
         connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CONNECT_ERROR);
@@ -123,7 +123,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         if (factory.correlations.containsKey(correlationId))
@@ -147,7 +147,7 @@ class Http2Stream
         if (!written)
         {
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.ENHANCE_YOUR_CALM);
-            onAbort(0);
+            onAbort(traceId);
 
             factory.counters.resetStreamFramesWritten.getAsLong();
         }
@@ -164,7 +164,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         close();
@@ -181,7 +181,7 @@ class Http2Stream
         // reset the response stream
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         close();
@@ -198,7 +198,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort(0);
+            httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
         close();
@@ -214,7 +214,7 @@ class Http2Stream
 
         if (applicationReplyThrottle != null)
         {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
         close();

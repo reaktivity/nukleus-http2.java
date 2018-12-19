@@ -284,7 +284,7 @@ final class Http2Connection
                 decodeError != null && decodeError != Http2ErrorCode.NO_ERROR)
         {
             // TODO: use traceId ??
-            http2Streams.forEach((i, s) -> s.onAbort(0));
+            http2Streams.forEach((i, s) -> s.onAbort(traceId));
             doResetNetworkAndCleanup();
         }
     }
@@ -630,8 +630,8 @@ final class Http2Connection
             if (headersSlotIndex == NO_SLOT)
             {
                 // all slots are in use, just reset the connection
-                factory.doReset(network, networkRouteId, networkId, 0);
-                handleAbort(0);
+                factory.doReset(network, networkRouteId, networkId, factory.supplyTrace.getAsLong());
+                handleAbort(factory.supplyTrace.getAsLong());
                 return;
             }
 
@@ -884,7 +884,7 @@ final class Http2Connection
 
         if (stream != null)
         {
-            stream.onReset(0);
+            stream.onReset(factory.supplyTrace.getAsLong());
             closeStream(stream);
         }
     }
@@ -982,7 +982,7 @@ final class Http2Connection
 
     private void doResetNetworkAndCleanup()
     {
-        factory.doReset(networkReply, networkRouteId, networkId, 0);
+        factory.doReset(networkReply, networkRouteId, networkId, factory.supplyTrace.getAsLong());
         doCleanup();
     }
 
@@ -1123,7 +1123,7 @@ final class Http2Connection
         Http2Stream stream,
         Http2ErrorCode errorCode)
     {
-        stream.onReset(0);
+        stream.onReset(factory.supplyTrace.getAsLong());
         doRstStream(stream.http2StreamId, errorCode);
         closeStream(stream);
     }
@@ -1725,7 +1725,7 @@ final class Http2Connection
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
         if (stream == null)
         {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, 0);
+            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
         else
         {
