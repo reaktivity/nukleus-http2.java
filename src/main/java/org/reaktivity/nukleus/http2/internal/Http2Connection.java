@@ -106,7 +106,6 @@ final class Http2Connection
     final long networkId;
     long authorization;
     int lastStreamId;
-    long sourceRef;
     int networkReplyBudget;
     int networkReplyPadding;
     int outWindowThreshold = -1;
@@ -145,7 +144,6 @@ final class Http2Connection
     final Http2Writer http2Writer;
     final MessageConsumer networkReply;
     RouteManager router;
-    String sourceName;
     long traceId;
 
     private Http2ErrorCode decodeError;
@@ -198,8 +196,6 @@ final class Http2Connection
         BeginFW beginRO)
     {
         this.authorization = beginRO.authorization();
-        this.sourceRef = beginRO.sourceRef();
-        this.sourceName = beginRO.source().asString();
         this.decoderState = this::decodePreface;
         this.initialSettings = new Settings(factory.config.serverConcurrentStreams(), 0);
         writeScheduler.settings(initialSettings.maxConcurrentStreams, initialSettings.initialWindowSize);
@@ -754,7 +750,7 @@ final class Http2Connection
             }
         }
 
-        RouteFW route = resolveTarget(sourceRef, sourceName, headersContext.headers);
+        RouteFW route = resolveTarget(headersContext.headers);
         if (route == null)
         {
             noRoute(streamId);
@@ -1000,18 +996,16 @@ final class Http2Connection
         RouteFW route)
     {
         final long applicationRouteId = route.correlationId();
-        final String applicationName = route.target().asString();
-        final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
+        final MessageConsumer applicationTarget = router.supplyReceiver(applicationRouteId);
         HttpWriter httpWriter = factory.httpWriter;
         Http2Stream stream = newStream(streamId, state, applicationRouteId, applicationTarget, httpWriter);
-        final long targetRef = route.targetRef();
 
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpWriter.doHttpBegin(applicationTarget, applicationRouteId, stream.targetId, traceId, targetRef, stream.correlationId,
+        httpWriter.doHttpBegin(applicationTarget, applicationRouteId, stream.targetId, traceId, stream.correlationId,
                 beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
-        router.setThrottle(applicationName, stream.targetId, stream::onThrottle);
+        router.setThrottle(stream.targetId, stream::onThrottle);
 
         if (state == HALF_CLOSED_REMOTE)
         {
@@ -1070,34 +1064,28 @@ final class Http2Connection
     }
 
     RouteFW resolveTarget(
-            long sourceRef,
-            String sourceName,
-            Map<String, String> headers)
+        Map<String, String> headers)
     {
         MessagePredicate filter = (t, b, o, l) ->
         {
             RouteFW route = factory.routeRO.wrap(b, o, o + l);
             OctetsFW extension = route.extension();
-            if (sourceRef == route.sourceRef() && sourceName.equals(route.source().asString()))
+            Map<String, String> routeHeaders;
+            if (extension.sizeof() == 0)
             {
-                Map<String, String> routeHeaders;
-                if (extension.sizeof() == 0)
-                {
-                    routeHeaders = EMPTY_HEADERS;
-                }
-                else
-                {
-                    final HttpRouteExFW routeEx = extension.get(factory.httpRouteExRO::wrap);
-                    routeHeaders = new LinkedHashMap<>();
-                    routeEx.headers().forEach(h -> routeHeaders.put(h.name().asString(), h.value().asString()));
-                }
-
-                return headers.entrySet().containsAll(routeHeaders.entrySet());
+                routeHeaders = EMPTY_HEADERS;
             }
-            return false;
+            else
+            {
+                final HttpRouteExFW routeEx = extension.get(factory.httpRouteExRO::wrap);
+                routeHeaders = new LinkedHashMap<>();
+                routeEx.headers().forEach(h -> routeHeaders.put(h.name().asString(), h.value().asString()));
+            }
+
+            return headers.entrySet().containsAll(routeHeaders.entrySet());
         };
 
-        return router.resolve(authorization, filter, wrapRoute);
+        return router.resolve(networkRouteId, authorization, filter, wrapRoute);
     }
 
     void handleWindow(
@@ -1182,20 +1170,17 @@ final class Http2Connection
         Map<String, String> headersMap = new HashMap<>();
         headers.forEach(
                 httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
-        RouteFW route = resolveTarget(sourceRef, sourceName, headersMap);
+        RouteFW route = resolveTarget(headersMap);
         final long applicationRouteId = route.correlationId();
-        final String applicationName = route.target().asString();
-        final MessageConsumer applicationTarget = router.supplyTarget(applicationName);
+        final MessageConsumer applicationTarget = router.supplyReceiver(applicationRouteId);
         HttpWriter httpWriter = factory.httpWriter;
         Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, applicationRouteId, applicationTarget, httpWriter);
         long targetId = http2Stream.targetId;
-        long targetRef = route.targetRef();
 
         httpWriter.doHttpBegin(applicationTarget, applicationRouteId, targetId, factory.supplyTrace.getAsLong(), authorization,
-                targetRef, http2Stream.correlationId,
-                hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
+                http2Stream.correlationId, hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
                                                          .value(h.value()))));
-        router.setThrottle(applicationName, targetId, http2Stream::onThrottle);
+        router.setThrottle(targetId, http2Stream::onThrottle);
         http2Stream.endDeferred = true;
     }
 

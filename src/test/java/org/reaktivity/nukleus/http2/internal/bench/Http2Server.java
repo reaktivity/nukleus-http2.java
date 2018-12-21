@@ -51,10 +51,11 @@ public class Http2Server
         reaktor.start();
         Map<String, String> headers = new HashMap<>();
         headers.put(":authority", "127.0.0.1:8080");
-        long http2In = http2Controller.routeServer("tcp", 0L, "http2", 0L, headers)
-                                      .get();
-        tcpController.routeServer("127.0.0.1", 8080, "http2", http2In)
+        tcpController.routeServer("tcp#127.0.0.1:8080", "http2#0")
                      .get();
+        // TODO: restore "echo" capability
+        http2Controller.routeServer("http2#0", "echo#0", headers)
+                       .get();
 
         Thread.sleep(10000000);
     }

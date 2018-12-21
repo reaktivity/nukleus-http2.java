@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
@@ -30,12 +29,8 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 
 import java.util.function.Consumer;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 class HttpWriter
 {
-    private static final DirectBuffer SOURCE_NAME_BUFFER = new UnsafeBuffer("http2".getBytes(UTF_8));
-
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
@@ -55,7 +50,6 @@ class HttpWriter
         long routeId,
         long streamId,
         long traceId,
-        long targetRef,
         long correlationId,
         DirectBuffer extBuffer,
         int extOffset,
@@ -65,8 +59,6 @@ class HttpWriter
                 .routeId(routeId)
                 .streamId(streamId)
                 .trace(traceId)
-                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
-                .sourceRef(targetRef)
                 .correlationId(correlationId)
                 .extension(extBuffer, extOffset, extLength)
                 .build();
@@ -80,7 +72,6 @@ class HttpWriter
         long streamId,
         long traceId,
         long authorization,
-        long targetRef,
         long correlationId,
         Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> mutator)
     {
@@ -89,8 +80,6 @@ class HttpWriter
                 .streamId(streamId)
                 .trace(traceId)
                 .authorization(authorization)
-                .source(SOURCE_NAME_BUFFER, 0, SOURCE_NAME_BUFFER.capacity())
-                .sourceRef(targetRef)
                 .correlationId(correlationId)
                 .extension(e -> e.set(visitHttpBeginEx(mutator)))
                 .build();

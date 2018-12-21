@@ -81,13 +81,6 @@ public final class Http2Controller implements Controller
         return "http2";
     }
 
-    public <T> T supplySource(
-            String source,
-            BiFunction<MessagePredicate, ToIntFunction<MessageConsumer>, T> factory)
-    {
-        return controllerSpi.doSupplySource(source, factory);
-    }
-
     public <T> T supplyTarget(
             String target,
             BiFunction<ToIntFunction<MessageConsumer>, MessagePredicate, T> factory)
@@ -96,21 +89,18 @@ public final class Http2Controller implements Controller
     }
 
     public CompletableFuture<Long> routeServer(
-            String source,
-            long sourceRef,
-            String target,
-            long targetRef,
-            Map<String, String> headers)
+        String localAddress,
+        String remoteAddress,
+        Map<String, String> headers)
     {
         long correlationId = controllerSpi.nextCorrelationId();
 
         RouteFW route = routeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                .correlationId(correlationId)
+                               .nukleus(name())
                                .role(b -> b.set(Role.SERVER))
-                               .source(source)
-                               .sourceRef(sourceRef)
-                               .target(target)
-                               .targetRef(targetRef)
+                               .localAddress(localAddress)
+                               .remoteAddress(remoteAddress)
                                .extension(extension(headers))
                                .build();
 
@@ -118,66 +108,33 @@ public final class Http2Controller implements Controller
     }
 
     public CompletableFuture<Long> routeClient(
-            String source,
-            long sourceRef,
-            String target,
-            long targetRef,
-            Map<String, String> headers)
+        String localAddress,
+        String remoteAddress,
+        Map<String, String> headers)
     {
         long correlationId = controllerSpi.nextCorrelationId();
 
         RouteFW route = routeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                .correlationId(correlationId)
+                               .nukleus(name())
                                .role(b -> b.set(Role.CLIENT))
-                               .source(source)
-                               .sourceRef(sourceRef)
-                               .target(target)
-                               .targetRef(targetRef)
+                               .localAddress(localAddress)
+                               .remoteAddress(remoteAddress)
                                .extension(extension(headers))
                                .build();
 
         return controllerSpi.doRoute(route.typeId(), route.buffer(), route.offset(), route.sizeof());
     }
 
-    public CompletableFuture<Void> unrouteServer(
-            String source,
-            long sourceRef,
-            String target,
-            long targetRef,
-            Map<String, String> headers)
+    public CompletableFuture<Void> unroute(
+        long routeId)
     {
         long correlationId = controllerSpi.nextCorrelationId();
 
         UnrouteFW unroute = unrouteRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                      .correlationId(correlationId)
-                                     .role(b -> b.set(Role.SERVER))
-                                     .source(source)
-                                     .sourceRef(sourceRef)
-                                     .target(target)
-                                     .targetRef(targetRef)
-                                     .extension(extension(headers))
-                                     .build();
-
-        return controllerSpi.doUnroute(unroute.typeId(), unroute.buffer(), unroute.offset(), unroute.sizeof());
-    }
-
-    public CompletableFuture<Void> unrouteClient(
-            String source,
-            long sourceRef,
-            String target,
-            long targetRef,
-            Map<String, String> headers)
-    {
-        long correlationId = controllerSpi.nextCorrelationId();
-
-        UnrouteFW unroute = unrouteRW.wrap(writeBuffer, 0, writeBuffer.capacity())
-                                     .correlationId(correlationId)
-                                     .role(b -> b.set(Role.CLIENT))
-                                     .source(source)
-                                     .sourceRef(sourceRef)
-                                     .target(target)
-                                     .targetRef(targetRef)
-                                     .extension(extension(headers))
+                                     .nukleus(name())
+                                     .routeId(routeId)
                                      .build();
 
         return controllerSpi.doUnroute(unroute.typeId(), unroute.buffer(), unroute.offset(), unroute.sizeof());
@@ -189,13 +146,14 @@ public final class Http2Controller implements Controller
 
         FreezeFW freeze = freezeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                                   .correlationId(correlationId)
+                                  .nukleus(name())
                                   .build();
 
         return controllerSpi.doFreeze(freeze.typeId(), freeze.buffer(), freeze.offset(), freeze.sizeof());
     }
 
     private Consumer<OctetsFW.Builder> extension(
-            Map<String, String> headers)
+        Map<String, String> headers)
     {
         if (headers != null)
         {
