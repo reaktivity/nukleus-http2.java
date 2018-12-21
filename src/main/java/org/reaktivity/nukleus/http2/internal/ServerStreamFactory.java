@@ -176,17 +176,17 @@ public final class ServerStreamFactory implements StreamFactory
             MessageConsumer throttle)
     {
         final BeginFW begin = beginRO.wrap(buffer, index, index + length);
-        final long sourceRef = begin.sourceRef();
+        final long streamId = begin.streamId();
 
         MessageConsumer newStream;
 
-        if (sourceRef == 0L)
+        if ((streamId & 0x8000_0000_0000_0000L) == 0L)
         {
-            newStream = newConnectReplyStream(begin, throttle);
+            newStream = newAcceptStream(begin, throttle);
         }
         else
         {
-            newStream = newAcceptStream(begin, throttle);
+            newStream = newConnectReplyStream(begin, throttle);
         }
 
         return newStream;
@@ -196,23 +196,16 @@ public final class ServerStreamFactory implements StreamFactory
         final BeginFW begin,
         final MessageConsumer networkThrottle)
     {
-        final long networkRef = begin.sourceRef();
-        final String acceptName = begin.source().asString();
+        final long networkRouteId = begin.routeId();
 
-        final MessagePredicate filter = (t, b, o, l) ->
-        {
-            final RouteFW route = routeRO.wrap(b, o, o + l);
-            return networkRef == route.sourceRef() &&
-                    acceptName.equals(route.source().asString());
-        };
+        final MessagePredicate filter = (t, b, o, l) -> true;
 
-        final RouteFW route = router.resolve(begin.authorization(), filter, this::wrapRoute);
+        final RouteFW route = router.resolve(networkRouteId, begin.authorization(), filter, this::wrapRoute);
 
         MessageConsumer newStream = null;
 
         if (route != null)
         {
-            final long networkRouteId = begin.routeId();
             final long networkId = begin.streamId();
 
             newStream = new ServerAcceptStream(networkThrottle, networkRouteId, networkId)::handleStream;
@@ -321,18 +314,17 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleBegin(
             BeginFW begin)
         {
-            final String networkReplyName = begin.source().asString();
             networkCorrelationId = begin.correlationId();
 
-            networkReply = router.supplyTarget(networkReplyName);
+            networkReply = router.supplySender(networkRouteId);
             networkReplyId = supplyReplyId.applyAsLong(networkId);
 
             initialWindow = bufferPool.slotCapacity();
             doWindow(networkThrottle, networkRouteId, networkId, initialWindow, 0, 0);
             window = initialWindow;
 
-            doBegin(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong(), 0L, networkCorrelationId);
-            router.setThrottle(networkReplyName, networkReplyId, this::handleThrottle);
+            doBegin(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong(), networkCorrelationId);
+            router.setThrottle(networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
             http2Connection = new Http2Connection(ServerStreamFactory.this, router,
@@ -506,9 +498,8 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleBegin(
             BeginFW begin)
         {
-            final long sourceRef = begin.sourceRef();
             final long correlationId = begin.correlationId();
-            correlation = sourceRef == 0L ? correlations.remove(correlationId) : null;
+            correlation = correlations.remove(correlationId);
             if (correlation != null)
             {
                 http2Connection = correlation.http2Connection;
@@ -549,15 +540,12 @@ public final class ServerStreamFactory implements StreamFactory
         final long routeId,
         final long streamId,
         final long traceId,
-        final long targetRef,
         final long correlationId)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(streamId)
                 .trace(traceId)
-                .source("http2")
-                .sourceRef(targetRef)
                 .correlationId(correlationId)
                 .build();
 
