@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
-  <version>0.84</version>
+  <version>0.85</version>
   <name>HTTP/2 Nukleus Implementation</name>
   <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
@@ -42,7 +42,7 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <checkstyle.config.location>src/conf/checkstyle/configuration.xml</checkstyle.config.location>
     <checkstyle.suppressions.location>src/conf/checkstyle/suppressions.xml</checkstyle.suppressions.location>
-    <jacoco.coverage.ratio>0.67</jacoco.coverage.ratio>
+    <jacoco.coverage.ratio>0.66</jacoco.coverage.ratio>
     <jacoco.missed.count>53</jacoco.missed.count>
 
     <junit.version>4.12</junit.version>
@@ -54,9 +54,9 @@
 
     <nukleus.plugin.version>0.32</nukleus.plugin.version>
 
-    <nukleus.http2.spec.version>0.57</nukleus.http2.spec.version>
-    <nukleus.tcp.version>0.66</nukleus.tcp.version>
-    <reaktor.version>0.69</reaktor.version>
+    <nukleus.http2.spec.version>0.58</nukleus.http2.spec.version>
+    <nukleus.tcp.version>0.67</nukleus.tcp.version>
+    <reaktor.version>0.72</reaktor.version>
   </properties>
 
   <dependencies>
