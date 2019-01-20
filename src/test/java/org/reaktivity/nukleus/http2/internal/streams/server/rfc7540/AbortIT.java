@@ -18,6 +18,7 @@ package org.reaktivity.nukleus.http2.internal.streams.server.rfc7540;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
 import static org.reaktivity.nukleus.http2.internal.Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS;
+import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -44,6 +45,7 @@ public class AbortIT
             .counterValuesBufferCapacity(4096)
             .nukleus("http2"::equals)
             .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100)
+            .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
             .clean();
 
     @Rule

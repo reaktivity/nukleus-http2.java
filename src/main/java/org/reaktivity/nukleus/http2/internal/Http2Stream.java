@@ -34,9 +34,10 @@ class Http2Stream
     final HttpWriteScheduler httpWriteScheduler;
     final int http2StreamId;
     final int maxHeaderSize;
-    final long targetId;
-    final long correlationId;
     final long applicationRouteId;
+    final long applicationId;
+    final long correlationId;
+    final MessageConsumer applicationTarget;
 
     boolean endDeferred;
     Http2StreamState state;
@@ -63,22 +64,22 @@ class Http2Stream
         Http2Connection connection,
         int http2StreamId,
         Http2StreamState state,
-        MessageConsumer applicationTarget,
         long applicationRouteId,
         HttpWriter httpWriter)
     {
         this.factory = factory;
         this.connection = connection;
         this.http2StreamId = http2StreamId;
-        this.targetId = factory.supplyInitialId.getAsLong();
         this.applicationRouteId = applicationRouteId;
+        this.applicationId = factory.supplyInitialId.applyAsLong(applicationRouteId);
+        this.applicationTarget = connection.router.supplyReceiver(applicationId);
         this.correlationId = factory.supplyCorrelationId.getAsLong();
         this.http2InWindow = connection.localSettings.initialWindowSize;
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
         this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationTarget, httpWriter,
-                applicationRouteId, targetId, this);
+                applicationRouteId, applicationId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
         this.maxHeaderSize = 0;     // maxHeaderSize();
     }
