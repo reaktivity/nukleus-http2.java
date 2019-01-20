@@ -38,8 +38,7 @@ public final class Http2ControllerFactorySpi implements ControllerFactorySpi<Htt
             Configuration config,
             ControllerBuilder<Http2Controller> builder)
     {
-        return builder.setName(name())
-                      .setFactory(Http2Controller::new)
+        return builder.setFactory(Http2Controller::new)
                       .build();
     }
 

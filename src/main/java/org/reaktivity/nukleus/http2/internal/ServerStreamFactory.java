@@ -111,7 +111,7 @@ public final class ServerStreamFactory implements StreamFactory
     final BufferPool headersPool;
     final BufferPool httpWriterPool;
     final BufferPool http2ReplyPool;
-    final LongSupplier supplyInitialId;
+    final LongUnaryOperator supplyInitialId;
     final LongUnaryOperator supplyReplyId;
     final LongSupplier supplyTrace;
     final LongSupplier supplyCorrelationId;
@@ -133,7 +133,7 @@ public final class ServerStreamFactory implements StreamFactory
         RouteManager router,
         MutableDirectBuffer writeBuffer,
         BufferPool bufferPool,
-        LongSupplier supplyInitialId,
+        LongUnaryOperator supplyInitialId,
         LongUnaryOperator supplyReplyId,
         LongSupplier supplyCorrelationId,
         Long2ObjectHashMap<Correlation> correlations,

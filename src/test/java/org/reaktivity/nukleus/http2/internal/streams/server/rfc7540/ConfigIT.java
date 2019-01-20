@@ -20,6 +20,7 @@ import static org.junit.rules.RuleChain.outerRule;
 import static org.reaktivity.nukleus.http2.internal.Http2Configuration.HTTP2_SERVER_CONCURRENT_STREAMS;
 import static org.reaktivity.nukleus.http2.internal.Http2ConfigurationTest.HTTP2_ACCESS_CONTROL_ALLOW_ORIGIN_NAME;
 import static org.reaktivity.nukleus.http2.internal.Http2ConfigurationTest.HTTP2_SERVER_HEADER_NAME;
+import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -46,7 +47,9 @@ public class ConfigIT
             .responseBufferCapacity(1024)
             .counterValuesBufferCapacity(4096)
             .nukleus("http2"::equals)
-            .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100);
+            .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100)
+            .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
+            .clean();
 
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
