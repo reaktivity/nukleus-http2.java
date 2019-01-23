@@ -179,12 +179,12 @@ final class Http2Connection
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
                 ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
-                        .andThen(this::mapToHttp)
                         .andThen(this::validatePseudoHeaders)
                         .andThen(this::uppercaseHeaders)
                         .andThen(this::connectionHeaders)
                         .andThen(this::contentLengthHeader)
-                        .andThen(this::teHeader);
+                        .andThen(this::teHeader)
+                        .andThen(this::mapToHttp);
 
         Consumer<HpackHeaderFieldFW> consumer = this::validateHeaderFieldType;
         consumer = consumer.andThen(this::dynamicTableSizeUpdate);
@@ -750,6 +750,8 @@ final class Http2Connection
             }
         }
 
+        addDefaultPortToAuthorityIfNeeded();
+
         RouteFW route = resolveTarget(headersContext.headers);
         if (route == null)
         {
@@ -1062,7 +1064,7 @@ final class Http2Connection
         }
     }
 
-    RouteFW resolveTarget(
+    private RouteFW resolveTarget(
         Map<String, String> headers)
     {
         MessagePredicate filter = (t, b, o, l) ->
@@ -1368,7 +1370,8 @@ final class Http2Connection
         {
             String nameStr = name.getStringWithoutLengthUtf8(0, name.capacity());
             String valueStr = value.getStringWithoutLengthUtf8(0, value.capacity());
-            headersContext.headers.put(nameStr, valueStr);
+            // TODO cookie needs to be appended with ';'
+            headersContext.headers.merge(nameStr, valueStr, (o, n) -> String.format("%s, %s", o, n));
         }
     }
 
@@ -1381,6 +1384,25 @@ final class Http2Connection
         {
             factory.httpBeginExRW.headersItem(item -> item.name(name, 0, name.capacity())
                                                           .value(value, 0, value.capacity()));
+        }
+    }
+
+    private void addDefaultPortToAuthorityIfNeeded()
+    {
+        String authority = headersContext.headers.get(":authority");
+        if (authority.indexOf(':') == -1)
+        {
+            String scheme = headersContext.headers.get(":scheme");
+            String defaultPort = scheme.equals("https") ? ":443" : ":80";
+            headersContext.headers.put(":authority", authority + defaultPort);
+
+            // rebuild http request as :authority header is modified
+            factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity());
+            for(Map.Entry<String, String> e : headersContext.headers.entrySet())
+            {
+                factory.httpBeginExRW.headersItem(item -> item.name(e.getKey())
+                                                              .value(e.getValue()));
+            }
         }
     }
 
@@ -1806,7 +1828,7 @@ final class Http2Connection
     private static final class HeadersContext
     {
         Http2ErrorCode connectionError;
-        Map<String, String> headers = new HashMap<>();
+        Map<String, String> headers = new LinkedHashMap<>();
         int method;
         int scheme;
         int path;

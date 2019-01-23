@@ -270,4 +270,14 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server.authority/controller",
+        "${spec}/http.authority.default.port/client",
+        "${nukleus}/http.authority.default.port/server" })
+    public void defaultPortToAuthority() throws Exception
+    {
+        k3po.finish();
+    }
+
 }
