@@ -47,28 +47,28 @@ public class Http2Counters
     public Http2Counters(
         Function<String, LongSupplier> supplyCounter)
     {
-        this.headersFramesRead = supplyCounter.apply("frames.read.headers");
-        this.continuationFramesRead = supplyCounter.apply("frames.read.continuation");
-        this.dataFramesRead = supplyCounter.apply("frames.read.data");
-        this.priorityFramesRead = supplyCounter.apply("frames.read.priority");
-        this.resetStreamFramesRead = supplyCounter.apply("frames.read.reset.stream");
-        this.goawayFramesRead = supplyCounter.apply("frames.read.goaway");
-        this.windowUpdateFramesRead = supplyCounter.apply("frames.read.window.update");
-        this.settingsFramesRead = supplyCounter.apply("frames.read.settings");
-        this.pingFramesRead = supplyCounter.apply("frames.read.ping");
-        this.pushPromiseFramesRead = supplyCounter.apply("frames.read.push.promise");
+        this.headersFramesRead = supplyCounter.apply("http2.frames.read.headers");
+        this.continuationFramesRead = supplyCounter.apply("http2.frames.read.continuation");
+        this.dataFramesRead = supplyCounter.apply("http2.frames.read.data");
+        this.priorityFramesRead = supplyCounter.apply("http2.frames.read.priority");
+        this.resetStreamFramesRead = supplyCounter.apply("http2.frames.read.reset.stream");
+        this.goawayFramesRead = supplyCounter.apply("http2.frames.read.goaway");
+        this.windowUpdateFramesRead = supplyCounter.apply("http2.frames.read.window.update");
+        this.settingsFramesRead = supplyCounter.apply("http2.frames.read.settings");
+        this.pingFramesRead = supplyCounter.apply("http2.frames.read.ping");
+        this.pushPromiseFramesRead = supplyCounter.apply("http2.frames.read.push.promise");
 
-        this.headersFramesWritten = supplyCounter.apply("frames.written.headers");
-        this.continuationFramesWritten = supplyCounter.apply("frames.written.continuation");
-        this.dataFramesWritten = supplyCounter.apply("frames.written.data");
-        this.priorityFramesWritten = supplyCounter.apply("frames.written.priority");
-        this.resetStreamFramesWritten = supplyCounter.apply("frames.written.reset.stream");
-        this.goawayFramesWritten = supplyCounter.apply("frames.written.goaway");
-        this.windowUpdateFramesWritten = supplyCounter.apply("frames.written.window.update");
-        this.settingsFramesWritten = supplyCounter.apply("frames.written.settings");
-        this.pingFramesWritten = supplyCounter.apply("frames.written.ping");
-        this.pushPromiseFramesWritten = supplyCounter.apply("frames.written.push.promise");
-        this.pushPromiseFramesSkipped = supplyCounter.apply("frames.skipped.push.promise");
-        this.pushHeadersFramesWritten = supplyCounter.apply("frames.written.push.headers");
+        this.headersFramesWritten = supplyCounter.apply("http2.frames.written.headers");
+        this.continuationFramesWritten = supplyCounter.apply("http2.frames.written.continuation");
+        this.dataFramesWritten = supplyCounter.apply("http2.frames.written.data");
+        this.priorityFramesWritten = supplyCounter.apply("http2.frames.written.priority");
+        this.resetStreamFramesWritten = supplyCounter.apply("http2.frames.written.reset.stream");
+        this.goawayFramesWritten = supplyCounter.apply("http2.frames.written.goaway");
+        this.windowUpdateFramesWritten = supplyCounter.apply("http2.frames.written.window.update");
+        this.settingsFramesWritten = supplyCounter.apply("http2.frames.written.settings");
+        this.pingFramesWritten = supplyCounter.apply("http2.frames.written.ping");
+        this.pushPromiseFramesWritten = supplyCounter.apply("http2.frames.written.push.promise");
+        this.pushPromiseFramesSkipped = supplyCounter.apply("http2.frames.skipped.push.promise");
+        this.pushHeadersFramesWritten = supplyCounter.apply("http2.frames.written.push.headers");
     }
 }
