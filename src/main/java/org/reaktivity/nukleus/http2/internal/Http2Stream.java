@@ -279,7 +279,7 @@ class Http2Stream
         releaseReplyBuffer();
     }
 
-    void sendHttpWindow()
+    void sendHttpWindow(long traceId)
     {
         // buffer may already have some data, so can only send window for remaining
         int occupied = replyBuffer == null ? 0 : replyBuffer.size();
@@ -290,7 +290,7 @@ class Http2Stream
             applicationReplyBudget += applicationReplyCredit;
             int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
             connection.factory.doWindow(applicationReplyThrottle, applicationRouteId, applicationReplyId,
-                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId);
+                    (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId, traceId);
         }
     }
 }

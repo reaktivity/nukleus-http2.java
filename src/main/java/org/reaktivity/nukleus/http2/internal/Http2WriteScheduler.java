@@ -47,6 +47,7 @@ public class Http2WriteScheduler implements WriteScheduler
     private boolean end;
     private boolean endSent;
     private int entryCount;
+    private long windowTraceId;
 
     Http2WriteScheduler(
         Http2Connection connection,
@@ -451,7 +452,7 @@ public class Http2WriteScheduler implements WriteScheduler
         {
             if (stream.applicationReplyThrottle != null)
             {
-                stream.sendHttpWindow();
+                stream.sendHttpWindow(windowTraceId);
             }
         }
 
@@ -475,8 +476,9 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public void onWindow()
+    public void onWindow(long traceId)
     {
+        windowTraceId = traceId;
         flush();
     }
 
