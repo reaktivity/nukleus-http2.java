@@ -1092,7 +1092,7 @@ final class Http2Connection
     void handleWindow(
         WindowFW windowRO)
     {
-        writeScheduler.onWindow();
+        writeScheduler.onWindow(windowRO.trace());
     }
 
     void error(
@@ -1103,7 +1103,7 @@ final class Http2Connection
         factory.counters.goawayFramesWritten.getAsLong();
 
         factory.doReset(network, networkRouteId, networkId, factory.supplyTrace.getAsLong());
-        factory.doAbort(networkReply, networkRouteId, networkReplyId);
+        factory.doAbort(networkReply, networkRouteId, networkReplyId, factory.supplyTrace.getAsLong());
         http2Streams.forEach((i, s) -> s.onError(traceId));
         doCleanup();
     }
@@ -1736,7 +1736,7 @@ final class Http2Connection
             stream.applicationReplyThrottle = applicationReplyThrottle;
             stream.applicationReplyId = applicationReplyId;
 
-            stream.sendHttpWindow();
+            stream.sendHttpWindow(factory.supplyTrace.getAsLong());
 
             if (extension.sizeof() > 0)
             {

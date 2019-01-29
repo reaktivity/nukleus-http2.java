@@ -318,7 +318,7 @@ public final class ServerStreamFactory implements StreamFactory
             networkReplyId = supplyReplyId.applyAsLong(networkId);
 
             initialWindow = bufferPool.slotCapacity();
-            doWindow(networkReply, networkRouteId, networkId, initialWindow, 0, 0);
+            doWindow(networkReply, networkRouteId, networkId, initialWindow, 0, 0, supplyTrace.getAsLong());
             window = initialWindow;
 
             doBegin(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong(), networkCorrelationId);
@@ -350,7 +350,8 @@ public final class ServerStreamFactory implements StreamFactory
                     if (windowPending > 0)
                     {
                         window += windowPending;
-                        doWindow(networkReply, networkRouteId, networkId, windowPending, 0, 0);
+                        doWindow(networkReply, networkRouteId, networkId, windowPending, 0, 0,
+                                supplyTrace.getAsLong());
                     }
                 }
             }
@@ -368,7 +369,7 @@ public final class ServerStreamFactory implements StreamFactory
             correlations.remove(networkCorrelationId);
 
             // aborts reply stream
-            doAbort(networkReply, networkRouteId, networkReplyId);
+            doAbort(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong());
 
             // aborts http request stream, resets http response stream
             http2Connection.handleAbort(abort.trace());
@@ -553,11 +554,13 @@ public final class ServerStreamFactory implements StreamFactory
     void doAbort(
         final MessageConsumer receiver,
         final long routeId,
-        final long streamId)
+        final long streamId,
+        final long traceId)
     {
         final AbortFW abort = abortRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(streamId)
+                .trace(traceId)
                 .build();
 
         receiver.accept(abort.typeId(), abort.buffer(), abort.offset(), abort.sizeof());
@@ -569,11 +572,13 @@ public final class ServerStreamFactory implements StreamFactory
         final long streamId,
         final int credit,
         final int padding,
-        final long groupId)
+        final long groupId,
+        final long traceId)
     {
         final WindowFW window = windowRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(streamId)
+                .trace(traceId)
                 .credit(credit)
                 .padding(padding)
                 .groupId(groupId)
