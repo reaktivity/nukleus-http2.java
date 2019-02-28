@@ -117,6 +117,8 @@ public class Http2DataFW extends Http2FrameFW
 
     public static final class Builder extends Http2FrameFW.Builder<Builder, Http2DataFW>
     {
+        private final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
+
         public Builder()
         {
             super(new Http2DataFW());
@@ -129,11 +131,13 @@ public class Http2DataFW extends Http2FrameFW
             return this;
         }
 
-        public Builder endStream()
+        public Builder  endStream()
         {
             buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
             return this;
         }
+
+
 
     }
 }

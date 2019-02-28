@@ -67,7 +67,7 @@ public class HpackContext
         /* 31 */ new HeaderField("content-type", null),
         /* 32 */ new HeaderField("cookie", null),
         /* 33 */ new HeaderField("date", null),
-        /* 34 */ new HeaderField("etag", null),
+        /* 34 */ new HeaderField("update.cache.when.304.response.has.matching.etag", null),
         /* 35 */ new HeaderField("expect", null),
         /* 36 */ new HeaderField("expires", null),
         /* 37 */ new HeaderField("from", null),
@@ -491,7 +491,7 @@ public class HpackContext
                 }
                 break;
             case 'g':
-                if (STATIC_TABLE[34].name.equals(name))    // etag
+                if (STATIC_TABLE[34].name.equals(name))    // update.cache.when.304.response.has.matching.etag
                 {
                     return 34;
                 }

@@ -53,35 +53,7 @@ import org.reaktivity.nukleus.http2.internal.types.String16FW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
 import org.reaktivity.nukleus.http2.internal.types.control.HttpRouteExFW;
 import org.reaktivity.nukleus.http2.internal.types.control.RouteFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.AbortFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackContext;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderFieldFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2HeadersFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2PingFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2PrefaceFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2PriorityFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.*;
 import org.reaktivity.nukleus.route.RouteManager;
 
 final class Http2Connection
@@ -1806,10 +1778,19 @@ final class Http2Connection
         Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
-
         if (stream != null)
         {
-            stream.onHttpEnd(end.trace());
+            final OctetsFW extension = end.extension();
+            if (extension.sizeof() != 0)
+            {
+                final HttpEndExFW httpEndEx = extension.get(factory.httpEndExRO::wrap);
+                ListFW<HttpHeaderFW> trailers = httpEndEx.trailers();
+                writeScheduler.headers(end.trace(), correlation.http2StreamId, Http2Flags.END_STREAM, trailers);
+            }
+            else
+            {
+                stream.onHttpEnd(end.trace());
+            }
         }
     }
 
