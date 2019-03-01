@@ -280,4 +280,14 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${spec}/http.trailer.response/client",
+        "${nukleus}/http.trailer.response/server" })
+    public void shouldProxyTrailer() throws Exception
+    {
+        k3po.finish();
+    }
+
 }
