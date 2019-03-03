@@ -112,7 +112,7 @@ class Http2Stream
             httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
-        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CANCEL);
+        connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.NO_ERROR);
 
         factory.counters.resetStreamFramesWritten.getAsLong();
 
@@ -133,7 +133,7 @@ class Http2Stream
         }
         else
         {
-            connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.CANCEL);
+            connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.NO_ERROR);
             factory.counters.resetStreamFramesWritten.getAsLong();
         }
 
