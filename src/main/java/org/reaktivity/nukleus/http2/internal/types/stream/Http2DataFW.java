@@ -136,9 +136,6 @@ public class Http2DataFW extends Http2FrameFW
             buffer().putByte(offset() + FLAGS_OFFSET, END_STREAM);
             return this;
         }
-
-
-
     }
 }
 
