@@ -491,7 +491,7 @@ public class HpackContext
                 }
                 break;
             case 'g':
-                if (STATIC_TABLE[34].name.equals(name))    // update.cache.when.304.response.has.matching.etag
+                if (STATIC_TABLE[34].name.equals(name))    // etag
                 {
                     return 34;
                 }

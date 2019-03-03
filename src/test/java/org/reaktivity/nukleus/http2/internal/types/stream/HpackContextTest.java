@@ -57,7 +57,7 @@ public class HpackContextTest
         /* 31 */ {"content-type", null},
         /* 32 */ {"cookie", null},
         /* 33 */ {"date", null},
-        /* 34 */ {"update.cache.when.304.response.has.matching.etag", null},
+        /* 34 */ {"etag", null},
         /* 35 */ {"expect", null},
         /* 36 */ {"expires", null},
         /* 37 */ {"from", null},

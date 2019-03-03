@@ -209,6 +209,44 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
+    public boolean trailers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers)
+    {
+        MutableDirectBuffer copy = null;
+        int length = headersLength(headers);        // estimate only
+        int sizeof = 9 + headersLength(headers);    // +9 for HTTP2 framing
+        Http2FrameType type = HEADERS;
+        Http2Stream stream = stream(streamId);
+
+        if (buffered() || !hasNukleusBudget(length))
+        {
+            copy = new UnsafeBuffer(new byte[8192]);
+            connection.factory.blockRW.wrap(copy, 0, copy.capacity());
+            connection.mapHeaders(headers, connection.factory.blockRW);
+            HpackHeaderBlockFW block = connection.factory.blockRW.build();
+            length = block.sizeof();
+            sizeof = 9 + length;
+        }
+
+        stream.endStream = true;
+
+        if (buffered() || !hasNukleusBudget(length))
+        {
+            Entry entry = new HeadersEntry(null, streamId, traceId, length, type, flags, copy, 0, length);
+            addEntry(entry);
+        }
+        else
+        {
+            int written = http2Writer.headers(writer.offset(), sizeof, streamId, flags, headers, connection::mapTrailers);
+            postWrite(stream, type, written);
+            writer.flush();
+
+            connection.closeStream(stream);
+
+        }
+        return true;
+    }
+
+    @Override
     public boolean headers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;

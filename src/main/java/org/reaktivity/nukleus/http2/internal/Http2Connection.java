@@ -1501,6 +1501,19 @@ final class Http2Connection
         httpHeaders.forEach(h -> builder.header(b -> mapHeader(h, b)));
     }
 
+    void mapTrailers(
+            ListFW<HttpHeaderFW> httpHeaders,
+            HpackHeaderBlockFW.Builder builder)
+    {
+        httpHeaders.forEach(h ->
+        {
+            if (validHeader(h))
+            {
+                builder.header(b -> mapHeader(h, b));
+            }
+        });
+    }
+
     void mapHeaders(
         ListFW<HttpHeaderFW> httpHeaders,
         HpackHeaderBlockFW.Builder builder)
@@ -1785,7 +1798,7 @@ final class Http2Connection
             {
                 final HttpEndExFW httpEndEx = extension.get(factory.httpEndExRO::wrap);
                 ListFW<HttpHeaderFW> trailers = httpEndEx.trailers();
-                writeScheduler.headers(end.trace(), correlation.http2StreamId, Http2Flags.END_STREAM, trailers);
+                writeScheduler.trailers(end.trace(), stream.http2StreamId, Http2Flags.END_STREAM, trailers);
             }
             else
             {
