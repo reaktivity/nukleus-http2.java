@@ -283,9 +283,9 @@ public class ConnectionManagementIT
     @Test
     @Specification({
         "${route}/server/controller",
-        "${spec}/http.trailer.response/client",
-        "${nukleus}/http.trailer.response/server" })
-    public void shouldProxyTrailer() throws Exception
+        "${spec}/http.response.trailer/client",
+        "${nukleus}/http.response.trailer/server" })
+    public void shouldProxyResponseTrailer() throws Exception
     {
         k3po.finish();
     }
