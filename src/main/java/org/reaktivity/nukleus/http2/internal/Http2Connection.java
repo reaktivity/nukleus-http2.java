@@ -1531,8 +1531,8 @@ final class Http2Connection
     }
 
     void mapTrailers(
-            ListFW<HttpHeaderFW> httpHeaders,
-            HpackHeaderBlockFW.Builder builder)
+        ListFW<HttpHeaderFW> httpHeaders,
+        HpackHeaderBlockFW.Builder builder)
     {
         httpHeaders.forEach(h ->
         {

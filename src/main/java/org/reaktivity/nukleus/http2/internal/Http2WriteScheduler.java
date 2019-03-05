@@ -231,7 +231,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (buffered() || !hasNukleusBudget(length))
         {
-            Entry entry = new HeadersEntry(null, streamId, traceId, length, type, flags, copy, 0, length);
+            Entry entry = new TrailersEntry(null, streamId, traceId, length, type, flags, copy, 0, length);
             addEntry(entry);
         }
         else
@@ -241,7 +241,6 @@ public class Http2WriteScheduler implements WriteScheduler
             writer.flush();
 
             connection.closeStream(stream);
-
         }
         return true;
     }
@@ -666,6 +665,34 @@ public class Http2WriteScheduler implements WriteScheduler
         void write()
         {
             int written = http2Writer.dataEos(writer.offset(), sizeof, streamId);
+            postWrite(stream, type, written);
+
+            connection.closeStream(stream);
+        }
+    }
+
+    private class TrailersEntry extends Entry
+    {
+        private byte flags;
+        private DirectBuffer payloadBuffer;
+        private int payloadOffset;
+        private int payloadLength;
+
+        TrailersEntry(Http2Stream stream, int streamId, long traceId, int length, Http2FrameType type, byte flags,
+                     DirectBuffer payloadBuffer, int payloadOffset, int payloadLength)
+        {
+            super(stream, streamId, traceId, length, type);
+            this.flags = flags;
+            this.payloadBuffer = payloadBuffer;
+            this.payloadOffset = payloadOffset;
+            this.payloadLength = payloadLength;
+        }
+
+        @Override
+        void write()
+        {
+            int written = http2Writer.headers(writer.offset(), sizeof, streamId, flags,
+                    payloadBuffer, payloadOffset, payloadLength);
             postWrite(stream, type, written);
 
             connection.closeStream(stream);
