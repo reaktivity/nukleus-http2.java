@@ -217,6 +217,11 @@ public class Http2WriteScheduler implements WriteScheduler
         Http2FrameType type = HEADERS;
         Http2Stream stream = stream(streamId);
 
+        if (stream == null)
+        {
+            return true;
+        }
+
         if (buffered() || !hasNukleusBudget(length))
         {
             copy = new UnsafeBuffer(new byte[8192]);
@@ -231,7 +236,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         if (buffered() || !hasNukleusBudget(length))
         {
-            Entry entry = new TrailersEntry(null, streamId, traceId, length, type, flags, copy, 0, length);
+            Entry entry = new TrailersEntry(stream, streamId, traceId, length, type, flags, copy, 0, length);
             addEntry(entry);
         }
         else
