@@ -80,6 +80,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HttpEndExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteManager;
@@ -1529,6 +1530,19 @@ final class Http2Connection
         httpHeaders.forEach(h -> builder.header(b -> mapHeader(h, b)));
     }
 
+    void mapTrailers(
+        ListFW<HttpHeaderFW> httpHeaders,
+        HpackHeaderBlockFW.Builder builder)
+    {
+        httpHeaders.forEach(h ->
+        {
+            if (validHeader(h))
+            {
+                builder.header(b -> mapHeader(h, b));
+            }
+        });
+    }
+
     void mapHeaders(
         ListFW<HttpHeaderFW> httpHeaders,
         HpackHeaderBlockFW.Builder builder)
@@ -1806,10 +1820,19 @@ final class Http2Connection
         Correlation correlation)
     {
         Http2Stream stream = http2Streams.get(correlation.http2StreamId);
-
         if (stream != null)
         {
-            stream.onHttpEnd(end.trace());
+            final OctetsFW extension = end.extension();
+            if (extension.sizeof() != 0)
+            {
+                final HttpEndExFW httpEndEx = extension.get(factory.httpEndExRO::wrap);
+                ListFW<HttpHeaderFW> trailers = httpEndEx.trailers();
+                writeScheduler.trailers(end.trace(), stream.http2StreamId, Http2Flags.END_STREAM, trailers);
+            }
+            else
+            {
+                stream.onHttpEnd(end.trace());
+            }
         }
     }
 

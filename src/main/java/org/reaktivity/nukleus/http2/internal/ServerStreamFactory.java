@@ -53,6 +53,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HttpEndExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.route.RouteManager;
@@ -96,6 +97,7 @@ public final class ServerStreamFactory implements StreamFactory
     final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
     final HttpBeginExFW beginExRO = new HttpBeginExFW();
     final Http2DataExFW dataExRO = new Http2DataExFW();
+    final HttpEndExFW httpEndExRO = new HttpEndExFW();
     final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
     final Http2PingFW pingRO = new Http2PingFW();
