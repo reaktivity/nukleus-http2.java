@@ -80,6 +80,7 @@ public final class Http2Controller implements Controller
     public CompletableFuture<Long> routeServer(
         String localAddress,
         String remoteAddress,
+        String tag,
         Map<String, String> headers)
     {
         long correlationId = controllerSpi.nextCorrelationId();
@@ -90,6 +91,7 @@ public final class Http2Controller implements Controller
                                .role(b -> b.set(Role.SERVER))
                                .localAddress(localAddress)
                                .remoteAddress(remoteAddress)
+                               .tag(tag)
                                .extension(extension(headers))
                                .build();
 

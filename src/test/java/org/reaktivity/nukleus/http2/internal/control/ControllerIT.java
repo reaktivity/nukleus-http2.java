@@ -63,7 +63,7 @@ public class ControllerIT
         k3po.start();
 
         reaktor.controller(Http2Controller.class)
-               .routeServer("http2#0", "target#0", headers)
+               .routeServer("http2#0", "target#0", "localhost:8080",  headers)
                .get();
 
         k3po.finish();
@@ -100,7 +100,7 @@ public class ControllerIT
         k3po.start();
 
         long routeId = reaktor.controller(Http2Controller.class)
-              .routeServer("http2#0", "target#0", headers)
+              .routeServer("http2#0", "target#0", "localhost:8080", headers)
               .get();
 
         k3po.notifyBarrier("ROUTED_SERVER");
