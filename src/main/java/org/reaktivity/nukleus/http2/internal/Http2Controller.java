@@ -93,18 +93,20 @@ public final class Http2Controller implements Controller
     public CompletableFuture<Long> routeServer(
         String localAddress,
         String remoteAddress,
+        String tag,
         Map<String, String> headers)
     {
-        return route(RouteKind.SERVER, localAddress, remoteAddress, gson.toJson(headers));
+        return route(RouteKind.SERVER, localAddress, remoteAddress, tag, gson.toJson(headers));
     }
 
     @Deprecated
     public CompletableFuture<Long> routeClient(
         String localAddress,
         String remoteAddress,
+        String tag,
         Map<String, String> headers)
     {
-        return route(RouteKind.CLIENT, localAddress, remoteAddress, gson.toJson(headers));
+        return route(RouteKind.CLIENT, localAddress, remoteAddress, tag, gson.toJson(headers));
     }
 
     public CompletableFuture<Long> route(
@@ -112,13 +114,14 @@ public final class Http2Controller implements Controller
         String localAddress,
         String remoteAddress)
     {
-        return route(kind, localAddress, remoteAddress, null);
+        return route(kind, localAddress, remoteAddress, null, null);
     }
 
     public CompletableFuture<Long> route(
         RouteKind kind,
         String localAddress,
         String remoteAddress,
+        String tag,
         String extension)
     {
         Flyweight routeEx = extensionRO;
@@ -145,7 +148,7 @@ public final class Http2Controller implements Controller
             }
         }
 
-        return doRoute(kind, localAddress, remoteAddress, routeEx);
+        return doRoute(kind, localAddress, remoteAddress, tag, routeEx);
     }
 
     public CompletableFuture<Void> unroute(
@@ -178,6 +181,7 @@ public final class Http2Controller implements Controller
         RouteKind kind,
         String localAddress,
         String remoteAddress,
+        String tag,
         Flyweight extension)
     {
         final long correlationId = controllerSpi.nextCorrelationId();
@@ -189,6 +193,7 @@ public final class Http2Controller implements Controller
                                  .role(b -> b.set(role))
                                  .localAddress(localAddress)
                                  .remoteAddress(remoteAddress)
+                                 .tag(tag)
                                  .extension(extension.buffer(), extension.offset(), extension.sizeof())
                                  .build();
 

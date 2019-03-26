@@ -67,7 +67,7 @@ public class ControllerIT
         extension.addProperty(":authority", "localhost:8080");
 
         reaktor.controller(Http2Controller.class)
-               .route(SERVER, "http2#0", "target#0", gson.toJson(extension))
+               .route(SERVER, "http2#0", "target#0", "localhost:8080", gson.toJson(extension))
                .get();
 
         k3po.finish();
@@ -85,7 +85,7 @@ public class ControllerIT
         extension.addProperty(":authority", "localhost:8080");
 
         reaktor.controller(Http2Controller.class)
-               .route(CLIENT, "http2#0", "target#0", gson.toJson(extension))
+               .route(CLIENT, "http2#0", "target#0", "localhost:8080", gson.toJson(extension))
                .get();
 
         k3po.finish();
@@ -104,7 +104,7 @@ public class ControllerIT
         extension.addProperty(":authority", "localhost:8080");
 
         long routeId = reaktor.controller(Http2Controller.class)
-              .route(SERVER, "http2#0", "target#0", gson.toJson(extension))
+              .route(SERVER, "http2#0", "target#0", "localhost:8080", gson.toJson(extension))
               .get();
 
         k3po.notifyBarrier("ROUTED_SERVER");
@@ -129,7 +129,7 @@ public class ControllerIT
         extension.addProperty(":authority", "localhost:8080");
 
         long routeId = reaktor.controller(Http2Controller.class)
-              .route(CLIENT, "http2#0", "target#0", gson.toJson(extension))
+              .route(CLIENT, "http2#0", "target#0", "localhost:8080", gson.toJson(extension))
               .get();
 
         k3po.notifyBarrier("ROUTED_CLIENT");
