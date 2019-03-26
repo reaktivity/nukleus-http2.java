@@ -54,7 +54,7 @@ public class Http2Server
         tcpController.routeServer("tcp#127.0.0.1:8080", "http2#0")
                      .get();
         // TODO: restore "echo" capability
-        http2Controller.routeServer("http2#0", "echo#0", "127.0.0.1:8080", headers)
+        http2Controller.routeServer("http2#0", "echo#0", "tcp#127.0.0.1:8080", headers)
                        .get();
 
         Thread.sleep(10000000);
