@@ -1,5 +1,5 @@
 /**
- * Copyright 2016-2018 The Reaktivity Project
+ * Copyright 2016-2019 The Reaktivity Project
  *
  * The Reaktivity Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
@@ -35,9 +35,9 @@ class Http2Stream
     final int http2StreamId;
     final int maxHeaderSize;
     final long applicationRouteId;
-    final long applicationId;
-    final long correlationId;
-    final MessageConsumer applicationTarget;
+    final long applicationInitialId;
+    final long applicationReplyId;
+    final MessageConsumer applicationInitial;
 
     boolean endDeferred;
     Http2StreamState state;
@@ -57,7 +57,6 @@ class Http2Stream
     private ServerStreamFactory factory;
 
     MessageConsumer applicationReplyThrottle;
-    long applicationReplyId;
 
     Http2Stream(
         ServerStreamFactory factory,
@@ -71,15 +70,15 @@ class Http2Stream
         this.connection = connection;
         this.http2StreamId = http2StreamId;
         this.applicationRouteId = applicationRouteId;
-        this.applicationId = factory.supplyInitialId.applyAsLong(applicationRouteId);
-        this.applicationTarget = connection.router.supplyReceiver(applicationId);
-        this.correlationId = factory.supplyCorrelationId.getAsLong();
+        this.applicationInitialId = factory.supplyInitialId.applyAsLong(applicationRouteId);
+        this.applicationInitial = connection.router.supplyReceiver(applicationInitialId);
+        this.applicationReplyId = factory.supplyReplyId.applyAsLong(applicationInitialId);
         this.http2InWindow = connection.localSettings.initialWindowSize;
 
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
-        this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationTarget, httpWriter,
-                applicationRouteId, applicationId, this);
+        this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationInitial, httpWriter,
+                applicationRouteId, applicationInitialId, this);
         // Setting the overhead to zero for now. Doesn't help when multiple streams are in picture
         this.maxHeaderSize = 0;     // maxHeaderSize();
     }
@@ -127,7 +126,7 @@ class Http2Stream
             factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
         }
 
-        if (factory.correlations.containsKey(correlationId))
+        if (factory.correlations.containsKey(applicationReplyId))
         {
             connection.send404(http2StreamId);
         }

@@ -1,5 +1,5 @@
 /**
- * Copyright 2016-2018 The Reaktivity Project
+ * Copyright 2016-2019 The Reaktivity Project
  *
  * The Reaktivity Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
@@ -50,7 +50,6 @@ class HttpWriter
         long routeId,
         long streamId,
         long traceId,
-        long correlationId,
         DirectBuffer extBuffer,
         int extOffset,
         int extLength)
@@ -59,7 +58,6 @@ class HttpWriter
                 .routeId(routeId)
                 .streamId(streamId)
                 .trace(traceId)
-                .correlationId(correlationId)
                 .extension(extBuffer, extOffset, extLength)
                 .build();
 
@@ -72,7 +70,6 @@ class HttpWriter
         long streamId,
         long traceId,
         long authorization,
-        long correlationId,
         Consumer<ListFW.Builder<HttpHeaderFW.Builder, HttpHeaderFW>> mutator)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
@@ -80,7 +77,6 @@ class HttpWriter
                 .streamId(streamId)
                 .trace(traceId)
                 .authorization(authorization)
-                .correlationId(correlationId)
                 .extension(e -> e.set(visitHttpBeginEx(mutator)))
                 .build();
 
