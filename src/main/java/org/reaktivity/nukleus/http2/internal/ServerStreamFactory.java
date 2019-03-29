@@ -116,7 +116,6 @@ public final class ServerStreamFactory implements StreamFactory
     final LongUnaryOperator supplyInitialId;
     final LongUnaryOperator supplyReplyId;
     final LongSupplier supplyTrace;
-    final LongSupplier supplyCorrelationId;
     final HttpWriter httpWriter;
     final Http2Writer http2Writer;
 
@@ -137,7 +136,6 @@ public final class ServerStreamFactory implements StreamFactory
         BufferPool bufferPool,
         LongUnaryOperator supplyInitialId,
         LongUnaryOperator supplyReplyId,
-        LongSupplier supplyCorrelationId,
         Long2ObjectHashMap<Correlation> correlations,
         LongSupplier supplyGroupId,
         LongSupplier supplyTrace,
@@ -155,7 +153,6 @@ public final class ServerStreamFactory implements StreamFactory
         this.http2ReplyPool = bufferPool.duplicate();
         this.supplyInitialId = requireNonNull(supplyInitialId);
         this.supplyReplyId = requireNonNull(supplyReplyId);
-        this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.correlations = requireNonNull(correlations);
         this.supplyGroupId = requireNonNull(supplyGroupId);
         this.supplyTrace = requireNonNull(supplyTrace);
@@ -239,10 +236,8 @@ public final class ServerStreamFactory implements StreamFactory
     {
         private final MessageConsumer networkReply;
         private final long networkRouteId;
-        private final long networkId;
-
-        private long networkCorrelationId;
-        private long networkReplyId;
+        private final long networkInitialId;
+        private final long networkReplyId;
 
         private MessageConsumer streamState;
         private Http2Connection http2Connection;
@@ -252,11 +247,12 @@ public final class ServerStreamFactory implements StreamFactory
         private ServerAcceptStream(
             MessageConsumer networkReply,
             long networkRouteId,
-            long networkId)
+            long networkInitialId)
         {
             this.networkReply = networkReply;
             this.networkRouteId = networkRouteId;
-            this.networkId = networkId;
+            this.networkInitialId = networkInitialId;
+            this.networkReplyId = supplyReplyId.applyAsLong(networkInitialId);
             this.streamState = this::beforeBegin;
         }
 
@@ -282,7 +278,7 @@ public final class ServerStreamFactory implements StreamFactory
             }
             else
             {
-                doReset(networkReply, networkRouteId, networkId, supplyTrace.getAsLong());
+                doReset(networkReply, networkRouteId, networkInitialId, supplyTrace.getAsLong());
             }
         }
 
@@ -307,7 +303,7 @@ public final class ServerStreamFactory implements StreamFactory
                     handleAbort(abort);
                     break;
                 default:
-                    doReset(networkReply, networkRouteId, networkId, supplyTrace.getAsLong());
+                    doReset(networkReply, networkRouteId, networkInitialId, supplyTrace.getAsLong());
                     break;
             }
         }
@@ -315,20 +311,16 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleBegin(
             BeginFW begin)
         {
-            networkCorrelationId = begin.correlationId();
-
-            networkReplyId = supplyReplyId.applyAsLong(networkId);
-
             initialWindow = bufferPool.slotCapacity();
-            doWindow(networkReply, networkRouteId, networkId, initialWindow, 0, 0, supplyTrace.getAsLong());
+            doWindow(networkReply, networkRouteId, networkInitialId, initialWindow, 0, 0, supplyTrace.getAsLong());
             window = initialWindow;
 
-            doBegin(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong(), networkCorrelationId);
+            doBegin(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong());
             router.setThrottle(networkReplyId, this::handleThrottle);
 
             this.streamState = this::afterBegin;
             http2Connection = new Http2Connection(ServerStreamFactory.this, router,
-                    networkReply, networkRouteId, networkId,
+                    networkReply, networkRouteId, networkInitialId,
                     networkReply, networkReplyId, wrapRoute);
             http2Connection.handleBegin(begin);
         }
@@ -339,7 +331,7 @@ public final class ServerStreamFactory implements StreamFactory
             window -= dataRO.length() + dataRO.padding();
             if (window < 0)
             {
-                doReset(networkReply, networkRouteId, networkId, supplyTrace.getAsLong());
+                doReset(networkReply, networkRouteId, networkInitialId, supplyTrace.getAsLong());
                 //http2Connection.handleReset();
             }
             else
@@ -352,7 +344,7 @@ public final class ServerStreamFactory implements StreamFactory
                     if (windowPending > 0)
                     {
                         window += windowPending;
-                        doWindow(networkReply, networkRouteId, networkId, windowPending, 0, 0,
+                        doWindow(networkReply, networkRouteId, networkInitialId, windowPending, 0, 0,
                                 supplyTrace.getAsLong());
                     }
                 }
@@ -368,7 +360,7 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleAbort(
             AbortFW abort)
         {
-            correlations.remove(networkCorrelationId);
+            correlations.remove(networkReplyId);
 
             // aborts reply stream
             doAbort(networkReply, networkRouteId, networkReplyId, supplyTrace.getAsLong());
@@ -417,7 +409,7 @@ public final class ServerStreamFactory implements StreamFactory
             ResetFW reset)
         {
             http2Connection.handleReset(reset);
-            doReset(networkReply, networkRouteId, networkId, supplyTrace.getAsLong());
+            doReset(networkReply, networkRouteId, networkInitialId, supplyTrace.getAsLong());
         }
     }
 
@@ -499,8 +491,8 @@ public final class ServerStreamFactory implements StreamFactory
         private void handleBegin(
             BeginFW begin)
         {
-            final long correlationId = begin.correlationId();
-            correlation = correlations.remove(correlationId);
+            final long replyId = begin.streamId();
+            correlation = correlations.remove(replyId);
             if (correlation != null)
             {
                 http2Connection = correlation.http2Connection;
@@ -540,14 +532,12 @@ public final class ServerStreamFactory implements StreamFactory
         final MessageConsumer receiver,
         final long routeId,
         final long streamId,
-        final long traceId,
-        final long correlationId)
+        final long traceId)
     {
         final BeginFW begin = beginRW.wrap(writeBuffer, 0, writeBuffer.capacity())
                 .routeId(routeId)
                 .streamId(streamId)
                 .trace(traceId)
-                .correlationId(correlationId)
                 .build();
 
         receiver.accept(begin.typeId(), begin.buffer(), begin.offset(), begin.sizeof());

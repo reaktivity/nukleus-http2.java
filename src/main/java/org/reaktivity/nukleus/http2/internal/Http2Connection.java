@@ -1005,9 +1005,10 @@ final class Http2Connection
         stream.contentLength = headersContext.contentLength;
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
-        httpWriter.doHttpBegin(stream.applicationTarget, applicationRouteId, stream.applicationId, traceId, stream.correlationId,
-                beginEx.buffer(), beginEx.offset(), beginEx.sizeof());
-        router.setThrottle(stream.applicationId, stream::onThrottle);
+        httpWriter.doHttpBegin(stream.applicationInitial, applicationRouteId,
+                stream.applicationInitialId, traceId, beginEx.buffer(),
+                beginEx.offset(), beginEx.sizeof());
+        router.setThrottle(stream.applicationInitialId, stream::onThrottle);
 
         if (state == HALF_CLOSED_REMOTE)
         {
@@ -1059,7 +1060,7 @@ final class Http2Connection
             {
                 promisedStreamCount--;
             }
-            factory.correlations.remove(stream.correlationId);
+            factory.correlations.remove(stream.applicationReplyId);
             http2Streams.remove(stream.http2StreamId);
             stream.close();
         }
@@ -1176,12 +1177,11 @@ final class Http2Connection
         final long applicationRouteId = route.correlationId();
         HttpWriter httpWriter = factory.httpWriter;
         Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, applicationRouteId, httpWriter);
-        final MessageConsumer applicationTarget = http2Stream.applicationTarget;
-        long targetId = http2Stream.applicationId;
+        final MessageConsumer applicationTarget = http2Stream.applicationInitial;
+        long targetId = http2Stream.applicationInitialId;
 
         httpWriter.doHttpBegin(applicationTarget, applicationRouteId, targetId, factory.supplyTrace.getAsLong(), authorization,
-                http2Stream.correlationId, hs -> headers.forEach(h -> hs.item(b -> b.name(h.name())
-                                                         .value(h.value()))));
+                hs -> headers.forEach(h -> hs.item(b -> b.name(h.name()).value(h.value()))));
         router.setThrottle(targetId, http2Stream::onThrottle);
         http2Stream.endDeferred = true;
     }
@@ -1197,10 +1197,10 @@ final class Http2Connection
         Http2Stream http2Stream = new Http2Stream(factory, this, http2StreamId, state, applicationRouteId, httpWriter);
         http2Streams.put(http2StreamId, http2Stream);
 
-        Correlation correlation = new Correlation(http2Stream.correlationId, networkReplyId, writeScheduler,
+        Correlation correlation = new Correlation(http2Stream.applicationReplyId, networkReplyId, writeScheduler,
                 this::doPromisedRequest, this, http2StreamId, encodeContext, this::nextPromisedId, this::findPushId);
 
-        factory.correlations.put(http2Stream.correlationId, correlation);
+        factory.correlations.put(http2Stream.applicationReplyId, correlation);
         if (http2Stream.isClientInitiated())
         {
             clientStreamCount++;
@@ -1748,7 +1748,6 @@ final class Http2Connection
         else
         {
             stream.applicationReplyThrottle = applicationReplyThrottle;
-            stream.applicationReplyId = applicationReplyId;
 
             stream.sendHttpWindow(factory.supplyTrace.getAsLong());
 
