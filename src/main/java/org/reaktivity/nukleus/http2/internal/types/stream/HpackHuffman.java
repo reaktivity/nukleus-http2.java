@@ -467,8 +467,9 @@ public class HpackHuffman
     {
         Node current = ROOT;
         int offset = 0;
+        int limit = dst.capacity();
 
-        for (int i = 0; i < src.capacity(); i++)
+        for (int i = 0; i < src.capacity() && offset < limit; i++)
         {
             int b = src.getByte(i) & 0xff;
             Node next = current.transitions[b];
@@ -486,7 +487,7 @@ public class HpackHuffman
             }
             current = next;
         }
-        return current.accept ? offset : -1;
+        return current.accept && offset < limit ? offset : -1;
     }
 
     // Returns the no of bytes needed to encode src

@@ -47,6 +47,16 @@ public class HpackHuffmanTest
                 "foo=ASDJKHQKBZXOQWEOPIUAXQWEOIU; max-age=3600; version=1");
     }
 
+    @Test
+    public void decodeReject()
+    {
+        byte[] bytes = BitUtil.fromHex("006402");
+        DirectBuffer buf = new UnsafeBuffer(bytes, 1, bytes.length - 1);
+        MutableDirectBuffer dst = new UnsafeBuffer(new byte[0]);
+        int length = HpackHuffman.decode(buf, dst);
+        assertEquals(-1, length);
+    }
+
     private void decode(String encoded, String expected)
     {
         byte[] bytes = BitUtil.fromHex("00" + encoded);    // +00 to test offset
