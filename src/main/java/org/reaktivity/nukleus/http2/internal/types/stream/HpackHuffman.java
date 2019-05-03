@@ -480,7 +480,7 @@ public class HpackHuffman
             if (current.symbols[b] != null)
             {
                 dst.putByte(offset++, (byte) current.symbols[b].charAt(0));
-                if (current.symbols[b].length() == 2)
+                if (current.symbols[b].length() == 2 && offset < limit)
                 {
                     dst.putByte(offset++, (byte) current.symbols[b].charAt(1));
                 }
