@@ -24,7 +24,7 @@ import org.reaktivity.nukleus.http2.internal.Http2Configuration;
 import org.reaktivity.nukleus.http2.internal.Http2Controller;
 import org.reaktivity.nukleus.tcp.internal.TcpController;
 import org.reaktivity.reaktor.Reaktor;
-import org.reaktivity.reaktor.internal.ReaktorConfiguration;
+import org.reaktivity.reaktor.ReaktorConfiguration;
 
 public class Http2Server
 {

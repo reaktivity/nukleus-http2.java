@@ -1153,6 +1153,7 @@ final class Http2Connection
                                    .map(Map.Entry::getValue)
                                    .filter(s -> (s.http2StreamId & 0x01) == 1)     // client-initiated stream
                                    .filter(s -> s.state == OPEN || s.state == HALF_CLOSED_REMOTE)
+                                   .filter(s -> !s.endStream)
                                    .mapToInt(s -> s.http2StreamId)
                                    .findAny()
                                    .orElse(-1);

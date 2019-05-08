@@ -42,7 +42,7 @@ public class AbortIT
             .directory("target/nukleus-itests")
             .commandBufferCapacity(1024)
             .responseBufferCapacity(1024)
-            .counterValuesBufferCapacity(4096)
+            .counterValuesBufferCapacity(8192)
             .nukleus("http2"::equals)
             .configure(HTTP2_SERVER_CONCURRENT_STREAMS, 100)
             .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
