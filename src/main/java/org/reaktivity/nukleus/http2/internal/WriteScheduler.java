@@ -57,7 +57,7 @@ public interface WriteScheduler
 
     void doEnd();
 
-    void onWindow(long traceId);
+    void onWindow();
 
     void onHttp2Window();
 
