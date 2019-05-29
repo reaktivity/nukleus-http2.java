@@ -1094,7 +1094,7 @@ final class Http2Connection
     void handleWindow(
         WindowFW windowRO)
     {
-        writeScheduler.onWindow(windowRO.trace());
+        writeScheduler.onWindow();
     }
 
     void error(
@@ -1750,7 +1750,7 @@ final class Http2Connection
         {
             stream.applicationReplyThrottle = applicationReplyThrottle;
 
-            stream.sendHttpWindow(factory.supplyTrace.getAsLong());
+            stream.sendHttpWindow();
 
             if (extension.sizeof() > 0)
             {
