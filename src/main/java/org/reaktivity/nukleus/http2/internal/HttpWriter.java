@@ -28,19 +28,26 @@ import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
 
 import java.util.function.Consumer;
+import java.util.function.ToIntFunction;
 
 class HttpWriter
 {
+    private static final String HTTP_TYPE_NAME = "http";
+
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
     private final AbortFW.Builder abortRW = new AbortFW.Builder();
     private final HttpBeginExFW.Builder httpBeginExRW = new HttpBeginExFW.Builder();
 
+    final int httpTypeId;
     private final MutableDirectBuffer writeBuffer;
 
-    HttpWriter(MutableDirectBuffer writeBuffer)
+    HttpWriter(
+        ToIntFunction<String> supplyTypeId,
+        MutableDirectBuffer writeBuffer)
     {
+        this.httpTypeId = supplyTypeId.applyAsInt(HTTP_TYPE_NAME);
         this.writeBuffer = writeBuffer;
     }
 
@@ -140,6 +147,7 @@ class HttpWriter
     {
         return (buffer, offset, limit) ->
                 httpBeginExRW.wrap(buffer, offset, limit)
+                             .typeId(httpTypeId)
                              .headers(headers)
                              .build()
                              .sizeof();

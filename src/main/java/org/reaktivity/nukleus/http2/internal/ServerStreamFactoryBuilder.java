@@ -21,6 +21,7 @@ import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
 import java.util.function.Supplier;
+import java.util.function.ToIntFunction;
 
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
@@ -39,6 +40,7 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     private LongUnaryOperator supplyInitialId;
     private LongUnaryOperator supplyReplyId;
     private LongSupplier supplyTrace;
+    private ToIntFunction<String> supplyTypeId;
     private LongSupplier supplyGroupId;
     private Supplier<BufferPool> supplyBufferPool;
     private LongFunction<IntUnaryOperator> groupBudgetClaimer;
@@ -86,29 +88,39 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
 
     @Override
     public StreamFactoryBuilder setGroupIdSupplier(
-            LongSupplier supplyGroupId)
+        LongSupplier supplyGroupId)
     {
         this.supplyGroupId = supplyGroupId;
         return this;
     }
 
     @Override
-    public StreamFactoryBuilder setTraceSupplier(LongSupplier supplyTrace)
+    public StreamFactoryBuilder setTraceSupplier(
+        LongSupplier supplyTrace)
     {
         this.supplyTrace = supplyTrace;
         return this;
     }
 
+    @Override
+    public StreamFactoryBuilder setTypeIdSupplier(
+        ToIntFunction<String> supplyTypeId)
+    {
+        this.supplyTypeId = supplyTypeId;
+        return this;
+    }
 
     @Override
-    public StreamFactoryBuilder setGroupBudgetClaimer(LongFunction<IntUnaryOperator> groupBudgetClaimer)
+    public StreamFactoryBuilder setGroupBudgetClaimer(
+        LongFunction<IntUnaryOperator> groupBudgetClaimer)
     {
         this.groupBudgetClaimer = groupBudgetClaimer;
         return this;
     }
 
     @Override
-    public StreamFactoryBuilder setGroupBudgetReleaser(LongFunction<IntUnaryOperator> groupBudgetReleaser)
+    public StreamFactoryBuilder setGroupBudgetReleaser(
+        LongFunction<IntUnaryOperator> groupBudgetReleaser)
     {
         this.groupBudgetReleaser = groupBudgetReleaser;
         return this;
@@ -135,8 +147,19 @@ public final class ServerStreamFactoryBuilder implements StreamFactoryBuilder
     {
         final BufferPool bufferPool = supplyBufferPool.get();
 
-        return new ServerStreamFactory(config, router, writeBuffer, bufferPool, supplyInitialId, supplyReplyId,
-                correlations, supplyGroupId, supplyTrace,
-                groupBudgetClaimer, groupBudgetReleaser, supplyCounter);
+        return new ServerStreamFactory(
+                config,
+                router,
+                writeBuffer,
+                bufferPool,
+                supplyInitialId,
+                supplyReplyId,
+                supplyGroupId,
+                supplyTrace,
+                supplyTypeId,
+                supplyCounter,
+                correlations,
+                groupBudgetClaimer,
+                groupBudgetReleaser);
     }
 }
