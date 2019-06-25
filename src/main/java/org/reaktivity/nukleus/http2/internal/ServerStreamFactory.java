@@ -22,6 +22,7 @@ import java.util.function.IntUnaryOperator;
 import java.util.function.LongFunction;
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
+import java.util.function.ToIntFunction;
 
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
@@ -41,7 +42,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameHeaderFW;
@@ -53,6 +53,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2RstStreamFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HttpDataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpEndExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -96,7 +97,7 @@ public final class ServerStreamFactory implements StreamFactory
     final DirectBuffer nameRO = new UnsafeBuffer(new byte[0]);
     final DirectBuffer valueRO = new UnsafeBuffer(new byte[0]);
     final HttpBeginExFW beginExRO = new HttpBeginExFW();
-    final Http2DataExFW dataExRO = new Http2DataExFW();
+    final HttpDataExFW dataExRO = new HttpDataExFW();
     final HttpEndExFW httpEndExRO = new HttpEndExFW();
     final HpackHeaderBlockFW.Builder blockRW = new HpackHeaderBlockFW.Builder();
 
@@ -136,12 +137,13 @@ public final class ServerStreamFactory implements StreamFactory
         BufferPool bufferPool,
         LongUnaryOperator supplyInitialId,
         LongUnaryOperator supplyReplyId,
-        Long2ObjectHashMap<Correlation> correlations,
         LongSupplier supplyGroupId,
         LongSupplier supplyTrace,
+        ToIntFunction<String> supplyTypeId,
+        Function<String, LongSupplier> supplyCounter,
+        Long2ObjectHashMap<Correlation> correlations,
         LongFunction<IntUnaryOperator> groupBudgetClaimer,
-        LongFunction<IntUnaryOperator> groupBudgetReleaser,
-        Function<String, LongSupplier> supplyCounter)
+        LongFunction<IntUnaryOperator> groupBudgetReleaser)
     {
         this.config = config;
         this.router = requireNonNull(router);
@@ -159,7 +161,7 @@ public final class ServerStreamFactory implements StreamFactory
         this.groupBudgetClaimer = requireNonNull(groupBudgetClaimer);
         this.groupBudgetReleaser = requireNonNull(groupBudgetReleaser);
 
-        this.httpWriter = new HttpWriter(writeBuffer);
+        this.httpWriter = new HttpWriter(supplyTypeId, writeBuffer);
         this.http2Writer = new Http2Writer(writeBuffer);
         this.counters = new Http2Counters(supplyCounter);
 

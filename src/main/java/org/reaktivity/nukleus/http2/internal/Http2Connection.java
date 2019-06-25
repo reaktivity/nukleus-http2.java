@@ -64,7 +64,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.HpackHuffman;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackStringFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ContinuationFW;
-import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags;
@@ -80,6 +79,7 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2SettingsId;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2WindowUpdateFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
+import org.reaktivity.nukleus.http2.internal.types.stream.HttpDataExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpEndExFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
@@ -722,7 +722,8 @@ final class Http2Connection
 
         headersContext.reset();
 
-        factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity());
+        factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
+                             .typeId(factory.httpWriter.httpTypeId);
         HpackHeaderBlockFW headerBlock = factory.blockRO.wrap(headersBuffer, headersOffset, headersLimit);
         headerBlock.forEach(headerFieldConsumer);
 
@@ -1399,7 +1400,8 @@ final class Http2Connection
             headersContext.headers.put(":authority", authority + defaultPort);
 
             // rebuild http request as :authority header is modified
-            factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity());
+            factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
+                                 .typeId(factory.httpWriter.httpTypeId);
             for(Map.Entry<String, String> e : headersContext.headers.entrySet())
             {
                 factory.httpBeginExRW.headersItem(item -> item.name(e.getKey())
@@ -1770,12 +1772,12 @@ final class Http2Connection
     }
 
     void handleHttpData(
-        DataFW dataRO,
+        DataFW data,
         Correlation correlation)
     {
-        OctetsFW extension = dataRO.extension();
-        OctetsFW payload = dataRO.payload();
-        long traceId = dataRO.trace();
+        OctetsFW extension = data.extension();
+        OctetsFW payload = data.payload();
+        long traceId = data.trace();
 
         if (extension.sizeof() > 0)
         {
@@ -1784,9 +1786,9 @@ final class Http2Connection
             if (pushStreamId != -1)
             {
                 int promisedStreamId = correlation.promisedStreamIds.getAsInt();
-                Http2DataExFW dataEx = extension.get(factory.dataExRO::wrap);
-                writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.headers());
-                correlation.pushHandler.accept(promisedStreamId, dataRO.authorization(), dataEx.headers());
+                HttpDataExFW dataEx = extension.get(factory.dataExRO::wrap);
+                writeScheduler.pushPromise(traceId, pushStreamId, promisedStreamId, dataEx.promise());
+                correlation.pushHandler.accept(promisedStreamId, data.authorization(), dataEx.promise());
 
                 factory.counters.pushPromiseFramesWritten.getAsLong();
             }
@@ -1801,7 +1803,7 @@ final class Http2Connection
             Http2Stream stream = http2Streams.get(correlation.http2StreamId);
             if (stream != null)
             {
-                stream.applicationReplyBudget -= dataRO.length() + dataRO.padding();
+                stream.applicationReplyBudget -= data.length() + data.padding();
                 if (stream.applicationReplyBudget < 0)
                 {
                     doRstByUs(stream, Http2ErrorCode.INTERNAL_ERROR);
