@@ -141,6 +141,16 @@ public class ConnectionManagementIT
 
     @Test
     @Specification({
+        "${route}/server/controller",
+        "${spec}/do.not.send.reset.after.eos/client",
+        "${nukleus}/do.not.send.reset.after.eos/server" })
+    public void doNotSendResetAfterEOS() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
             "${route}/server/controller",
             "${spec}/ignore.rst.stream/client",
             "${nukleus}/ignore.rst.stream/server" })
