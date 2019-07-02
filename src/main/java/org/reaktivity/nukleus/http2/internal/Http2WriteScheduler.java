@@ -139,9 +139,10 @@ public class Http2WriteScheduler implements WriteScheduler
     public boolean rst(int streamId, Http2ErrorCode errorCode)
     {
         Http2Stream stream = stream(streamId);
-        if (stream != null && stream.state != Http2StreamState.CLOSED)
+        boolean needsRst = stream != null && stream.state != Http2StreamState.CLOSED;
+
+        if (needsRst)
         {
-            long traceId = connection.factory.supplyTrace.getAsLong();
             int length = 4;                     // 4 for RST_STREAM payload
             int sizeof = length + 9;            // +9 for HTTP2 framing
 
@@ -154,16 +155,14 @@ public class Http2WriteScheduler implements WriteScheduler
             }
             else
             {
+                long traceId = connection.factory.supplyTrace.getAsLong();
                 Entry entry = new RstEntry(stream, streamId, traceId, length, type, errorCode);
                 addEntry(entry);
             }
 
-            return true;
         }
-        else
-        {
-            return false;
-        }
+
+        return needsRst;
     }
 
     @Override
