@@ -761,6 +761,8 @@ final class Http2Connection
         }
         else
         {
+            overrideHeadersIfNeeded(route);
+
             Http2StreamState nextState = http2Frame.endStream() ? HALF_CLOSED_REMOTE : OPEN;
             followRoute(streamId, nextState, route);
         }
@@ -1400,6 +1402,24 @@ final class Http2Connection
             headersContext.headers.put(":authority", authority + defaultPort);
 
             // rebuild http request as :authority header is modified
+            factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
+                                 .typeId(factory.httpWriter.httpTypeId);
+            for(Map.Entry<String, String> e : headersContext.headers.entrySet())
+            {
+                factory.httpBeginExRW.headersItem(item -> item.name(e.getKey())
+                                                              .value(e.getValue()));
+            }
+        }
+    }
+
+    private void overrideHeadersIfNeeded(
+        RouteFW route)
+    {
+        final HttpRouteExFW httpRouteEx = route.extension().get(factory.httpRouteExRO::tryWrap);
+        if (httpRouteEx != null && !httpRouteEx.overrides().isEmpty())
+        {
+            httpRouteEx.overrides().forEach(o -> headersContext.headers.put(o.name().asString(), o.value().asString()));
+            // rebuild http request due to header overrides
             factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
                                  .typeId(factory.httpWriter.httpTypeId);
             for(Map.Entry<String, String> e : headersContext.headers.entrySet())

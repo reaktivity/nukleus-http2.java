@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-http2</artifactId>
-  <version>0.101</version>
+  <version>0.102</version>
   <name>HTTP/2 Nukleus Implementation</name>
   <description>HTTP/2 Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-http2.java</url>
@@ -54,7 +54,7 @@
 
     <nukleus.plugin.version>0.33</nukleus.plugin.version>
 
-    <nukleus.http2.spec.version>0.68</nukleus.http2.spec.version>
+    <nukleus.http2.spec.version>0.69</nukleus.http2.spec.version>
     <nukleus.tcp.version>0.79</nukleus.tcp.version>
     <reaktor.version>0.93</reaktor.version>
   </properties>
