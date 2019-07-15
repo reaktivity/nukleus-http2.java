@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import static java.nio.ByteBuffer.allocateDirect;
 import static java.nio.ByteOrder.nativeOrder;
+import static java.util.Collections.singletonMap;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -95,7 +96,7 @@ public final class Http2Controller implements Controller
         String remoteAddress,
         Map<String, String> headers)
     {
-        return route(RouteKind.SERVER, localAddress, remoteAddress, gson.toJson(headers));
+        return route(RouteKind.SERVER, localAddress, remoteAddress, gson.toJson(singletonMap("headers", headers)));
     }
 
     @Deprecated
@@ -104,7 +105,7 @@ public final class Http2Controller implements Controller
         String remoteAddress,
         Map<String, String> headers)
     {
-        return route(RouteKind.CLIENT, localAddress, remoteAddress, gson.toJson(headers));
+        return route(RouteKind.CLIENT, localAddress, remoteAddress, gson.toJson(singletonMap("headers", headers)));
     }
 
     public CompletableFuture<Long> route(
@@ -130,16 +131,33 @@ public final class Http2Controller implements Controller
             if (element.isJsonObject())
             {
                 final JsonObject object = (JsonObject) element;
+                final JsonObject headers = object.getAsJsonObject("headers");
+                final JsonObject overrides = object.getAsJsonObject("overrides");
 
                 routeEx = routeExRW.wrap(extensionBuffer, 0, extensionBuffer.capacity())
                         .headers(hs ->
                         {
-                            object.entrySet().forEach(e ->
+                            if (headers != null)
                             {
-                                String name = e.getKey();
-                                String value = e.getValue().getAsString();
-                                hs.item(h -> h.name(name).value(value));
-                            });
+                                headers.entrySet().forEach(e ->
+                                {
+                                    String name = e.getKey();
+                                    String value = e.getValue().getAsString();
+                                    hs.item(h -> h.name(name).value(value));
+                                });
+                            }
+                        })
+                        .overrides(os ->
+                        {
+                            if (overrides != null)
+                            {
+                                overrides.entrySet().forEach(e ->
+                                {
+                                    String name = e.getKey();
+                                    String value = e.getValue().getAsString();
+                                    os.item(h -> h.name(name).value(value));
+                                });
+                            }
                         })
                         .build();
             }

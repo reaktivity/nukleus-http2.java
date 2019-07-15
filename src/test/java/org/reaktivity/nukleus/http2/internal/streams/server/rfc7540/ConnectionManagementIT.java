@@ -72,6 +72,16 @@ public class ConnectionManagementIT
 
     @Test
     @Specification({
+            "${route}/server.override/controller",
+            "${spec}/http.get.exchange.with.header.override/client",
+            "${nukleus}/http.get.exchange.with.header.override/server" })
+    public void httpGetExchangeWithHeaderOverride() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
             "${route}/server/controller",
             "${spec}/http.unknown.authority/client" })
     public void httpUnknownAuthority() throws Exception
