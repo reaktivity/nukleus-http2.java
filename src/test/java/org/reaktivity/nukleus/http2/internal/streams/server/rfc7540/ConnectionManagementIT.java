@@ -102,6 +102,16 @@ public class ConnectionManagementIT
     @Test
     @Specification({
             "${route}/server/controller",
+            "${spec}/http.post.exchange.streaming/client",
+            "${nukleus}/http.post.exchange.streaming/server" })
+    public void httpPostExchangeWhenStreaming() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+            "${route}/server/controller",
             "${spec}/connection.has.two.streams/client",
             "${nukleus}/connection.has.two.streams/server" })
     public void connectionHasTwoStreams() throws Exception
