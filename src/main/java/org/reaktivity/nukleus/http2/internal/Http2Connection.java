@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.http2.internal;
 
 import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 import static org.reaktivity.nukleus.http2.internal.Http2StreamState.CLOSED;
+import static org.reaktivity.nukleus.http2.internal.Http2StreamState.HALF_CLOSED_LOCAL;
 import static org.reaktivity.nukleus.http2.internal.Http2StreamState.HALF_CLOSED_REMOTE;
 import static org.reaktivity.nukleus.http2.internal.Http2StreamState.OPEN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.HpackContext.CONNECTION;
@@ -811,7 +812,7 @@ final class Http2Connection
                 return;
             }
 
-            stream.state = Http2StreamState.HALF_CLOSED_REMOTE;
+            onRequestEnd(stream);
         }
 
         stream.onData(traceId, http2Data);
@@ -1045,6 +1046,38 @@ final class Http2Connection
         else
         {
             factory.counters.headersFramesWritten.getAsLong();
+        }
+    }
+
+    void onRequestEnd(
+        Http2Stream stream)
+    {
+        switch (stream.state)
+        {
+        case OPEN:
+            stream.state = HALF_CLOSED_REMOTE;
+            break;
+        case HALF_CLOSED_LOCAL:
+            closeStream(stream);
+            break;
+        default:
+            break;
+        }
+    }
+
+    void onResponseEnd(
+        Http2Stream stream)
+    {
+        switch (stream.state)
+        {
+        case OPEN:
+            stream.state = HALF_CLOSED_LOCAL;
+            break;
+        case HALF_CLOSED_REMOTE:
+            closeStream(stream);
+            break;
+        default:
+            break;
         }
     }
 

@@ -250,7 +250,7 @@ public class Http2WriteScheduler implements WriteScheduler
             postWrite(stream, type, written);
             writer.flush();
 
-            connection.closeStream(stream);
+            connection.onResponseEnd(stream);
         }
         return true;
     }
@@ -412,7 +412,7 @@ public class Http2WriteScheduler implements WriteScheduler
             postWrite(stream, type, written);
             writer.flush();
 
-            connection.closeStream(stream);
+            connection.onResponseEnd(stream);
         }
         else
         {
@@ -676,7 +676,7 @@ public class Http2WriteScheduler implements WriteScheduler
             int written = http2Writer.dataEos(writer.offset(), sizeof, streamId);
             postWrite(stream, type, written);
 
-            connection.closeStream(stream);
+            connection.onResponseEnd(stream);
         }
     }
 
@@ -704,7 +704,7 @@ public class Http2WriteScheduler implements WriteScheduler
                     payloadBuffer, payloadOffset, payloadLength);
             postWrite(stream, type, written);
 
-            connection.closeStream(stream);
+            connection.onResponseEnd(stream);
         }
     }
 
