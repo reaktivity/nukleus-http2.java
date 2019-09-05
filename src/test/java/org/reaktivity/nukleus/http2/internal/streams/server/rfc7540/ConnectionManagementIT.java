@@ -310,4 +310,13 @@ public class ConnectionManagementIT
         k3po.finish();
     }
 
+    @Test
+    @Specification({
+        "${route}/server/controller",
+        "${spec}/client.sent.end.before.response.received/client",
+        "${nukleus}/client.sent.end.before.response.received/server" })
+    public void shouldSendResetOnIncompleteResponse() throws Exception
+    {
+        k3po.finish();
+    }
 }
