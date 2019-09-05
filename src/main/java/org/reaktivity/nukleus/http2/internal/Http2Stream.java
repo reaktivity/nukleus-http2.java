@@ -98,7 +98,6 @@ class Http2Stream
     void onHttpEnd(long traceId)
     {
         connection.writeScheduler.dataEos(traceId, http2StreamId);
-        applicationReplyThrottle = null;
 
         factory.counters.dataFramesWritten.getAsLong();
    }
@@ -190,10 +189,7 @@ class Http2Stream
     void onReset(long networkReplyTraceId)
     {
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, networkReplyTraceId);
-        }
+        factory.doReset(applicationInitial, applicationRouteId, applicationReplyId, networkReplyTraceId);
 
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
@@ -209,7 +205,7 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort(0);
+            httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
         factory.doReset(applicationInitial, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
