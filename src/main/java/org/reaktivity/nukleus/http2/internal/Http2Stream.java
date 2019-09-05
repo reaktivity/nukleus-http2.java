@@ -74,7 +74,7 @@ class Http2Stream
         this.applicationInitial = connection.router.supplyReceiver(applicationInitialId);
         this.applicationReplyId = factory.supplyReplyId.applyAsLong(applicationInitialId);
         this.http2InWindow = connection.localSettings.initialWindowSize;
-
+        this.applicationReplyThrottle = this.applicationInitial;
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
         this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationInitial, httpWriter,
