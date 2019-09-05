@@ -74,7 +74,7 @@ class Http2Stream
         this.applicationInitial = connection.router.supplyReceiver(applicationInitialId);
         this.applicationReplyId = factory.supplyReplyId.applyAsLong(applicationInitialId);
         this.http2InWindow = connection.localSettings.initialWindowSize;
-        this.applicationReplyThrottle = this.applicationInitial;
+
         this.http2OutWindow = connection.remoteSettings.initialWindowSize;
         this.state = state;
         this.httpWriteScheduler = new HttpWriteScheduler(factory, applicationInitial, httpWriter,
@@ -212,10 +212,7 @@ class Http2Stream
             httpWriteScheduler.doAbort(0);
         }
 
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+        factory.doReset(applicationInitial, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
 
         close();
     }
