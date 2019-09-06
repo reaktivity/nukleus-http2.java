@@ -98,7 +98,6 @@ class Http2Stream
     void onHttpEnd(long traceId)
     {
         connection.writeScheduler.dataEos(traceId, http2StreamId);
-        applicationReplyThrottle = null;
 
         factory.counters.dataFramesWritten.getAsLong();
    }
@@ -120,12 +119,6 @@ class Http2Stream
 
     void onHttpReset()
     {
-        // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
-
         if (factory.correlations.containsKey(applicationReplyId))
         {
             connection.send404(http2StreamId);
@@ -135,6 +128,8 @@ class Http2Stream
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.NO_ERROR);
             factory.counters.resetStreamFramesWritten.getAsLong();
         }
+        // reset the response stream
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         connection.closeStream(this);
     }
@@ -162,10 +157,7 @@ class Http2Stream
         }
 
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         close();
     }
@@ -179,10 +171,7 @@ class Http2Stream
         }
 
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         close();
     }
@@ -190,10 +179,7 @@ class Http2Stream
     void onReset(long networkReplyTraceId)
     {
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, networkReplyTraceId);
-        }
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
@@ -209,13 +195,10 @@ class Http2Stream
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
         {
-            httpWriteScheduler.doAbort(0);
+            httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         close();
     }
@@ -288,9 +271,23 @@ class Http2Stream
         {
             applicationReplyBudget += applicationReplyCredit;
             int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
-            connection.factory.doWindow(applicationReplyThrottle, applicationRouteId, applicationReplyId,
+            connection.factory.doWindow(applicationInitial, applicationRouteId, applicationReplyId,
                     (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId,
                     factory.supplyTrace.getAsLong());
         }
     }
+
+   private void cleanupCorrelationIfNecessaryAndSendReset()
+   {
+       final Correlation correlated = factory.correlations.remove(applicationReplyId);
+       if (correlated != null)
+       {
+           factory.router.clearThrottle(applicationReplyId);
+       }
+
+       factory.doReset(applicationInitial,
+                       applicationRouteId,
+                       applicationReplyId,
+                       factory.supplyTrace.getAsLong());
+   }
 }
