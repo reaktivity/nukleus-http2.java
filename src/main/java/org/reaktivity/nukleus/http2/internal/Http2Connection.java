@@ -33,7 +33,6 @@ import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHea
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -1207,20 +1206,25 @@ final class Http2Connection
         long authorization,
         ListFW<HttpHeaderFW> headers)
     {
-        Map<String, String> headersMap = new HashMap<>();
-        headers.forEach(
-                httpHeader -> headersMap.put(httpHeader.name().asString(), httpHeader.value().asString()));
-        RouteFW route = resolveTarget(headersMap);
-        final long applicationRouteId = route.correlationId();
-        HttpWriter httpWriter = factory.httpWriter;
-        Http2Stream http2Stream = newStream(http2StreamId, HALF_CLOSED_REMOTE, applicationRouteId, httpWriter);
-        final MessageConsumer applicationTarget = http2Stream.applicationInitial;
-        long targetId = http2Stream.applicationInitialId;
+        headersContext.reset();
 
-        httpWriter.doHttpBegin(applicationTarget, applicationRouteId, targetId, factory.supplyTrace.getAsLong(), authorization,
-                hs -> headers.forEach(h -> hs.item(b -> b.name(h.name()).value(h.value()))));
-        router.setThrottle(targetId, http2Stream::onThrottle);
-        http2Stream.endDeferred = true;
+        headers.forEach(h -> headersContext.headers.put(h.name().asString(), h.value().asString()));
+        RouteFW route = resolveTarget(headersContext.headers);
+
+        if (route != null)
+        {
+            final HttpBeginExFW.Builder httpBeginEx =
+                    factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
+                                          .typeId(factory.httpWriter.httpTypeId);
+            for(Map.Entry<String, String> e : headersContext.headers.entrySet())
+            {
+                httpBeginEx.headersItem(item -> item.name(e.getKey())
+                                                    .value(e.getValue()));
+            }
+
+            overrideHeadersIfNeeded(route);
+            followRoute(http2StreamId, HALF_CLOSED_REMOTE, route);
+        }
     }
 
     private Http2Stream newStream(
