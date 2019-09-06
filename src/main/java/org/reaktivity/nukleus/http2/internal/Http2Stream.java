@@ -56,8 +56,6 @@ class Http2Stream
     long totalOutData;
     private ServerStreamFactory factory;
 
-    MessageConsumer applicationReplyThrottle;
-
     Http2Stream(
         ServerStreamFactory factory,
         Http2Connection connection,
@@ -120,10 +118,7 @@ class Http2Stream
     void onHttpReset()
     {
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+       cleanupCorrelationIfNecessaryAndSendReset();
 
         if (factory.correlations.containsKey(applicationReplyId))
         {
@@ -161,10 +156,7 @@ class Http2Stream
         }
 
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         close();
     }
@@ -178,10 +170,7 @@ class Http2Stream
         }
 
         // reset the response stream
-        if (applicationReplyThrottle != null)
-        {
-            factory.doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
-        }
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         close();
     }
@@ -281,9 +270,23 @@ class Http2Stream
         {
             applicationReplyBudget += applicationReplyCredit;
             int applicationReplyPadding = connection.networkReplyPadding + maxHeaderSize;
-            connection.factory.doWindow(applicationReplyThrottle, applicationRouteId, applicationReplyId,
+            connection.factory.doWindow(applicationInitial, applicationRouteId, applicationReplyId,
                     (int) applicationReplyCredit, applicationReplyPadding, connection.networkReplyGroupId,
                     factory.supplyTrace.getAsLong());
         }
     }
+
+   private void cleanupCorrelationIfNecessaryAndSendReset()
+   {
+       final Correlation correlated = factory.correlations.remove(applicationReplyId);
+       if (correlated != null)
+       {
+           factory.router.clearThrottle(applicationReplyId);
+       }
+
+       factory.doReset(applicationInitial,
+                       applicationRouteId,
+                       applicationReplyId,
+                       factory.supplyTrace.getAsLong());
+   }
 }
