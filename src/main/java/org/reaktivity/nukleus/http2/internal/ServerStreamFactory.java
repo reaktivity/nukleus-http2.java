@@ -106,9 +106,9 @@ public final class ServerStreamFactory implements StreamFactory
     private final WindowFW.Builder windowRW = new WindowFW.Builder();
     private final ResetFW.Builder resetRW = new ResetFW.Builder();
 
+    private final MutableDirectBuffer writeBuffer;
     final Http2Configuration config;
     final RouteManager router;
-    private final MutableDirectBuffer writeBuffer;
     final BufferPool bufferPool;
     final BufferPool framePool;
     final BufferPool headersPool;
