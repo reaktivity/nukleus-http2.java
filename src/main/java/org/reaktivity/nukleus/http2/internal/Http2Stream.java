@@ -178,7 +178,7 @@ class Http2Stream
     void onReset(long networkReplyTraceId)
     {
         // reset the response stream
-        factory.doReset(applicationInitial, applicationRouteId, applicationReplyId, networkReplyTraceId);
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         // more request data to be sent, so send ABORT
         if (state != Http2StreamState.HALF_CLOSED_REMOTE)
@@ -197,7 +197,7 @@ class Http2Stream
             httpWriteScheduler.doAbort(factory.supplyTrace.getAsLong());
         }
 
-        factory.doReset(applicationInitial, applicationRouteId, applicationReplyId, factory.supplyTrace.getAsLong());
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         close();
     }
