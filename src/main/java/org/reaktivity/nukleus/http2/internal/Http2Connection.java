@@ -1009,7 +1009,7 @@ final class Http2Connection
 
         HttpBeginExFW beginEx = factory.httpBeginExRW.build();
         httpWriter.doHttpBegin(stream.applicationInitial, applicationRouteId,
-                stream.applicationInitialId, traceId, beginEx.buffer(),
+                stream.applicationInitialId, traceId, networkId, beginEx.buffer(),
                 beginEx.offset(), beginEx.sizeof());
         router.setThrottle(stream.applicationInitialId, stream::onThrottle);
 

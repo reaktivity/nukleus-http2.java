@@ -57,6 +57,7 @@ class HttpWriter
         long routeId,
         long streamId,
         long traceId,
+        long affinity,
         DirectBuffer extBuffer,
         int extOffset,
         int extLength)
@@ -65,6 +66,7 @@ class HttpWriter
                 .routeId(routeId)
                 .streamId(streamId)
                 .trace(traceId)
+                .affinity(affinity)
                 .extension(extBuffer, extOffset, extLength)
                 .build();
 
