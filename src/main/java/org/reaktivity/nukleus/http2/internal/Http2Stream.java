@@ -56,6 +56,8 @@ class Http2Stream
     long totalOutData;
     private ServerStreamFactory factory;
 
+    MessageConsumer applicationReplyThrottle;
+
     Http2Stream(
         ServerStreamFactory factory,
         Http2Connection connection,
@@ -117,9 +119,6 @@ class Http2Stream
 
     void onHttpReset()
     {
-        // reset the response stream
-       cleanupCorrelationIfNecessaryAndSendReset();
-
         if (factory.correlations.containsKey(applicationReplyId))
         {
             connection.send404(http2StreamId);
@@ -129,6 +128,8 @@ class Http2Stream
             connection.writeScheduler.rst(http2StreamId, Http2ErrorCode.NO_ERROR);
             factory.counters.resetStreamFramesWritten.getAsLong();
         }
+        // reset the response stream
+        cleanupCorrelationIfNecessaryAndSendReset();
 
         connection.closeStream(this);
     }
