@@ -319,4 +319,15 @@ public class ConnectionManagementIT
     {
         k3po.finish();
     }
+
+    @Test
+    @Specification({
+        "${route}/server.override/controller",
+        "${spec}/http.push.promise.header.override/client",
+        "${nukleus}/http.push.promise.header.override/server" })
+    public void pushResourcesWithOverrideHeader() throws Exception
+    {
+        k3po.finish();
+    }
+
 }
