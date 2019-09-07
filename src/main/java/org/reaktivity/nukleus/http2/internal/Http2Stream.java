@@ -15,6 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
+
+import java.util.Deque;
+import java.util.LinkedList;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
@@ -22,11 +27,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.Http2DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.WindowFW;
-
-import java.util.Deque;
-import java.util.LinkedList;
-
-import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 class Http2Stream
 {
@@ -279,11 +279,7 @@ class Http2Stream
 
    private void cleanupCorrelationIfNecessaryAndSendReset()
    {
-       final Correlation correlated = factory.correlations.remove(applicationReplyId);
-       if (correlated != null)
-       {
-           factory.router.clearThrottle(applicationReplyId);
-       }
+       factory.correlations.remove(applicationReplyId);
 
        factory.doReset(applicationInitial,
                        applicationRouteId,
