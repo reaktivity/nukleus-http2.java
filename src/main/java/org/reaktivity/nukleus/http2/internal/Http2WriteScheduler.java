@@ -325,11 +325,8 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean data(long traceId, int streamId, DirectBuffer buffer, int offsetAt, int lengthOf)
+    public boolean data(long traceId, int streamId, DirectBuffer buffer, int offset, int length)
     {
-        int offset = offsetAt;
-        int length = lengthOf;
-
         assert length > 0;
         assert streamId != 0;
 
