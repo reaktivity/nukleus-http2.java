@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import static java.nio.ByteOrder.BIG_ENDIAN;
 
 /*
     Flyweight for for all HTTP2 frames
@@ -49,7 +49,7 @@ public class Http2FrameFW extends Flyweight
     public int payloadLength()
     {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getShort(offset() + LENGTH_OFFSET + 1, BIG_ENDIAN) & 0xFF_FF);
+        length += buffer().getShort(offset() + LENGTH_OFFSET + 1, BIG_ENDIAN) & 0xFF_FF;
         return length;
     }
 
@@ -97,8 +97,8 @@ public class Http2FrameFW extends Flyweight
         // TODO: super.tryWrap != null
         boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
 
-        wrappable &= (maxLimit - offset >= 9);
-        wrappable &= (maxLimit - offset >= 9 + payloadLength());
+        wrappable &= maxLimit - offset >= 9;
+        wrappable &= maxLimit - offset >= 9 + payloadLength();
 
         return wrappable ? wrap(buffer, offset, maxLimit) : null;
     }

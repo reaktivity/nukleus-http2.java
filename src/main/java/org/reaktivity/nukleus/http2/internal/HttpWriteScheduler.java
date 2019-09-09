@@ -94,9 +94,6 @@ class HttpWriteScheduler
                 if (dst != null)
                 {
                     boolean written = targetBuffer.write(dst, http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, toSlab);
-//                    assert written;
-//                    assert totalRead == totalWritten + targetBuffer.size();
-
                     return written;
                 }
                 return false;                           // No slots
@@ -117,9 +114,6 @@ class HttpWriteScheduler
             MutableDirectBuffer buffer = acquire();
             boolean written = targetBuffer.write(buffer, http2DataRO.buffer(), http2DataRO.dataOffset(),
                     http2DataRO.dataLength());
-//            assert written;
-//            assert totalRead == totalWritten + targetBuffer.size();
-
             return written;
         }
     }
@@ -175,15 +169,6 @@ class HttpWriteScheduler
     private int getPart(int remaining)
     {
         return Math.min(remaining, applicationBudget - applicationPadding);
-//        int claimed = stream.connection.factory.groupBudgetClaimer.apply(applicationGroupId)
-//                                                                  .applyAsInt(toHttp + applicationWindowPadding);
-//        toHttp = claimed - applicationWindowPadding;
-//        if (toHttp <= 0)
-//        {
-//            stream.connection.factory.groupBudgetReleaser.apply(applicationGroupId)
-//                                                         .applyAsInt(toHttp);
-//        }
-//        return toHttp;
     }
 
     private void toHttp(DirectBuffer buffer, int offset, int length)

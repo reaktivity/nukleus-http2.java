@@ -15,12 +15,12 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
-
-public class HpackHuffman
+public final class HpackHuffman
 {
 
     private static final int[][] CODES =
@@ -327,7 +327,7 @@ public class HpackHuffman
 
             for (int i = len - 1; i >= 0; i--)
             {
-                int bit = ((code >>> i) & 0x01);        // Using MSB to traverse
+                int bit = (code >>> i) & 0x01;        // Using MSB to traverse
                 if (bit == 0)
                 {
                     if (current.left == null)
@@ -384,7 +384,7 @@ public class HpackHuffman
 
         for (int i = 7; i >= 0; i--)
         {
-            int bit = ((b >>> i) & 0x01);           // Using MSB to traverse
+            int bit = (b >>> i) & 0x01;           // Using MSB to traverse
             cur = bit == 0 ? cur.left : cur.right;
             if (cur == null || cur.symbol == 256)      // EOS is invalid in sequence
             {
@@ -524,7 +524,7 @@ public class HpackHuffman
             if (remainingBits + bits > 64)                  // exceeds long (no more space for current bits)
             {
                 dst.putLong(dstIndex, currentSeq << (64-remainingBits), BIG_ENDIAN);
-                dstIndex += (remainingBits / 8);
+                dstIndex += remainingBits / 8;
                 remainingBits = remainingBits % 8;
             }
 
@@ -542,11 +542,15 @@ public class HpackHuffman
             }
             else
             {
-                currentSeq <<= (8 - remainingBits);            // partial byte, so align to MSB
-                currentSeq |= (0xFF >>> remainingBits);        // fill remaining bits with EOS bits
+                currentSeq <<= 8 - remainingBits;            // partial byte, so align to MSB
+                currentSeq |= 0xFF >>> remainingBits;        // fill remaining bits with EOS bits
                 remainingBits = 8;
             }
         }
     }
 
+    private HpackHuffman()
+    {
+        // utility
+    }
 }

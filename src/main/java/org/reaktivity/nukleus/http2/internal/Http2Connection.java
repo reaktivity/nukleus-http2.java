@@ -897,61 +897,61 @@ final class Http2Connection
     {
         switch (id)
         {
-            case HEADER_TABLE_SIZE:
-                remoteSettings.headerTableSize = value.intValue();
-                break;
-            case ENABLE_PUSH:
-                if (!(value == 0L || value == 1L))
+        case HEADER_TABLE_SIZE:
+            remoteSettings.headerTableSize = value.intValue();
+            break;
+        case ENABLE_PUSH:
+            if (!(value == 0L || value == 1L))
+            {
+                decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+                return;
+            }
+            remoteSettings.enablePush = value == 1L;
+            break;
+        case MAX_CONCURRENT_STREAMS:
+            remoteSettings.maxConcurrentStreams = value.intValue();
+            break;
+        case INITIAL_WINDOW_SIZE:
+            if (value > Integer.MAX_VALUE)
+            {
+                decodeError = Http2ErrorCode.FLOW_CONTROL_ERROR;
+                return;
+            }
+            int old = remoteSettings.initialWindowSize;
+            remoteSettings.initialWindowSize = value.intValue();
+            int update = value.intValue() - old;
+
+            // 6.9.2. Initial Flow-Control Window Size
+            // SETTINGS frame can alter the initial flow-control
+            // window size for streams with active flow-control windows
+            for(Http2Stream http2Stream: http2Streams.values())
+            {
+                http2Stream.http2OutWindow += update;           // http2OutWindow can become negative
+                if (http2Stream.http2OutWindow > Integer.MAX_VALUE)
                 {
-                    decodeError = Http2ErrorCode.PROTOCOL_ERROR;
-                    return;
-                }
-                remoteSettings.enablePush = (value == 1L);
-                break;
-            case MAX_CONCURRENT_STREAMS:
-                remoteSettings.maxConcurrentStreams = value.intValue();
-                break;
-            case INITIAL_WINDOW_SIZE:
-                if (value > Integer.MAX_VALUE)
-                {
+                    // 6.9.2. Initial Flow-Control Window Size
+                    // An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
+                    // causes any flow-control window to exceed the maximum size as a
+                    // connection error of type FLOW_CONTROL_ERROR.
                     decodeError = Http2ErrorCode.FLOW_CONTROL_ERROR;
                     return;
                 }
-                int old = remoteSettings.initialWindowSize;
-                remoteSettings.initialWindowSize = value.intValue();
-                int update = value.intValue() - old;
-
-                // 6.9.2. Initial Flow-Control Window Size
-                // SETTINGS frame can alter the initial flow-control
-                // window size for streams with active flow-control windows
-                for(Http2Stream http2Stream: http2Streams.values())
-                {
-                    http2Stream.http2OutWindow += update;           // http2OutWindow can become negative
-                    if (http2Stream.http2OutWindow > Integer.MAX_VALUE)
-                    {
-                        // 6.9.2. Initial Flow-Control Window Size
-                        // An endpoint MUST treat a change to SETTINGS_INITIAL_WINDOW_SIZE that
-                        // causes any flow-control window to exceed the maximum size as a
-                        // connection error of type FLOW_CONTROL_ERROR.
-                        decodeError = Http2ErrorCode.FLOW_CONTROL_ERROR;
-                        return;
-                    }
-                }
-                break;
-            case MAX_FRAME_SIZE:
-                if (value < Math.pow(2, 14) || value > Math.pow(2, 24) -1)
-                {
-                    decodeError = Http2ErrorCode.PROTOCOL_ERROR;
-                    return;
-                }
-                remoteSettings.maxFrameSize = value.intValue();
-                break;
-            case MAX_HEADER_LIST_SIZE:
-                remoteSettings.maxHeaderListSize = value.intValue();
-                break;
-            default:
-                // Ignore the unkonwn setting
-                break;
+            }
+            break;
+        case MAX_FRAME_SIZE:
+            if (value < Math.pow(2, 14) || value > Math.pow(2, 24) -1)
+            {
+                decodeError = Http2ErrorCode.PROTOCOL_ERROR;
+                return;
+            }
+            remoteSettings.maxFrameSize = value.intValue();
+            break;
+        case MAX_HEADER_LIST_SIZE:
+            remoteSettings.maxHeaderListSize = value.intValue();
+            break;
+        default:
+            // Ignore the unkonwn setting
+            break;
         }
     }
 
@@ -1269,27 +1269,27 @@ final class Http2Connection
         {
             switch (hf.type())
             {
-                case INDEXED:
-                case LITERAL:
-                    expectDynamicTableSizeUpdate = false;
-                    break;
-                case UPDATE:
-                    if (!expectDynamicTableSizeUpdate)
-                    {
-                        // dynamic table size update MUST occur at the beginning of the first header block
-                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                        return;
-                    }
-                    int maxTableSize = hf.tableSize();
-                    if (maxTableSize > localSettings.headerTableSize)
-                    {
-                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                        return;
-                    }
-                    decodeContext.updateSize(hf.tableSize());
-                    break;
-                default:
-                    break;
+            case INDEXED:
+            case LITERAL:
+                expectDynamicTableSizeUpdate = false;
+                break;
+            case UPDATE:
+                if (!expectDynamicTableSizeUpdate)
+                {
+                    // dynamic table size update MUST occur at the beginning of the first header block
+                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                    return;
+                }
+                int maxTableSize = hf.tableSize();
+                if (maxTableSize > localSettings.headerTableSize)
+                {
+                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                    return;
+                }
+                decodeContext.updateSize(hf.tableSize());
+                break;
+            default:
+                break;
             }
         }
     }
@@ -1312,23 +1312,23 @@ final class Http2Connection
                 int index = decodeContext.index(name);
                 switch (index)
                 {
-                    case 1:             // :authority
-                        break;
-                    case 2:             // :method
-                        headersContext.method++;
-                        break;
-                    case 4:             // :path
-                        if (value.capacity() > 0)       // :path MUST not be empty
-                        {
-                            headersContext.path++;
-                        }
-                        break;
-                    case 6:             // :scheme
-                        headersContext.scheme++;
-                        break;
-                    default:
-                        headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
-                        return;
+                case 1:             // :authority
+                    break;
+                case 2:             // :method
+                    headersContext.method++;
+                    break;
+                case 4:             // :path
+                    if (value.capacity() > 0)       // :path MUST not be empty
+                    {
+                        headersContext.path++;
+                    }
+                    break;
+                case 6:             // :scheme
+                    headersContext.scheme++;
+                    break;
+                default:
+                    headersContext.streamError = Http2ErrorCode.PROTOCOL_ERROR;
+                    return;
                 }
             }
             else
@@ -1435,7 +1435,7 @@ final class Http2Connection
         if (authority.indexOf(':') == -1)
         {
             String scheme = headersContext.headers.get(":scheme");
-            String defaultPort = scheme.equals("https") ? ":443" : ":80";
+            String defaultPort = "https".equals(scheme) ? ":443" : ":80";
             headersContext.headers.put(":authority", authority + defaultPort);
 
             // rebuild http request as :authority header is modified
@@ -1487,98 +1487,95 @@ final class Http2Connection
 
         switch (hf.type())
         {
-            case INDEXED :
-                index = hf.index();
+        case INDEXED :
+            index = hf.index();
+            if (!decodeContext.valid(index))
+            {
+                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                return;
+            }
+            name = decodeContext.nameBuffer(index);
+            value = decodeContext.valueBuffer(index);
+            nameValue.accept(name, value);
+            break;
+
+        case LITERAL :
+            HpackLiteralHeaderFieldFW literalRO = hf.literal();
+            if (literalRO.error())
+            {
+                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                return;
+            }
+
+            HpackStringFW valueRO = literalRO.valueLiteral();
+
+            switch (literalRO.nameType())
+            {
+            case INDEXED:
+                index = literalRO.nameIndex();
                 if (!decodeContext.valid(index))
                 {
                     headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
                     return;
                 }
                 name = decodeContext.nameBuffer(index);
-                value = decodeContext.valueBuffer(index);
+
+                value = valueRO.payload();
+                if (valueRO.huffman())
+                {
+                    MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                    int length = HpackHuffman.decode(value, dst);
+                    if (length == -1)
+                    {
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                        return;
+                    }
+                    value = new UnsafeBuffer(dst, 0, length);
+                }
                 nameValue.accept(name, value);
                 break;
-
-            case LITERAL :
-                HpackLiteralHeaderFieldFW literalRO = hf.literal();
-                if (literalRO.error())
+            case NEW:
+                HpackStringFW nameRO = literalRO.nameLiteral();
+                name = nameRO.payload();
+                if (nameRO.huffman())
                 {
-                    headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                    return;
-                }
-                switch (literalRO.nameType())
-                {
-                    case INDEXED:
+                    MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                    int length = HpackHuffman.decode(name, dst);
+                    if (length == -1)
                     {
-                        index = literalRO.nameIndex();
-                        if (!decodeContext.valid(index))
-                        {
-                            headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                            return;
-                        }
-                        name = decodeContext.nameBuffer(index);
-
-                        HpackStringFW valueRO = literalRO.valueLiteral();
-                        value = valueRO.payload();
-                        if (valueRO.huffman())
-                        {
-                            MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
-                            int length = HpackHuffman.decode(value, dst);
-                            if (length == -1)
-                            {
-                                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                                return;
-                            }
-                            value = new UnsafeBuffer(dst, 0, length);
-                        }
-                        nameValue.accept(name, value);
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                        return;
                     }
-                    break;
-                    case NEW:
-                    {
-                        HpackStringFW nameRO = literalRO.nameLiteral();
-                        name = nameRO.payload();
-                        if (nameRO.huffman())
-                        {
-                            MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
-                            int length = HpackHuffman.decode(name, dst);
-                            if (length == -1)
-                            {
-                                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                                return;
-                            }
-                            name = new UnsafeBuffer(dst, 0, length);
-                        }
-
-                        HpackStringFW valueRO = literalRO.valueLiteral();
-                        value = valueRO.payload();
-                        if (valueRO.huffman())
-                        {
-                            MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
-                            int length = HpackHuffman.decode(value, dst);
-                            if (length == -1)
-                            {
-                                headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
-                                return;
-                            }
-                            value = new UnsafeBuffer(dst, 0, length);
-                        }
-                        nameValue.accept(name, value);
-                    }
-                    break;
+                    name = new UnsafeBuffer(dst, 0, length);
                 }
-                if (literalRO.literalType() == INCREMENTAL_INDEXING)
+
+                value = valueRO.payload();
+                if (valueRO.huffman())
                 {
-                    // make a copy for name and value as they go into dynamic table (outlives current frame)
-                    MutableDirectBuffer nameCopy = new UnsafeBuffer(new byte[name.capacity()]);
-                    nameCopy.putBytes(0, name, 0, name.capacity());
-                    MutableDirectBuffer valueCopy = new UnsafeBuffer(new byte[value.capacity()]);
-                    valueCopy.putBytes(0, value, 0, value.capacity());
-                    decodeContext.add(nameCopy, valueCopy);
+                    MutableDirectBuffer dst = new UnsafeBuffer(new byte[4096]); // TODO
+                    int length = HpackHuffman.decode(value, dst);
+                    if (length == -1)
+                    {
+                        headersContext.connectionError = Http2ErrorCode.COMPRESSION_ERROR;
+                        return;
+                    }
+                    value = new UnsafeBuffer(dst, 0, length);
                 }
+                nameValue.accept(name, value);
                 break;
-            default:
-                break;
+            }
+            if (literalRO.literalType() == INCREMENTAL_INDEXING)
+            {
+                // make a copy for name and value as they go into dynamic table (outlives current frame)
+                MutableDirectBuffer nameCopy = new UnsafeBuffer(new byte[name.capacity()]);
+                nameCopy.putBytes(0, name, 0, name.capacity());
+                MutableDirectBuffer valueCopy = new UnsafeBuffer(new byte[value.capacity()]);
+                valueCopy.putBytes(0, value, 0, value.capacity());
+                decodeContext.add(nameCopy, valueCopy);
+            }
+            break;
+        default:
+            break;
         }
     }
 

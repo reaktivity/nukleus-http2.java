@@ -15,9 +15,9 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.junit.Test;
-
 import static org.junit.Assert.assertEquals;
+
+import org.junit.Test;
 
 public class HpackContextTest
 {

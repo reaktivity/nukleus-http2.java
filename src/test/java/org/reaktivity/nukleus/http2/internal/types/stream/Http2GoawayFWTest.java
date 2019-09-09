@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.junit.Test;
-
 import static org.junit.Assert.assertEquals;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode.PROTOCOL_ERROR;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.GO_AWAY;
+
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.junit.Test;
 
 public class Http2GoawayFWTest
 {

@@ -458,43 +458,39 @@ public class HpackHeaderBlockFWTest
             String value = null;
             switch (headerFieldType)
             {
-                case INDEXED :
-                    int index = x.index();
+            case INDEXED :
+                int index = x.index();
+                name = context.name(index);
+                value = context.value(index);
+                headers.put(name, value);
+                break;
+            case LITERAL :
+                HpackLiteralHeaderFieldFW literalRO = x.literal();
+                switch (literalRO.nameType())
+                {
+                case INDEXED:
+                    index = literalRO.nameIndex();
                     name = context.name(index);
-                    value = context.value(index);
+                    value = string(literalRO.valueLiteral());
                     headers.put(name, value);
                     break;
-                case LITERAL :
-                    HpackLiteralHeaderFieldFW literalRO = x.literal();
-                    switch (literalRO.nameType())
-                    {
-                        case INDEXED:
-                        {
-                            index = literalRO.nameIndex();
-                            name = context.name(index);
-                            value = string(literalRO.valueLiteral());
-                            headers.put(name, value);
-                        }
-                        break;
-                        case NEW:
-                        {
-                            name = string(literalRO.nameLiteral());
-                            value = string(literalRO.valueLiteral());
-                            headers.put(name, value);
-                        }
-                        break;
-                    }
-                    if (literalRO.literalType() == INCREMENTAL_INDEXING)
-                    {
-                        context.add(name, value);
-                    }
+                case NEW:
+                    name = string(literalRO.nameLiteral());
+                    value = string(literalRO.valueLiteral());
+                    headers.put(name, value);
                     break;
+                }
+                if (literalRO.literalType() == INCREMENTAL_INDEXING)
+                {
+                    context.add(name, value);
+                }
+                break;
 
-                case UPDATE:
-                    break;
+            case UPDATE:
+                break;
 
-                case UNKNOWN:
-                    throw new IllegalStateException();
+            case UNKNOWN:
+                throw new IllegalStateException();
             }
         };
     }

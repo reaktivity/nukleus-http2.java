@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
 
 /*
     Flyweight for HPACK Header Block

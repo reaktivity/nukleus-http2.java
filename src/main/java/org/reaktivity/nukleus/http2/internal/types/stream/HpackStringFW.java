@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.AtomicBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 /*
  * Flyweight for HPACK String Literal Representation
@@ -96,8 +96,6 @@ public class HpackStringFW extends Flyweight
         public HpackStringFW.Builder huffman()
         {
             throw new UnsupportedOperationException("TODO");
-//            buffer().putByte(offset(), (byte) 0x80);
-//            return this;
         }
 
         public HpackStringFW.Builder string(DirectBuffer value, int offset, int length)

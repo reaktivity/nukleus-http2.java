@@ -15,12 +15,12 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static org.junit.Assert.assertEquals;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
+
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-
-import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.WINDOW_UPDATE;
 
 public class Http2WindowUpdateFWTest
 {

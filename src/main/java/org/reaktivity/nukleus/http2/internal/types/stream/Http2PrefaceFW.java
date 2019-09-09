@@ -27,8 +27,10 @@ public class Http2PrefaceFW extends Flyweight
 
     public static final byte[] PRI_REQUEST =
     {
-            'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n', '\r', '\n',
-                    'S', 'M', '\r', '\n', '\r', '\n'
+        'P', 'R', 'I', ' ', '*', ' ', 'H', 'T', 'T', 'P', '/', '2', '.', '0', '\r', '\n',
+        '\r', '\n',
+        'S', 'M', '\r', '\n',
+        '\r', '\n'
     };
     private static final DirectBuffer PREFACE = new UnsafeBuffer(PRI_REQUEST);
 

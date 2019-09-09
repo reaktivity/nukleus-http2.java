@@ -15,16 +15,16 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
+import static java.nio.ByteOrder.BIG_ENDIAN;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
-import static java.nio.ByteOrder.BIG_ENDIAN;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PUSH_PROMISE;
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 
 /*
 

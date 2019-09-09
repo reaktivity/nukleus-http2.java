@@ -43,21 +43,21 @@ public enum Http2ErrorCode
     {
         switch (errorCode)
         {
-            case 0 : return NO_ERROR;
-            case 1 : return PROTOCOL_ERROR;
-            case 2 : return INTERNAL_ERROR;
-            case 3 : return FLOW_CONTROL_ERROR;
-            case 4 : return SETTINGS_TIMEOUT;
-            case 5 : return STREAM_CLOSED;
-            case 6 : return FRAME_SIZE_ERROR;
-            case 7 : return REFUSED_STREAM;
-            case 8 : return CANCEL;
-            case 9 : return COMPRESSION_ERROR;
-            case 10 : return CONNECT_ERROR;
-            case 11 : return ENHANCE_YOUR_CALM;
-            case 12 : return INADEQUATE_SECURITY;
-            case 13 : return HTTP_1_1_REQUIRED;
-            default : return null;
+        case 0 : return NO_ERROR;
+        case 1 : return PROTOCOL_ERROR;
+        case 2 : return INTERNAL_ERROR;
+        case 3 : return FLOW_CONTROL_ERROR;
+        case 4 : return SETTINGS_TIMEOUT;
+        case 5 : return STREAM_CLOSED;
+        case 6 : return FRAME_SIZE_ERROR;
+        case 7 : return REFUSED_STREAM;
+        case 8 : return CANCEL;
+        case 9 : return COMPRESSION_ERROR;
+        case 10 : return CONNECT_ERROR;
+        case 11 : return ENHANCE_YOUR_CALM;
+        case 12 : return INADEQUATE_SECURITY;
+        case 13 : return HTTP_1_1_REQUIRED;
+        default : return null;
         }
     }
 }

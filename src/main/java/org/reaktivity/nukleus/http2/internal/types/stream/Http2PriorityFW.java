@@ -141,8 +141,7 @@ public class Http2PriorityFW extends Http2FrameFW
         {
             // preserve exclusive flag while writing parent stream id
             int exclusive = buffer().getByte(offset() + PAYLOAD_OFFSET) & 0x80;
-            parentStreamId |= (exclusive << 24);
-            buffer().putInt(offset() + PAYLOAD_OFFSET, parentStreamId, BIG_ENDIAN);
+            buffer().putInt(offset() + PAYLOAD_OFFSET, parentStreamId | exclusive << 24, BIG_ENDIAN);
             return this;
         }
 

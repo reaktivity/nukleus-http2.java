@@ -15,11 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static java.nio.ByteOrder.BIG_ENDIAN;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.http2.internal.types.Flyweight;
-
-import static java.nio.ByteOrder.BIG_ENDIAN;
 
 /*
     Flyweight for HTTP2 SETTINGS frame

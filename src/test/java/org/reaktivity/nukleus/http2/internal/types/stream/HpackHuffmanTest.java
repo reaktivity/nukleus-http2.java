@@ -100,5 +100,4 @@ public class HpackHuffmanTest
         HpackHuffman.encode(buf, encodedBuf);
         assertEquals(expectedBuf, encodedBuf);
     }
-
 }

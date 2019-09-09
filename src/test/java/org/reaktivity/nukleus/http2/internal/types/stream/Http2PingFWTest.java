@@ -15,14 +15,14 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.PING;
 
 public class Http2PingFWTest
 {

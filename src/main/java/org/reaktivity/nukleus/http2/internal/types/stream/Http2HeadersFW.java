@@ -15,19 +15,19 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-
-import java.util.function.BiFunction;
-import java.util.function.Consumer;
-
 import static java.nio.ByteOrder.BIG_ENDIAN;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_HEADERS;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.END_STREAM;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PADDED;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2Flags.PRIORITY;
 import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.HEADERS;
+
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
 
 /*
 
@@ -116,7 +116,7 @@ public class Http2HeadersFW extends Http2FrameFW
         if (padded())
         {
             int paddingLength = buffer().getByte(offset() + PAYLOAD_OFFSET) & 0xff;
-            dataLength -= (paddingLength + 1);    // -1 for Pad Length, -Padding
+            dataLength -= paddingLength + 1;    // -1 for Pad Length, -Padding
         }
 
         if (priority())

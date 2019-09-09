@@ -162,13 +162,13 @@ public class HpackIntegerFW extends Flyweight
             else
             {
                 buffer().putByte(i++, (byte) (cur | twoNminus1));
-                value = value - twoNminus1;
-                while (value >= 128)
+                int remaining = value - twoNminus1;
+                while (remaining >= 128)
                 {
-                    buffer().putByte(i++, (byte) (value % 128 + 128));
-                    value = value / 128;
+                    buffer().putByte(i++, (byte) (remaining % 128 + 128));
+                    remaining = remaining / 128;
                 }
-                buffer().putByte(i++, (byte) value);
+                buffer().putByte(i++, (byte) remaining);
             }
 
             limit(i);

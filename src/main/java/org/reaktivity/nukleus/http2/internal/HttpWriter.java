@@ -15,6 +15,9 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import java.util.function.Consumer;
+import java.util.function.ToIntFunction;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
@@ -26,9 +29,6 @@ import org.reaktivity.nukleus.http2.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HttpBeginExFW;
-
-import java.util.function.Consumer;
-import java.util.function.ToIntFunction;
 
 class HttpWriter
 {

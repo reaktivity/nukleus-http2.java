@@ -15,6 +15,8 @@
  */
 package org.reaktivity.nukleus.http2.internal.bench;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
+
 import org.openjdk.jmh.annotations.BenchmarkMode;
 import org.openjdk.jmh.annotations.Fork;
 import org.openjdk.jmh.annotations.Measurement;
@@ -28,15 +30,13 @@ import org.openjdk.jmh.runner.RunnerException;
 import org.openjdk.jmh.runner.options.Options;
 import org.openjdk.jmh.runner.options.OptionsBuilder;
 
-import static java.util.concurrent.TimeUnit.SECONDS;
-
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @Fork(3)
 @Warmup(iterations = 5, time = 1, timeUnit = SECONDS)
 @Measurement(iterations = 5, time = 1, timeUnit = SECONDS)
 @OutputTimeUnit(SECONDS)
-public class Http2ServerBM
+public final class Http2ServerBM
 {
     /*
     private final Reaktor reaktor;
@@ -329,5 +329,10 @@ public class Http2ServerBM
                 .build();
 
         new Runner(opt).run();
+    }
+
+    private Http2ServerBM()
+    {
+        // utility
     }
 }
