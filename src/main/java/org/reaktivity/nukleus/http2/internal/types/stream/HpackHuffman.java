@@ -368,7 +368,7 @@ public final class HpackHuffman
         {
             return;
         }
-        for(int i=0; i < 256; i++)
+        for (int i=0; i < 256; i++)
         {
             transition(node, i);
         }
@@ -392,7 +392,7 @@ public final class HpackHuffman
             }
             if (cur.symbol != -1)                      // Can have two symbols in a byte traversal
             {
-                str = (str == null) ? ""+(char)cur.symbol : str+(char)cur.symbol;
+                str = (str == null) ? "" + (char) cur.symbol : str + (char) cur.symbol;
                 cur = ROOT;
             }
         }
@@ -533,12 +533,12 @@ public final class HpackHuffman
             remainingBits += bits;
         }
 
-        while(remainingBits > 0)
+        while (remainingBits > 0)
         {
             if (remainingBits >= 8)
             {
                 remainingBits -= 8;
-                dst.putByte(dstIndex++, (byte)(currentSeq >> remainingBits));
+                dst.putByte(dstIndex++, (byte) (currentSeq >> remainingBits));
             }
             else
             {

@@ -80,7 +80,7 @@ class HttpWriteScheduler
             int toSlab = http2DataRO.dataLength();
             int toHttp = 0;
             int part;
-            while((part = getPart(toSlab)) > 0)
+            while ((part = getPart(toSlab)) > 0)
             {
                 toHttp(http2DataRO.buffer(), http2DataRO.dataOffset() + toHttp, part);
                 toHttp += part;

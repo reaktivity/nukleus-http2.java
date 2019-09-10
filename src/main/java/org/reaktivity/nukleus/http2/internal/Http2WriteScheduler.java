@@ -495,7 +495,7 @@ public class Http2WriteScheduler implements WriteScheduler
         }
         writer.flush();
 
-        for(Http2Stream stream : connection.http2Streams.values())
+        for (Http2Stream stream : connection.http2Streams.values())
         {
             if (stream.applicationReplyThrottle != null)
             {
@@ -539,7 +539,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
         // TODO Map#values may not iterate randomly, randomly pick a stream ??
         // Select a frame on a HTTP2 stream that can be written
-        for(Http2Stream stream : connection.http2Streams.values())
+        for (Http2Stream stream : connection.http2Streams.values())
         {
             Entry entry = pop(stream);
             if (entry != null)

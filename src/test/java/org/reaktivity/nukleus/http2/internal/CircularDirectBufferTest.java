@@ -34,7 +34,7 @@ public class CircularDirectBufferTest
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
 
         // will test all boundaries with start of the buffer at i
-        for(int i=0; i < 100; i++)
+        for (int i=0; i < 100; i++)
         {
             CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
             assertTrue(cb.write(dst, src, 0, i));
@@ -75,7 +75,7 @@ public class CircularDirectBufferTest
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
 
         // will test all boundaries with start of the buffer at i
-        for(int i=0; i < 100; i++)
+        for (int i=0; i < 100; i++)
         {
             CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
             assertEquals(i, cb.writeContiguous(dst, src, 0, i));

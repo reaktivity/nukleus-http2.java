@@ -179,7 +179,7 @@ final class Http2Connection
         this.networkReplyGroupId = factory.supplyGroupId.getAsLong();
 
         BiConsumer<DirectBuffer, DirectBuffer> nameValue =
-                ((BiConsumer<DirectBuffer, DirectBuffer>)this::collectHeaders)
+                ((BiConsumer<DirectBuffer, DirectBuffer>) this::collectHeaders)
                         .andThen(this::validatePseudoHeaders)
                         .andThen(this::uppercaseHeaders)
                         .andThen(this::connectionHeaders)
@@ -924,7 +924,7 @@ final class Http2Connection
             // 6.9.2. Initial Flow-Control Window Size
             // SETTINGS frame can alter the initial flow-control
             // window size for streams with active flow-control windows
-            for(Http2Stream http2Stream: http2Streams.values())
+            for (Http2Stream http2Stream: http2Streams.values())
             {
                 http2Stream.http2OutWindow += update;           // http2OutWindow can become negative
                 if (http2Stream.http2OutWindow > Integer.MAX_VALUE)
@@ -1216,7 +1216,7 @@ final class Http2Connection
             final HttpBeginExFW.Builder httpBeginEx =
                     factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
                                           .typeId(factory.httpWriter.httpTypeId);
-            for(Map.Entry<String, String> e : headersContext.headers.entrySet())
+            for (Map.Entry<String, String> e : headersContext.headers.entrySet())
             {
                 httpBeginEx.headersItem(item -> item.name(e.getKey())
                                                     .value(e.getValue()));
@@ -1392,7 +1392,7 @@ final class Http2Connection
     {
         if (!headersContext.error())
         {
-            for(int i=0; i < name.capacity(); i++)
+            for (int i=0; i < name.capacity(); i++)
             {
                 if (name.getByte(i) >= 'A' && name.getByte(i) <= 'Z')
                 {
@@ -1441,7 +1441,7 @@ final class Http2Connection
             // rebuild http request as :authority header is modified
             factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
                                  .typeId(factory.httpWriter.httpTypeId);
-            for(Map.Entry<String, String> e : headersContext.headers.entrySet())
+            for (Map.Entry<String, String> e : headersContext.headers.entrySet())
             {
                 factory.httpBeginExRW.headersItem(item -> item.name(e.getKey())
                                                               .value(e.getValue()));
@@ -1459,7 +1459,7 @@ final class Http2Connection
             // rebuild http request due to header overrides
             factory.httpBeginExRW.wrap(factory.scratch, 0, factory.scratch.capacity())
                                  .typeId(factory.httpWriter.httpTypeId);
-            for(Map.Entry<String, String> e : headersContext.headers.entrySet())
+            for (Map.Entry<String, String> e : headersContext.headers.entrySet())
             {
                 factory.httpBeginExRW.headersItem(item -> item.name(e.getKey())
                                                               .value(e.getValue()));
@@ -1735,7 +1735,7 @@ final class Http2Connection
         }
 
         // Removing any header that is nominated by Connection header field
-        for(String connectionHeader: encodeHeadersContext.connectionHeaders)
+        for (String connectionHeader: encodeHeadersContext.connectionHeaders)
         {
             if (name.asString().equals(connectionHeader))
             {
