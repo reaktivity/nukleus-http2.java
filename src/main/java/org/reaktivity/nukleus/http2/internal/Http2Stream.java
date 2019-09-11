@@ -100,7 +100,7 @@ class Http2Stream
         connection.writeScheduler.dataEos(traceId, http2StreamId);
 
         factory.counters.dataFramesWritten.getAsLong();
-   }
+    }
 
     void onHttpAbort()
     {
@@ -211,19 +211,19 @@ class Http2Stream
     {
         switch (msgTypeId)
         {
-            case WindowFW.TYPE_ID:
-                factory.windowRO.wrap(buffer, index, index + length);
-                int credit = factory.windowRO.credit();
-                int padding = factory.windowRO.padding();
-                long groupId = factory.windowRO.groupId();
-                httpWriteScheduler.onWindow(credit, padding, groupId);
-                break;
-            case ResetFW.TYPE_ID:
-                onHttpReset();
-                break;
-            default:
-                // ignore
-                break;
+        case WindowFW.TYPE_ID:
+            factory.windowRO.wrap(buffer, index, index + length);
+            int credit = factory.windowRO.credit();
+            int padding = factory.windowRO.padding();
+            long groupId = factory.windowRO.groupId();
+            httpWriteScheduler.onWindow(credit, padding, groupId);
+            break;
+        case ResetFW.TYPE_ID:
+            onHttpReset();
+            break;
+        default:
+            // ignore
+            break;
         }
     }
 
@@ -277,13 +277,13 @@ class Http2Stream
         }
     }
 
-   private void cleanupCorrelationIfNecessaryAndSendReset()
-   {
-       factory.correlations.remove(applicationReplyId);
+    private void cleanupCorrelationIfNecessaryAndSendReset()
+    {
+        factory.correlations.remove(applicationReplyId);
 
-       factory.doReset(applicationInitial,
-                       applicationRouteId,
-                       applicationReplyId,
-                       factory.supplyTrace.getAsLong());
-   }
+        factory.doReset(applicationInitial,
+                        applicationRouteId,
+                        applicationReplyId,
+                        factory.supplyTrace.getAsLong());
+    }
 }

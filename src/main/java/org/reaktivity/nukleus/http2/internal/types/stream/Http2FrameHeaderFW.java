@@ -44,7 +44,7 @@ public class Http2FrameHeaderFW extends Flyweight
     public int payloadLength()
     {
         int length = (buffer().getByte(offset() + LENGTH_OFFSET) & 0xFF) << 16;
-        length += (buffer().getShort(offset() + LENGTH_OFFSET + 1, BIG_ENDIAN) & 0xFF_FF);
+        length += buffer().getShort(offset() + LENGTH_OFFSET + 1, BIG_ENDIAN) & 0xFF_FF;
         return length;
     }
 
@@ -82,7 +82,7 @@ public class Http2FrameHeaderFW extends Flyweight
         // TODO: super.tryWrap != null
         boolean wrappable = super.wrap(buffer, offset, maxLimit) != null;
 
-        wrappable &= (maxLimit - offset >= SIZE_OF_FRAME);
+        wrappable &= maxLimit - offset >= SIZE_OF_FRAME;
 
         return wrappable ? wrap(buffer, offset, maxLimit) : null;
     }

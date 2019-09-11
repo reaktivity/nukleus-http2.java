@@ -15,8 +15,8 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Objects.requireNonNull;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,8 +24,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Objects.requireNonNull;
+import org.agrona.DirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
 
 public class HpackContext
 {
@@ -396,18 +396,22 @@ public class HpackContext
             int index = staticIndex(name);
             switch (index)
             {
-                case 2:                             // :method
-                    start = 2; end = 3;             // GET, POST
-                    break;
-                case 4:                             // :path
-                    start = 4; end = 5;             // /, /index.html
-                    break;
-                case 6:                             // :scheme
-                    start = 6; end = 7;             // http, https
-                    break;
-                case 8:                             // :status
-                    start = 8; end = 14;            // 200, 204, 206, 304, 400, 404, 500
-                    break;
+            case 2:                             // :method
+                start = 2;                      // GET
+                end = 3;                        // POST
+                break;
+            case 4:                             // :path
+                start = 4;                      // /
+                end = 5;                        // /index.html
+                break;
+            case 6:                             // :scheme
+                start = 6;                      // http
+                end = 7;                        // https
+                break;
+            case 8:                             // :status
+                start = 8;                      // 200, 204, 206, 304,
+                end = 14;                       // 400, 404, 500
+                break;
             }
             if (start != -1)
             {
@@ -436,25 +440,25 @@ public class HpackContext
     {
         switch (name.capacity())
         {
-            case 3: return staticIndex3(name);
-            case 4: return staticIndex4(name);
-            case 5: return staticIndex5(name);
-            case 6: return staticIndex6(name);
-            case 7: return staticIndex7(name);
-            case 8: return staticIndex8(name);
-            case 10: return staticIndex10(name);
-            case 11: return staticIndex11(name);
-            case 12: return staticIndex12(name);
-            case 13: return staticIndex13(name);
-            case 14: return staticIndex14(name);
-            case 15: return staticIndex15(name);
-            case 16: return staticIndex16(name);
-            case 17: return staticIndex17(name);
-            case 18: return staticIndex18(name);
-            case 19: return staticIndex19(name);
-            case 25: return staticIndex25(name);
-            case 27: return staticIndex27(name);
-            default: return -1;
+        case 3: return staticIndex3(name);
+        case 4: return staticIndex4(name);
+        case 5: return staticIndex5(name);
+        case 6: return staticIndex6(name);
+        case 7: return staticIndex7(name);
+        case 8: return staticIndex8(name);
+        case 10: return staticIndex10(name);
+        case 11: return staticIndex11(name);
+        case 12: return staticIndex12(name);
+        case 13: return staticIndex13(name);
+        case 14: return staticIndex14(name);
+        case 15: return staticIndex15(name);
+        case 16: return staticIndex16(name);
+        case 17: return staticIndex17(name);
+        case 18: return staticIndex18(name);
+        case 19: return staticIndex19(name);
+        case 25: return staticIndex25(name);
+        case 27: return staticIndex27(name);
+        default: return -1;
         }
     }
 
@@ -463,18 +467,18 @@ public class HpackContext
     {
         switch (name.getByte(2))
         {
-            case 'a':
-                if (STATIC_TABLE[60].name.equals(name))        // via
-                {
-                    return 60;
-                }
-                break;
-            case 'e':
-                if (STATIC_TABLE[21].name.equals(name))        // age
-                {
-                    return 21;
-                }
-                break;
+        case 'a':
+            if (STATIC_TABLE[60].name.equals(name))        // via
+            {
+                return 60;
+            }
+            break;
+        case 'e':
+            if (STATIC_TABLE[21].name.equals(name))        // age
+            {
+                return 21;
+            }
+            break;
         }
         return -1;
     }
@@ -484,42 +488,42 @@ public class HpackContext
     {
         switch (name.getByte(3))
         {
-            case 'e':
-                if (STATIC_TABLE[33].name.equals(name))    // date
-                {
-                    return 33;
-                }
-                break;
-            case 'g':
-                if (STATIC_TABLE[34].name.equals(name))    // etag
-                {
-                    return 34;
-                }
-                break;
-            case 'k':
-                if (STATIC_TABLE[45].name.equals(name))    // link
-                {
-                    return 45;
-                }
-                break;
-            case 'm':
-                if (STATIC_TABLE[37].name.equals(name))    // from
-                {
-                    return 37;
-                }
-                break;
-            case 't':
-                if (STATIC_TABLE[38].name.equals(name))    // host
-                {
-                    return 38;
-                }
-                break;
-            case 'y':
-                if (STATIC_TABLE[59].name.equals(name))    // vary
-                {
-                    return 59;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[33].name.equals(name))    // date
+            {
+                return 33;
+            }
+            break;
+        case 'g':
+            if (STATIC_TABLE[34].name.equals(name))    // etag
+            {
+                return 34;
+            }
+            break;
+        case 'k':
+            if (STATIC_TABLE[45].name.equals(name))    // link
+            {
+                return 45;
+            }
+            break;
+        case 'm':
+            if (STATIC_TABLE[37].name.equals(name))    // from
+            {
+                return 37;
+            }
+            break;
+        case 't':
+            if (STATIC_TABLE[38].name.equals(name))    // host
+            {
+                return 38;
+            }
+            break;
+        case 'y':
+            if (STATIC_TABLE[59].name.equals(name))    // vary
+            {
+                return 59;
+            }
+            break;
         }
         return -1;
     }
@@ -529,24 +533,24 @@ public class HpackContext
     {
         switch (name.getByte(4))
         {
-            case 'e':
-                if (STATIC_TABLE[50].name.equals(name))            // range
-                {
-                    return 50;
-                }
-                break;
-            case 'h':
-                if (STATIC_TABLE[4].name.equals(name))            // path
-                {
-                    return 4;
-                }
-                break;
-            case 'w':
-                if (STATIC_TABLE[22].name.equals(name))           // allow
-                {
-                    return 22;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[50].name.equals(name))            // range
+            {
+                return 50;
+            }
+            break;
+        case 'h':
+            if (STATIC_TABLE[4].name.equals(name))            // path
+            {
+                return 4;
+            }
+            break;
+        case 'w':
+            if (STATIC_TABLE[22].name.equals(name))           // allow
+            {
+                return 22;
+            }
+            break;
         }
         return -1;
     }
@@ -556,28 +560,28 @@ public class HpackContext
     {
         switch (name.getByte(5))
         {
-            case 'e':
-                if (STATIC_TABLE[32].name.equals(name))        // cookie
-                {
-                    return 32;
-                }
-                break;
-            case 'r':
-                if (STATIC_TABLE[54].name.equals(name))       // server
-                {
-                    return 54;
-                }
-                break;
-            case 't':
-                if (STATIC_TABLE[19].name.equals(name))       // accept
-                {
-                    return 19;
-                }
-                if (STATIC_TABLE[35].name.equals(name))        // expect
-                {
-                    return 35;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[32].name.equals(name))        // cookie
+            {
+                return 32;
+            }
+            break;
+        case 'r':
+            if (STATIC_TABLE[54].name.equals(name))       // server
+            {
+                return 54;
+            }
+            break;
+        case 't':
+            if (STATIC_TABLE[19].name.equals(name))       // accept
+            {
+                return 19;
+            }
+            if (STATIC_TABLE[35].name.equals(name))        // expect
+            {
+                return 35;
+            }
+            break;
         }
         return -1;
     }
@@ -587,40 +591,40 @@ public class HpackContext
     {
         switch (name.getByte(6))
         {
-            case 'd':
-                if (STATIC_TABLE[2].name.equals(name))                  // :method
-                {
-                    return 2;
-                }
-                break;
-            case 'e':
-                if (STATIC_TABLE[6].name.equals(name))                  // :scheme
-                {
-                    return 6;
-                }
-                break;
-            case 'h':
-                if (STATIC_TABLE[52].name.equals(name))                  // refresh
-                {
-                    return 52;
-                }
-                break;
-            case 'r':
-                if (STATIC_TABLE[51].name.equals(name))                 // referer
-                {
-                    return 51;
-                }
-                break;
-            case 's':
-                if (STATIC_TABLE[8].name.equals(name))                  // :status
-                {
-                    return 8;
-                }
-                if (STATIC_TABLE[36].name.equals(name))                  // expires
-                {
-                    return 36;
-                }
-                break;
+        case 'd':
+            if (STATIC_TABLE[2].name.equals(name))                  // :method
+            {
+                return 2;
+            }
+            break;
+        case 'e':
+            if (STATIC_TABLE[6].name.equals(name))                  // :scheme
+            {
+                return 6;
+            }
+            break;
+        case 'h':
+            if (STATIC_TABLE[52].name.equals(name))                  // refresh
+            {
+                return 52;
+            }
+            break;
+        case 'r':
+            if (STATIC_TABLE[51].name.equals(name))                 // referer
+            {
+                return 51;
+            }
+            break;
+        case 's':
+            if (STATIC_TABLE[8].name.equals(name))                  // :status
+            {
+                return 8;
+            }
+            if (STATIC_TABLE[36].name.equals(name))                  // expires
+            {
+                return 36;
+            }
+            break;
         }
         return -1;
     }
@@ -630,24 +634,24 @@ public class HpackContext
     {
         switch (name.getByte(7))
         {
-            case 'e':
-                if (STATIC_TABLE[42].name.equals(name))                     // if-range
-                {
-                    return 42;
-                }
-                break;
-            case 'h':
-                if (STATIC_TABLE[39].name.equals(name))                     // if-match
-                {
-                    return 39;
-                }
-                break;
-            case 'n':
-                if (STATIC_TABLE[46].name.equals(name))                     // location
-                {
-                    return 46;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[42].name.equals(name))                     // if-range
+            {
+                return 42;
+            }
+            break;
+        case 'h':
+            if (STATIC_TABLE[39].name.equals(name))                     // if-match
+            {
+                return 39;
+            }
+            break;
+        case 'n':
+            if (STATIC_TABLE[46].name.equals(name))                     // location
+            {
+                return 46;
+            }
+            break;
         }
         return -1;
     }
@@ -657,24 +661,24 @@ public class HpackContext
     {
         switch (name.getByte(9))
         {
-            case 'e':
-                if (STATIC_TABLE[55].name.equals(name))           // set-cookie
-                {
-                    return 55;
-                }
-                break;
-            case 't':
-                if (STATIC_TABLE[58].name.equals(name))           // user-agent
-                {
-                    return 58;
-                }
-                break;
-            case 'y':
-                if (STATIC_TABLE[1].name.equals(name))           // :authority
-                {
-                    return 1;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[55].name.equals(name))           // set-cookie
+            {
+                return 55;
+            }
+            break;
+        case 't':
+            if (STATIC_TABLE[58].name.equals(name))           // user-agent
+            {
+                return 58;
+            }
+            break;
+        case 'y':
+            if (STATIC_TABLE[1].name.equals(name))           // :authority
+            {
+                return 1;
+            }
+            break;
         }
         return -1;
     }
@@ -690,18 +694,18 @@ public class HpackContext
     {
         switch (name.getByte(11))
         {
-            case 'e':
-                if (STATIC_TABLE[31].name.equals(name))            // content-type
-                {
-                    return 31;
-                }
-                break;
-            case 's':
-                if (STATIC_TABLE[47].name.equals(name))            // max-forwards
-                {
-                    return 47;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[31].name.equals(name))            // content-type
+            {
+                return 31;
+            }
+            break;
+        case 's':
+            if (STATIC_TABLE[47].name.equals(name))            // max-forwards
+            {
+                return 47;
+            }
+            break;
         }
         return -1;
     }
@@ -711,42 +715,42 @@ public class HpackContext
     {
         switch (name.getByte(12))
         {
-            case 'd':
-                if (STATIC_TABLE[44].name.equals(name))           // last-modified
-                {
-                    return 44;
-                }
-                break;
-            case 'e':
-                if (STATIC_TABLE[30].name.equals(name))           // content-range
-                {
-                    return 30;
-                }
-                break;
-            case 'h':
-                if (STATIC_TABLE[41].name.equals(name))           // if-none-match
-                {
-                    return 41;
-                }
-                break;
-            case 'l':
-                if (STATIC_TABLE[24].name.equals(name))           // cache-control
-                {
-                    return 24;
-                }
-                break;
-            case 'n':
-                if (STATIC_TABLE[23].name.equals(name))           // authorization
-                {
-                    return 23;
-                }
-                break;
-            case 's':
-                if (STATIC_TABLE[18].name.equals(name))           // accept-ranges
-                {
-                    return 18;
-                }
-                break;
+        case 'd':
+            if (STATIC_TABLE[44].name.equals(name))           // last-modified
+            {
+                return 44;
+            }
+            break;
+        case 'e':
+            if (STATIC_TABLE[30].name.equals(name))           // content-range
+            {
+                return 30;
+            }
+            break;
+        case 'h':
+            if (STATIC_TABLE[41].name.equals(name))           // if-none-match
+            {
+                return 41;
+            }
+            break;
+        case 'l':
+            if (STATIC_TABLE[24].name.equals(name))           // cache-control
+            {
+                return 24;
+            }
+            break;
+        case 'n':
+            if (STATIC_TABLE[23].name.equals(name))           // authorization
+            {
+                return 23;
+            }
+            break;
+        case 's':
+            if (STATIC_TABLE[18].name.equals(name))           // accept-ranges
+            {
+                return 18;
+            }
+            break;
         }
         return -1;
     }
@@ -756,18 +760,18 @@ public class HpackContext
     {
         switch (name.getByte(13))
         {
-            case 'h':
-                if (STATIC_TABLE[28].name.equals(name))          // content-length
-                {
-                    return 28;
-                }
-                break;
-            case 't':
-                if (STATIC_TABLE[15].name.equals(name))          // accept-charset
-                {
-                    return 15;
-                }
-                break;
+        case 'h':
+            if (STATIC_TABLE[28].name.equals(name))          // content-length
+            {
+                return 28;
+            }
+            break;
+        case 't':
+            if (STATIC_TABLE[15].name.equals(name))          // accept-charset
+            {
+                return 15;
+            }
+            break;
         }
         return -1;
     }
@@ -777,18 +781,18 @@ public class HpackContext
     {
         switch (name.getByte(14))
         {
-            case 'e':
-                if (STATIC_TABLE[17].name.equals(name))         // accept-language
-                {
-                    return 17;
-                }
-                break;
-            case 'g':
-                if (STATIC_TABLE[16].name.equals(name))         // accept-encoding
-                {
-                    return 16;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[17].name.equals(name))         // accept-language
+            {
+                return 17;
+            }
+            break;
+        case 'g':
+            if (STATIC_TABLE[16].name.equals(name))         // accept-encoding
+            {
+                return 16;
+            }
+            break;
         }
         return -1;
     }
@@ -798,27 +802,27 @@ public class HpackContext
     {
         switch (name.getByte(15))
         {
-            case 'e':
-                if (STATIC_TABLE[27].name.equals(name))        // content-language
-                {
-                    return 27;
-                }
-                if (STATIC_TABLE[61].name.equals(name))        // www-authenticate
-                {
-                    return 61;
-                }
-                break;
-            case 'g':
-                if (STATIC_TABLE[26].name.equals(name))        // content-encoding
-                {
-                    return 26;
-                }
-                break;
-            case 'n':
-                if (STATIC_TABLE[29].name.equals(name))        // content-location
-                {
-                    return 29;
-                }
+        case 'e':
+            if (STATIC_TABLE[27].name.equals(name))        // content-language
+            {
+                return 27;
+            }
+            if (STATIC_TABLE[61].name.equals(name))        // www-authenticate
+            {
+                return 61;
+            }
+            break;
+        case 'g':
+            if (STATIC_TABLE[26].name.equals(name))        // content-encoding
+            {
+                return 26;
+            }
+            break;
+        case 'n':
+            if (STATIC_TABLE[29].name.equals(name))        // content-location
+            {
+                return 29;
+            }
         }
         return -1;
     }
@@ -828,18 +832,18 @@ public class HpackContext
     {
         switch (name.getByte(16))
         {
-            case 'e':
-                if (STATIC_TABLE[40].name.equals(name))    // if-modified-since
-                {
-                    return 40;
-                }
-                break;
-            case 'g':
-                if (STATIC_TABLE[57].name.equals(name))    // transfer-encoding
-                {
-                    return 57;
-                }
-                break;
+        case 'e':
+            if (STATIC_TABLE[40].name.equals(name))    // if-modified-since
+            {
+                return 40;
+            }
+            break;
+        case 'g':
+            if (STATIC_TABLE[57].name.equals(name))    // transfer-encoding
+            {
+                return 57;
+            }
+            break;
         }
         return -1;
     }
@@ -855,21 +859,21 @@ public class HpackContext
     {
         switch (name.getByte(18))
         {
-            case 'e':
-                if (STATIC_TABLE[43].name.equals(name))    // if-unmodified-since
-                {
-                    return 43;
-                }
-                break;
-            case 'n':
-                if (STATIC_TABLE[25].name.equals(name))    // content-disposition
-                {
-                    return 25;
-                }
-                if (STATIC_TABLE[49].name.equals(name))    // proxy-authorization
-                {
-                    return 49;
-                }
+        case 'e':
+            if (STATIC_TABLE[43].name.equals(name))    // if-unmodified-since
+            {
+                return 43;
+            }
+            break;
+        case 'n':
+            if (STATIC_TABLE[25].name.equals(name))    // content-disposition
+            {
+                return 25;
+            }
+            if (STATIC_TABLE[49].name.equals(name))    // proxy-authorization
+            {
+                return 49;
+            }
         }
         return -1;
     }

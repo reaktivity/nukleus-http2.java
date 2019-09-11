@@ -15,14 +15,14 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static junit.framework.TestCase.assertTrue;
+import static org.junit.Assert.assertEquals;
+import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-
-import static junit.framework.TestCase.assertTrue;
-import static org.junit.Assert.assertEquals;
-import static org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType.SETTINGS;
 
 public class Http2SettingsFWTest
 {
@@ -31,11 +31,11 @@ public class Http2SettingsFWTest
     public void decode()
     {
         byte[] bytes = new byte[] {
-                0x7f, 0x7f,
-                // SETTINGS frame begin
-                0x00, 0x00, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, (byte) 0xff, (byte) 0xff,
-                // SETTINGS frame end
-                0x7f, 0x7f
+            0x7f, 0x7f,
+            // SETTINGS frame begin
+            0x00, 0x00, 0x06, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x00, 0x00, (byte) 0xff, (byte) 0xff,
+            // SETTINGS frame end
+            0x7f, 0x7f
         };
 
         DirectBuffer buffer = new UnsafeBuffer(bytes);

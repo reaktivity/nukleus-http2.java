@@ -15,12 +15,12 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static org.junit.Assert.assertEquals;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-
-import static org.junit.Assert.assertEquals;
 
 public class HpackIntegerFWTest
 {
@@ -194,5 +194,4 @@ public class HpackIntegerFWTest
         assertEquals(3, fw.limit());
         assertEquals(1, fw.sizeof());
     }
-
 }

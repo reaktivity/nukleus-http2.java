@@ -82,11 +82,11 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
 
         switch (literalType())
         {
-            case INCREMENTAL_INDEXING:
-                return integer6RO.integer();
-            case WITHOUT_INDEXING:
-            case NEVER_INDEXED:
-                return integer4RO.integer();
+        case INCREMENTAL_INDEXING:
+            return integer6RO.integer();
+        case WITHOUT_INDEXING:
+        case NEVER_INDEXED:
+            return integer4RO.integer();
         }
 
         return 0;
@@ -96,11 +96,11 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
     {
         switch (literalType())
         {
-            case INCREMENTAL_INDEXING:
-                return integer6RO.integer() == 0 ? NameType.NEW : NameType.INDEXED;
-            case WITHOUT_INDEXING:
-            case NEVER_INDEXED:
-                return integer4RO.integer() == 0 ? NameType.NEW : NameType.INDEXED;
+        case INCREMENTAL_INDEXING:
+            return integer6RO.integer() == 0 ? NameType.NEW : NameType.INDEXED;
+        case WITHOUT_INDEXING:
+        case NEVER_INDEXED:
+            return integer4RO.integer() == 0 ? NameType.NEW : NameType.INDEXED;
         }
 
         return null;
@@ -125,15 +125,15 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
 
         switch (literalType())
         {
-            case INCREMENTAL_INDEXING:
-                integer6RO.wrap(buffer(), offset, maxLimit());
-                literalHeader(integer6RO);
-                break;
-            case WITHOUT_INDEXING:
-            case NEVER_INDEXED:
-                integer4RO.wrap(buffer(), offset, maxLimit());
-                literalHeader(integer4RO);
-                break;
+        case INCREMENTAL_INDEXING:
+            integer6RO.wrap(buffer(), offset, maxLimit());
+            literalHeader(integer6RO);
+            break;
+        case WITHOUT_INDEXING:
+        case NEVER_INDEXED:
+            integer4RO.wrap(buffer(), offset, maxLimit());
+            literalHeader(integer4RO);
+            break;
         }
 
         checkLimit(limit(), maxLimit);
@@ -176,15 +176,15 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
         {
             switch (type)
             {
-                case INCREMENTAL_INDEXING:
-                    buffer().putByte(offset(), (byte) 0b0100_0000);
-                    break;
-                case WITHOUT_INDEXING:
-                    buffer().putByte(offset(), (byte) 0b0000_0000);
-                    break;
-                case NEVER_INDEXED:
-                    buffer().putByte(offset(), (byte) 0b0001_0000);
-                    break;
+            case INCREMENTAL_INDEXING:
+                buffer().putByte(offset(), (byte) 0b0100_0000);
+                break;
+            case WITHOUT_INDEXING:
+                buffer().putByte(offset(), (byte) 0b0000_0000);
+                break;
+            case NEVER_INDEXED:
+                buffer().putByte(offset(), (byte) 0b0001_0000);
+                break;
             }
 
             return this;
@@ -214,17 +214,17 @@ public class HpackLiteralHeaderFieldFW extends Flyweight
         {
             switch (literalType())
             {
-                case INCREMENTAL_INDEXING:
-                    integer6RW.wrap(buffer(), offset(), maxLimit());
-                    integer6RW.integer(indexedName);
-                    valueRW.wrap(buffer(), integer6RW.limit(), maxLimit());
-                    break;
-                case WITHOUT_INDEXING:
-                case NEVER_INDEXED:
-                    integer4RW.wrap(buffer(), offset(), maxLimit());
-                    integer4RW.integer(indexedName);
-                    valueRW.wrap(buffer(), integer4RW.limit(), maxLimit());
-                    break;
+            case INCREMENTAL_INDEXING:
+                integer6RW.wrap(buffer(), offset(), maxLimit());
+                integer6RW.integer(indexedName);
+                valueRW.wrap(buffer(), integer6RW.limit(), maxLimit());
+                break;
+            case WITHOUT_INDEXING:
+            case NEVER_INDEXED:
+                integer4RW.wrap(buffer(), offset(), maxLimit());
+                integer4RW.integer(indexedName);
+                valueRW.wrap(buffer(), integer4RW.limit(), maxLimit());
+                break;
             }
 
             return this;

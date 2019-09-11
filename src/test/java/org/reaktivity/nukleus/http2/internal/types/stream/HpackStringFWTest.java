@@ -15,16 +15,16 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
+import static java.nio.charset.StandardCharsets.US_ASCII;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+
+import java.util.stream.IntStream;
+
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.junit.Test;
-
-import java.util.stream.IntStream;
-
-import static java.nio.charset.StandardCharsets.US_ASCII;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 
 public class HpackStringFWTest
 {
@@ -141,5 +141,4 @@ public class HpackStringFWTest
         assertEquals(valueBuf, fw.payload());
         assertEquals(value.length() + 4, fw.limit());
     }
-
 }

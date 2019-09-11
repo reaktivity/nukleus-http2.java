@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
-import org.agrona.MutableDirectBuffer;
-import org.agrona.concurrent.UnsafeBuffer;
-import org.junit.Test;
-
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
+
+import org.agrona.MutableDirectBuffer;
+import org.agrona.concurrent.UnsafeBuffer;
+import org.junit.Test;
 
 public class CircularDirectBufferTest
 {
@@ -34,7 +34,7 @@ public class CircularDirectBufferTest
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
 
         // will test all boundaries with start of the buffer at i
-        for(int i=0; i < 100; i++)
+        for (int i=0; i < 100; i++)
         {
             CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
             assertTrue(cb.write(dst, src, 0, i));
@@ -75,7 +75,7 @@ public class CircularDirectBufferTest
         MutableDirectBuffer dst = new UnsafeBuffer(new byte[capacity]);
 
         // will test all boundaries with start of the buffer at i
-        for(int i=0; i < 100; i++)
+        for (int i=0; i < 100; i++)
         {
             CircularDirectBuffer cb = new CircularDirectBuffer(capacity);
             assertEquals(i, cb.writeContiguous(dst, src, 0, i));

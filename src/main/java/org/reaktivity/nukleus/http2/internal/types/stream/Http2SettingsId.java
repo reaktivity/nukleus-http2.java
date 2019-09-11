@@ -41,13 +41,13 @@ public enum Http2SettingsId
     {
         switch (id)
         {
-            case 1: return HEADER_TABLE_SIZE;
-            case 2: return ENABLE_PUSH;
-            case 3: return MAX_CONCURRENT_STREAMS;
-            case 4: return INITIAL_WINDOW_SIZE;
-            case 5: return MAX_FRAME_SIZE;
-            case 6: return MAX_HEADER_LIST_SIZE;
-            default:return UNKNOWN;
+        case 1: return HEADER_TABLE_SIZE;
+        case 2: return ENABLE_PUSH;
+        case 3: return MAX_CONCURRENT_STREAMS;
+        case 4: return INITIAL_WINDOW_SIZE;
+        case 5: return MAX_FRAME_SIZE;
+        case 6: return MAX_HEADER_LIST_SIZE;
+        default:return UNKNOWN;
         }
     }
 }

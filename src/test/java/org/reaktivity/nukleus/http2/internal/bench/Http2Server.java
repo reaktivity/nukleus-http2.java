@@ -26,7 +26,7 @@ import org.reaktivity.nukleus.tcp.internal.TcpController;
 import org.reaktivity.reaktor.Reaktor;
 import org.reaktivity.reaktor.ReaktorConfiguration;
 
-public class Http2Server
+public final class Http2Server
 {
 
     public static void main(String... args) throws Exception
@@ -60,4 +60,8 @@ public class Http2Server
         Thread.sleep(10000000);
     }
 
+    private Http2Server()
+    {
+        // utility
+    }
 }

@@ -292,21 +292,21 @@ public final class ServerStreamFactory implements StreamFactory
         {
             switch (msgTypeId)
             {
-                case DataFW.TYPE_ID:
-                    final DataFW data = dataRO.wrap(buffer, index, index + length);
-                    handleData(data);
-                    break;
-                case EndFW.TYPE_ID:
-                    final EndFW end = endRO.wrap(buffer, index, index + length);
-                    handleEnd(end);
-                    break;
-                case AbortFW.TYPE_ID:
-                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
-                    handleAbort(abort);
-                    break;
-                default:
-                    doReset(networkReply, networkRouteId, networkInitialId, supplyTrace.getAsLong());
-                    break;
+            case DataFW.TYPE_ID:
+                final DataFW data = dataRO.wrap(buffer, index, index + length);
+                handleData(data);
+                break;
+            case EndFW.TYPE_ID:
+                final EndFW end = endRO.wrap(buffer, index, index + length);
+                handleEnd(end);
+                break;
+            case AbortFW.TYPE_ID:
+                final AbortFW abort = abortRO.wrap(buffer, index, index + length);
+                handleAbort(abort);
+                break;
+            default:
+                doReset(networkReply, networkRouteId, networkInitialId, supplyTrace.getAsLong());
+                break;
             }
         }
 
@@ -379,17 +379,17 @@ public final class ServerStreamFactory implements StreamFactory
         {
             switch (msgTypeId)
             {
-                case WindowFW.TYPE_ID:
-                    final WindowFW window = windowRO.wrap(buffer, index, index + length);
-                    handleWindow(window);
-                    break;
-                case ResetFW.TYPE_ID:
-                    final ResetFW reset = resetRO.wrap(buffer, index, index + length);
-                    handleReset(reset);
-                    break;
-                default:
-                    // ignore
-                    break;
+            case WindowFW.TYPE_ID:
+                final WindowFW window = windowRO.wrap(buffer, index, index + length);
+                handleWindow(window);
+                break;
+            case ResetFW.TYPE_ID:
+                final ResetFW reset = resetRO.wrap(buffer, index, index + length);
+                handleReset(reset);
+                break;
+            default:
+                // ignore
+                break;
             }
         }
 
@@ -472,21 +472,21 @@ public final class ServerStreamFactory implements StreamFactory
         {
             switch (msgTypeId)
             {
-                case DataFW.TYPE_ID:
-                    final DataFW data = dataRO.wrap(buffer, index, index + length);
-                    handleData(data);
-                    break;
-                case EndFW.TYPE_ID:
-                    final EndFW end = endRO.wrap(buffer, index, index + length);
-                    handleEnd(end);
-                    break;
-                case AbortFW.TYPE_ID:
-                    final AbortFW abort = abortRO.wrap(buffer, index, index + length);
-                    handleAbort(abort);
-                    break;
-                default:
-                    doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, supplyTrace.getAsLong());
-                    break;
+            case DataFW.TYPE_ID:
+                final DataFW data = dataRO.wrap(buffer, index, index + length);
+                handleData(data);
+                break;
+            case EndFW.TYPE_ID:
+                final EndFW end = endRO.wrap(buffer, index, index + length);
+                handleEnd(end);
+                break;
+            case AbortFW.TYPE_ID:
+                final AbortFW abort = abortRO.wrap(buffer, index, index + length);
+                handleAbort(abort);
+                break;
+            default:
+                doReset(applicationReplyThrottle, applicationRouteId, applicationReplyId, supplyTrace.getAsLong());
+                break;
             }
         }
 

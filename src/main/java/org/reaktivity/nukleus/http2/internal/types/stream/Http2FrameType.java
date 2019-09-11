@@ -45,17 +45,17 @@ public enum Http2FrameType
     {
         switch (type)
         {
-            case 0 : return DATA;
-            case 1 : return HEADERS;
-            case 2 : return PRIORITY;
-            case 3 : return RST_STREAM;
-            case 4 : return SETTINGS;
-            case 5 : return PUSH_PROMISE;
-            case 6 : return PING;
-            case 7 : return GO_AWAY;
-            case 8 : return WINDOW_UPDATE;
-            case 9 : return CONTINUATION;
-            default: return UNKNOWN;
+        case 0 : return DATA;
+        case 1 : return HEADERS;
+        case 2 : return PRIORITY;
+        case 3 : return RST_STREAM;
+        case 4 : return SETTINGS;
+        case 5 : return PUSH_PROMISE;
+        case 6 : return PING;
+        case 7 : return GO_AWAY;
+        case 8 : return WINDOW_UPDATE;
+        case 9 : return CONTINUATION;
+        default: return UNKNOWN;
         }
     }
 }

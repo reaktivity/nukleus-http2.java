@@ -15,13 +15,13 @@
  */
 package org.reaktivity.nukleus.http2.internal.types.stream;
 
-import org.agrona.DirectBuffer;
-import org.agrona.MutableDirectBuffer;
-import org.reaktivity.nukleus.http2.internal.types.Flyweight;
+import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
 
 import java.util.function.Consumer;
 
-import static org.reaktivity.nukleus.http2.internal.types.stream.HpackLiteralHeaderFieldFW.LiteralType.WITHOUT_INDEXING;
+import org.agrona.DirectBuffer;
+import org.agrona.MutableDirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.Flyweight;
 
 /*
  * Flyweight for HPACK Header Field
@@ -38,12 +38,12 @@ public class HpackHeaderFieldFW extends Flyweight
     {
         switch (type())
         {
-            case INDEXED :
-                return indexedRO.limit();
-            case LITERAL :
-                return literalRO.limit();
-            case UPDATE:
-                return updateRO.limit();
+        case INDEXED :
+            return indexedRO.limit();
+        case LITERAL :
+            return literalRO.limit();
+        case UPDATE:
+            return updateRO.limit();
         }
         return 0;
     }
@@ -109,15 +109,15 @@ public class HpackHeaderFieldFW extends Flyweight
 
         switch (type())
         {
-            case INDEXED :
-                indexedRO.wrap(buffer(), offset, maxLimit());
-                break;
-            case LITERAL :
-                literalRO.wrap(buffer(), offset, maxLimit());
-                break;
-            case UPDATE:
-                updateRO.wrap(buffer(), offset, maxLimit());
-                break;
+        case INDEXED :
+            indexedRO.wrap(buffer(), offset, maxLimit());
+            break;
+        case LITERAL :
+            literalRO.wrap(buffer(), offset, maxLimit());
+            break;
+        case UPDATE:
+            updateRO.wrap(buffer(), offset, maxLimit());
+            break;
         }
 
         checkLimit(limit(), maxLimit);
