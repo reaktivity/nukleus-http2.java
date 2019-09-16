@@ -425,7 +425,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private boolean hasNukleusBudget(int length)
     {
-        int frameCount = length == 0 ? 1 : (int) Math.ceil((double) length/connection.remoteSettings.maxFrameSize);
+        int frameCount = length == 0 ? 1 : (int) Math.ceil((double) length / connection.remoteSettings.maxFrameSize);
         int sizeof = length + frameCount * 9;
         return writer.fits(sizeof);
     }

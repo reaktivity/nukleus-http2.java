@@ -939,7 +939,7 @@ final class Http2Connection
             }
             break;
         case MAX_FRAME_SIZE:
-            if (value < Math.pow(2, 14) || value > Math.pow(2, 24) -1)
+            if (value < Math.pow(2, 14) || value > Math.pow(2, 24) - 1)
             {
                 decodeError = Http2ErrorCode.PROTOCOL_ERROR;
                 return;
@@ -1177,10 +1177,10 @@ final class Http2Connection
     private int findPushId(
         int streamId)
     {
-        if (remoteSettings.enablePush && promisedStreamCount +1 < remoteSettings.maxConcurrentStreams)
+        if (remoteSettings.enablePush && promisedStreamCount + 1 < remoteSettings.maxConcurrentStreams)
         {
             // PUSH_PROMISE frames MUST only be sent on a peer-initiated stream
-            if (streamId%2 == 0)
+            if (streamId % 2 == 0)
             {
                 // Find a stream on which PUSH_PROMISE can be sent
                 return http2Streams.entrySet()
@@ -1392,7 +1392,7 @@ final class Http2Connection
     {
         if (!headersContext.error())
         {
-            for (int i=0; i < name.capacity(); i++)
+            for (int i = 0; i < name.capacity(); i++)
             {
                 if (name.getByte(i) >= 'A' && name.getByte(i) <= 'Z')
                 {

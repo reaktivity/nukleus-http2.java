@@ -97,12 +97,12 @@ public class HpackContextTest
         assertEquals(4, context.index(":path"));
         assertEquals(6, context.index(":scheme"));
         assertEquals(8, context.index(":status"));
-        for (int i=15; i < STATIC_TABLE.length; i++)
+        for (int i = 15; i < STATIC_TABLE.length; i++)
         {
             assertEquals(i, context.index(STATIC_TABLE[i][0]));
         }
 
-        for (int i=2; i < 15; i++)
+        for (int i = 2; i < 15; i++)
         {
             assertEquals(i, context.index(STATIC_TABLE[i][0], STATIC_TABLE[i][1]));
         }

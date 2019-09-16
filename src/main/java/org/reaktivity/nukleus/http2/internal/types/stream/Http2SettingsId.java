@@ -47,7 +47,7 @@ public enum Http2SettingsId
         case 4: return INITIAL_WINDOW_SIZE;
         case 5: return MAX_FRAME_SIZE;
         case 6: return MAX_HEADER_LIST_SIZE;
-        default:return UNKNOWN;
+        default: return UNKNOWN;
         }
     }
 }

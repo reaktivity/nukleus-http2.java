@@ -151,7 +151,7 @@ public class HpackIntegerFW extends Flyweight
         {
             assert n >= 1;
             assert n <= 8;
-            int twoNminus1 = TWON_TABLE[n]-1;
+            int twoNminus1 = TWON_TABLE[n] - 1;
             int i = offset();
 
             byte cur = buffer().getByte(i);
