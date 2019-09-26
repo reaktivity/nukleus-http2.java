@@ -16,8 +16,8 @@
 package org.reaktivity.nukleus.http2.internal;
 
 import org.agrona.DirectBuffer;
+import org.reaktivity.nukleus.http2.internal.types.ArrayFW;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 
 /*
@@ -45,11 +45,11 @@ public interface WriteScheduler
 
     boolean settingsAck();
 
-    boolean headers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers);
+    boolean headers(long traceId, int streamId, byte flags, ArrayFW<HttpHeaderFW> headers);
 
-    boolean trailers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers);
+    boolean trailers(long traceId, int streamId, byte flags, ArrayFW<HttpHeaderFW> headers);
 
-    boolean pushPromise(long traceId, int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers);
+    boolean pushPromise(long traceId, int streamId, int promisedStreamId, ArrayFW<HttpHeaderFW> headers);
 
     boolean data(long traceId, int streamId, DirectBuffer buffer, int offset, int length);
 
