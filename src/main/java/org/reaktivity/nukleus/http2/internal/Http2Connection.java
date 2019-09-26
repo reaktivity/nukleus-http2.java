@@ -46,8 +46,8 @@ import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
 import org.reaktivity.nukleus.function.MessagePredicate;
+import org.reaktivity.nukleus.http2.internal.types.ArrayFW;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.OctetsFW;
 import org.reaktivity.nukleus.http2.internal.types.String16FW;
 import org.reaktivity.nukleus.http2.internal.types.StringFW;
@@ -1031,7 +1031,7 @@ final class Http2Connection
     void send404(
         int streamId)
     {
-        ListFW<HttpHeaderFW> headers =
+        ArrayFW<HttpHeaderFW> headers =
                 factory.headersRW.wrap(factory.errorBuf, 0, factory.errorBuf.capacity())
                                  .item(b -> b.name(":status").value("404"))
                                  .build();
@@ -1204,7 +1204,7 @@ final class Http2Connection
     private void doPromisedRequest(
         int http2StreamId,
         long authorization,
-        ListFW<HttpHeaderFW> headers)
+        ArrayFW<HttpHeaderFW> headers)
     {
         headersContext.reset();
 
@@ -1581,14 +1581,14 @@ final class Http2Connection
 
 
     void mapPushPromise(
-        ListFW<HttpHeaderFW> httpHeaders,
+        ArrayFW<HttpHeaderFW> httpHeaders,
         HpackHeaderBlockFW.Builder builder)
     {
         httpHeaders.forEach(h -> builder.header(b -> mapHeader(h, b)));
     }
 
     void mapTrailers(
-        ListFW<HttpHeaderFW> httpHeaders,
+        ArrayFW<HttpHeaderFW> httpHeaders,
         HpackHeaderBlockFW.Builder builder)
     {
         httpHeaders.forEach(h ->
@@ -1601,7 +1601,7 @@ final class Http2Connection
     }
 
     void mapHeaders(
-        ListFW<HttpHeaderFW> httpHeaders,
+        ArrayFW<HttpHeaderFW> httpHeaders,
         HpackHeaderBlockFW.Builder builder)
     {
         encodeHeadersContext.reset();
@@ -1882,7 +1882,7 @@ final class Http2Connection
             if (extension.sizeof() != 0)
             {
                 final HttpEndExFW httpEndEx = extension.get(factory.httpEndExRO::wrap);
-                ListFW<HttpHeaderFW> trailers = httpEndEx.trailers();
+                ArrayFW<HttpHeaderFW> trailers = httpEndEx.trailers();
                 writeScheduler.trailers(end.trace(), stream.http2StreamId, Http2Flags.END_STREAM, trailers);
             }
             else

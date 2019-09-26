@@ -15,11 +15,11 @@
  */
 package org.reaktivity.nukleus.http2.internal;
 
+import org.reaktivity.nukleus.http2.internal.types.ArrayFW;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 
 @FunctionalInterface
 public interface PromisedRequestHandler
 {
-    void accept(int promisedStreamId, long authorization, ListFW<HttpHeaderFW> headers);
+    void accept(int promisedStreamId, long authorization, ArrayFW<HttpHeaderFW> headers);
 }
