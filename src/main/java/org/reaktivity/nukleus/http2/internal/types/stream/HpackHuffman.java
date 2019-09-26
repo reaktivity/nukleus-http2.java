@@ -310,7 +310,7 @@ public final class HpackHuffman
         @Override
         public String toString()
         {
-            return "node[sym="+(char) symbol +"]";
+            return "node[sym=" + (char) symbol + "]";
         }
     }
 
@@ -346,7 +346,7 @@ public final class HpackHuffman
                 }
             }
             current.symbol = sym;
-            current.accept = sym != CODES.length-1;     // EOS is invalid in string literal
+            current.accept = sym != CODES.length - 1;     // EOS is invalid in string literal
         }
 
         transition(ROOT);
@@ -368,7 +368,7 @@ public final class HpackHuffman
         {
             return;
         }
-        for (int i=0; i < 256; i++)
+        for (int i = 0; i < 256; i++)
         {
             transition(node, i);
         }
@@ -523,7 +523,7 @@ public final class HpackHuffman
 
             if (remainingBits + bits > 64)                  // exceeds long (no more space for current bits)
             {
-                dst.putLong(dstIndex, currentSeq << (64-remainingBits), BIG_ENDIAN);
+                dst.putLong(dstIndex, currentSeq << (64 - remainingBits), BIG_ENDIAN);
                 dstIndex += remainingBits / 8;
                 remainingBits = remainingBits % 8;
             }

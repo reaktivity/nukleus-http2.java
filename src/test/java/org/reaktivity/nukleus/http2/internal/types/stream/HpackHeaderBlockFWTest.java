@@ -59,7 +59,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(21, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -82,7 +82,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(15, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -106,7 +106,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(30, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -242,7 +242,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(18, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -265,7 +265,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(13, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -289,7 +289,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(25, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -336,7 +336,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(71, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -370,7 +370,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(9, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -410,7 +410,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         "00");
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 1, buffer.capacity() - 1);
         assertEquals(99, fw.limit());
 
         Map<String, String> headers = new LinkedHashMap<>();
@@ -444,7 +444,7 @@ public class HpackHeaderBlockFWTest
                         // Header list end
                         );
         DirectBuffer buffer = new UnsafeBuffer(bytes);
-        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 0, buffer.capacity()-1);
+        HpackHeaderBlockFW fw = new HpackHeaderBlockFW().wrap(buffer, 0, buffer.capacity() - 1);
         assertTrue(fw.error());
         assertEquals(27, fw.limit());
     }

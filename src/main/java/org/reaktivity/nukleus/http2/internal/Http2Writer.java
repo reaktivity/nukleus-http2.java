@@ -20,8 +20,8 @@ import java.util.function.BiConsumer;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.types.ArrayFW;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
@@ -221,8 +221,8 @@ class Http2Writer
         int lengthGuess,
         int streamId,
         byte flags,
-        ListFW<HttpHeaderFW> headers,
-        BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
+        ArrayFW<HttpHeaderFW> headers,
+        BiConsumer<ArrayFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
         byte headersFlags = (byte) (flags | Http2Flags.END_HEADERS);
 
@@ -263,8 +263,8 @@ class Http2Writer
         int lengthGuess,
         int streamId,
         int promisedStreamId,
-        ListFW<HttpHeaderFW> headers,
-        BiConsumer<ListFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
+        ArrayFW<HttpHeaderFW> headers,
+        BiConsumer<ArrayFW<HttpHeaderFW>, HpackHeaderBlockFW.Builder> builder)
     {
         int written = pushPromiseRW.wrap(writeBuffer, offset, offset + lengthGuess)
                             .streamId(streamId)

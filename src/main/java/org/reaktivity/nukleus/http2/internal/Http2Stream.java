@@ -86,13 +86,13 @@ class Http2Stream
     // Estimate only - no of DATA frames + WINDOW frames
     private int maxHeaderSize()
     {
-        int frameCount = (int) Math.ceil(factory.bufferPool.slotCapacity()/connection.remoteSettings.maxFrameSize) + 10;
+        int frameCount = (int) Math.ceil(factory.bufferPool.slotCapacity() / connection.remoteSettings.maxFrameSize) + 10;
         return frameCount * 9;
     }
 
     boolean isClientInitiated()
     {
-        return http2StreamId%2 == 1;
+        return http2StreamId % 2 == 1;
     }
 
     void onHttpEnd(long traceId)

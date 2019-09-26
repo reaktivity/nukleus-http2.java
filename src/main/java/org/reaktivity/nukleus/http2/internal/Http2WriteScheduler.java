@@ -31,8 +31,8 @@ import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.concurrent.UnsafeBuffer;
 import org.reaktivity.nukleus.function.MessageConsumer;
+import org.reaktivity.nukleus.http2.internal.types.ArrayFW;
 import org.reaktivity.nukleus.http2.internal.types.HttpHeaderFW;
-import org.reaktivity.nukleus.http2.internal.types.ListFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.HpackHeaderBlockFW;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2ErrorCode;
 import org.reaktivity.nukleus.http2.internal.types.stream.Http2FrameType;
@@ -214,7 +214,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean trailers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers)
+    public boolean trailers(long traceId, int streamId, byte flags, ArrayFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);        // estimate only
@@ -256,7 +256,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean headers(long traceId, int streamId, byte flags, ListFW<HttpHeaderFW> headers)
+    public boolean headers(long traceId, int streamId, byte flags, ArrayFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);        // estimate only
@@ -290,7 +290,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     @Override
-    public boolean pushPromise(long traceId, int streamId, int promisedStreamId, ListFW<HttpHeaderFW> headers)
+    public boolean pushPromise(long traceId, int streamId, int promisedStreamId, ArrayFW<HttpHeaderFW> headers)
     {
         MutableDirectBuffer copy = null;
         int length = headersLength(headers);            // estimate only
@@ -425,7 +425,7 @@ public class Http2WriteScheduler implements WriteScheduler
 
     private boolean hasNukleusBudget(int length)
     {
-        int frameCount = length == 0 ? 1 : (int) Math.ceil((double) length/connection.remoteSettings.maxFrameSize);
+        int frameCount = length == 0 ? 1 : (int) Math.ceil((double) length / connection.remoteSettings.maxFrameSize);
         int sizeof = length + frameCount * 9;
         return writer.fits(sizeof);
     }
@@ -447,7 +447,7 @@ public class Http2WriteScheduler implements WriteScheduler
     }
 
     // Since it is not encoding, this gives an approximate length of header block
-    private int headersLength(ListFW<HttpHeaderFW> headers)
+    private int headersLength(ArrayFW<HttpHeaderFW> headers)
     {
         int[] length = new int[1];
         headers.forEach(x -> length[0] += x.name().sizeof() + x.value().sizeof() + 4);
